@@ -1,25 +1,29 @@
 {
   "name": "smartservice",
-  "version": "1.0.0",
-  "description": "A smart service application",
-  "main": "src/index.js",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "test": "jest",
-    "start": "node src/index.js",
-    "build": "webpack"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
   },
-  "keywords": [
-    "smart",
-    "service",
-    "application"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
   "dependencies": {
-    "express": "^4.17.1"
+    "@supabase/supabase-js": "^2.117.1",
+    "next": "16.3.6",
+    "openai": "^7.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
-    "jest": "^26.6.0",
-    "webpack": "^5.0.0"
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.6",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

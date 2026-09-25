@@ -1,46 +1,63 @@
 # SmartService
 
-## Overview
-SmartService is a project designed to provide a robust and scalable solution for [briefly describe the purpose of the project, e.g., managing services, automating tasks, etc.]. This application is built using modern technologies and follows best practices to ensure maintainability and performance.
+Aplicación web full-stack para la gestión de un **taller de motocicletas**
+(clientes, motocicletas, inventario, ventas y órdenes de servicio), con
+asistente IA y procesamiento de pagos.
 
-## Installation
-To get started with SmartService, follow these steps:
+## Stack
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/adrielybazoalto/SmartService.git
-   ```
+| Capa | Tecnología |
+| --- | --- |
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS |
+| Backend | Next.js Server Actions + capa de servicios en `src/backend` |
+| Base de datos | PostgreSQL vía **Supabase** (DB + Auth) |
+| Pagos | Stripe |
+| IA | OpenAI API |
+| Deploy | Vercel |
+| VCS | Git + GitHub |
 
-2. Navigate to the project directory:
-   ```
-   cd SmartService
-   ```
+## Requisitos
 
-3. Install the dependencies:
-   ```
-   npm install
-   ```
+- Node.js ≥ 20.9 (probado con Node 24)
+- npm
 
-## Usage
-To run the application, use the following command:
-```
-npm start
-```
+## Inicio rápido
 
-For testing, you can run:
-```
-npm test
+```bash
+npm install
+cp .env.example .env.local   # completa las claves reales
+npm run dev                  # http://localhost:3000
 ```
 
-## Directory Structure
-- `src`: Contains the source code for the application.
-- `tests`: Contains test files for unit and integration testing.
-- `.gitignore`: Specifies files and directories to be ignored by Git.
-- `README.md`: Documentation for the project.
-- `package.json`: Configuration file for npm, listing dependencies and scripts.
+Otros comandos:
 
-## Contributing
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+```bash
+npm run build   # build de producción
+npm start       # sirve el build
+npm run lint    # eslint
+```
 
-## License
-This project is licensed under the [insert license name, e.g., MIT License]. See the LICENSE file for details.
+## Estructura
+
+```
+src/
+├── app/          # rutas (App Router)
+├── backend/      # lógica de negocio por dominios (server-only)
+│   └── clients/  # ejemplo: clientes del taller
+└── lib/          # clientes de servicios externos
+    ├── supabase/
+    ├── stripe.ts
+    └── openai.ts
+```
+
+Documentación de la capa de servicios: [src/backend/README.md](src/backend/README.md).
+
+## Variables de entorno
+
+Ver [.env.example](.env.example). Copia a `.env.local` con tus claves reales
+de Supabase, Stripe y OpenAI. `.env.local` está en `.gitignore`.
+
+## Despliegue
+
+Conectar el repositorio en [vercel.com](https://vercel.com) (importar el repo
+GitHub) y definir las variables de entorno en el panel del proyecto.
