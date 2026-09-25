@@ -1,15 +1,16 @@
 'use client'
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from './database.types'
 
-let client: SupabaseClient | null = null
+let client: SupabaseClient<Database> | null = null
 
 /**
- * Cliente Supabase para el NAVEGADOR (anon key).
- * Lazy: se crea en la primera llamada para no lanzar errores si
- * las variables de entorno aún no están configuradas.
+ * Cliente Supabase para el NAVEGADOR (anon key, sesión por cookies).
+ * Lazy: se crea en la primera llamada.
  */
-export function getSupabaseBrowserClient(): SupabaseClient {
+export function getSupabaseBrowserClient(): SupabaseClient<Database> {
   if (client) return client
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -17,10 +18,10 @@ export function getSupabaseBrowserClient(): SupabaseClient {
 
   if (!url || !anonKey) {
     throw new Error(
-      'Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local',
+      'Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno.',
     )
   }
 
-  client = createClient(url, anonKey)
+  client = createBrowserClient<Database>(url, anonKey)
   return client
 }
