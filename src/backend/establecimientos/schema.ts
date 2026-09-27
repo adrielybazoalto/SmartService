@@ -3,8 +3,8 @@ import { z } from 'zod'
 export const crearEstablecimientoSchema = z.object({
   cliente_id: z.number().int().positive('Debe seleccionar un cliente'),
   nombre_establecimiento: z.string().min(2).max(150),
-  direccion: z.string().nullable().optional(),
-  tipo_inmueble: z.string().max(50).nullable().optional(),
+  direccion: z.string().min(1, 'La dirección es obligatoria').max(255),
+  tipo_inmueble: z.string().max(100).nullable().optional(),
   latitud: z.string().nullable().optional(),
   longitud: z.string().nullable().optional(),
 })
@@ -15,7 +15,7 @@ export const crearSistemaInstaladoSchema = z.object({
   orden_trabajo_id: z.number().int().positive().nullable().optional(),
   establecimiento_id: z.number().int().positive('Debe seleccionar un establecimiento'),
   nombre_sistema: z.string().min(2).max(150),
-  fecha_instalacion: z.string().date('Fecha de instalación inválida').nullable().optional(),
+  fecha_instalacion: z.string().date('Fecha de instalación inválida'),
   numero_serie: z.string().max(100).nullable().optional(),
   periodicidad_meses: z.number().int().min(1).max(24).default(6),
   fecha_ultimo_mantenimiento: z

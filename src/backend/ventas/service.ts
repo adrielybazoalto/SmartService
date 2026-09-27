@@ -124,34 +124,21 @@ export async function crearVentaConDetalles(db: Db, input: CrearVentaInput): Pro
     .single()
   if (errVenta) throw new Error(`No se pudo crear la venta: ${errVenta.message}`)
 
-  const lineas: NuevoDetalleVenta[] = parsed.items.map((i) =>
-    i.tipo === 'PRODUCTO'
-      ? {
-          venta_id: venta.id,
-          producto_id: i.producto_id,
-          servicio_id: null,
-          cantidad: num(i.cantidad),
-          precio_unitario: num(i.precio_unitario),
-          subtotal: num(i.cantidad * i.precio_unitario),
-        }
-      : {
-          venta_id: venta.id,
-          producto_id: null,
-          servicio_id: i.servicio_id,
-          cantidad: num(i.cantidad),
-          precio_unitario: num(i.precio_unitario),
-          subtotal: num(i.cantidad * i.precio_unitario),
-        },
-  )
+  const lineas: NuevoDetalleVenta[] = parsed.items.map((i) => ({
+    venta_id: venta.id,
+    producto_id: i.producto_id,
+    cantidad: num(i.cantidad),
+    precio_unitario: num(i.precio_unitario),
+    subtotal: num(i.cantidad * i.precio_unitario),
+  }))
 
   const { error: errDetalle } = await db.from('detalle_venta').insert(lineas)
   if (errDetalle) {
     throw new Error(`La venta se creó pero fallaron sus líneas: ${errDetalle.message}`)
   }
 
-  // Descuento de stock para ítems producto (kardex SALIDA por venta)
+  // Descuento de stock para los ítems (kardex SALIDA por venta)
   for (const i of parsed.items) {
-    if (i.tipo !== 'PRODUCTO') continue
 
     const { data: prod, error: errProd } = await db
       .from('producto')
@@ -198,7 +185,7 @@ export async function getVentaPorId(db: Db, id: number) {
   const { data, error } = await db
     .from('venta')
     .select(
-      '*, cliente(*), usuario(nombre), caja(*), detalle_venta(*, producto(*), servicio(*))',
+      '*, cliente(*), usuario(nombre), caja(*), detalle_venta(*, producto(*))',
     )
     .eq('id', id)
     .single()

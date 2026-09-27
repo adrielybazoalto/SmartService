@@ -11,8 +11,8 @@ export const actualizarCategoriaSchema = crearCategoriaSchema.partial()
 export const crearProductoSchema = z.object({
   nombre: z.string().min(2, 'El nombre es obligatorio').max(150),
   descripcion_tecnica: z.string().nullable().optional(),
-  unidad_medida: z.string().max(30).nullable().optional(),
-  margen_ganancia: z.coerce.number().min(0).max(100).nullable().optional(),
+  unidad_medida: z.string().min(1, 'La unidad de medida es obligatoria').max(50),
+  margen_ganancia: z.coerce.number().min(0).max(100).default(0),
   precio_compra_actual: z.coerce.number().min(0, 'El precio de compra es obligatorio'),
   stock_disponible: z.coerce.number().min(0).default(0),
   stock_minimo: z.coerce.number().min(0).default(0),
@@ -23,8 +23,8 @@ export const actualizarProductoSchema = z
   .object({
     nombre: z.string().min(2).max(150),
     descripcion_tecnica: z.string().nullable(),
-    unidad_medida: z.string().max(30).nullable(),
-    margen_ganancia: z.coerce.number().min(0).max(100).nullable(),
+    unidad_medida: z.string().max(50),
+    margen_ganancia: z.coerce.number().min(0).max(100),
     precio_compra_actual: z.coerce.number().min(0),
     stock_disponible: z.coerce.number().min(0),
     stock_minimo: z.coerce.number().min(0),

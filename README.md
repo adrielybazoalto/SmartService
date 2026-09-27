@@ -10,7 +10,7 @@ productos, ventas y caja.
 | --- | --- |
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS |
 | Backend | Next.js Server Actions + capa de servicios en `src/backend` |
-| Base de datos | PostgreSQL vía **Supabase** (DB + Auth) |
+| Base de datos | PostgreSQL vía **Supabase** (solo base de datos; auth propia: bcryptjs + JWT) |
 | Pagos | Stripe |
 | IA | OpenAI API |
 | Deploy | Vercel |
@@ -37,6 +37,41 @@ npm start       # sirve el build
 npm run lint    # eslint
 ```
 
+## Base de datos (Supabase)
+
+Supabase se usa **solo como PostgreSQL**; la autenticación vive en la
+aplicación (bcryptjs + JWT, ver [Autenticación](#autenticación)). Los scripts
+están en la raíz del repo y se ejecutan en **Supabase Dashboard → SQL Editor**,
+en este orden:
+
+1. **`schema.sql`** — reset total del esquema (`DROP SCHEMA public CASCADE`) y
+   recreación de las **32 tablas** con constraints e índices. ⚠️ Borra los datos
+   existentes: úsalo solo para construir desde cero.
+2. **`seed.sql`** — permisos (`GRANT` de `service_role` para la API REST),
+   3 roles, 8 módulos, 5 acciones, matriz RBAC completa y 6 usuarios. Es
+   **idempotente** (`ON CONFLICT DO NOTHING`): puede re-ejecutarse para
+   restaurar permisos o datos sin romper lo existente.
+
+> Si ya tienes las tablas creadas (BD migrada) y solo necesitas permisos/datos,
+> ejecuta únicamente `seed.sql`.
+
+### Credenciales iniciales
+
+Los 6 usuarios del seed comparten la contraseña temporal **`Admin1234!`**
+(almacenada como hash bcrypt, cost 10). Cámbiala en el primer ingreso.
+
+| Rol | Usuarios de ejemplo |
+| --- | --- |
+| ADMINISTRADOR | `gerencia@sgarnet.bo` |
+| ENCARGADO | `administracion@sgarnet.bo` |
+| TECNICO | `jperez@sgarnet.bo` · `pramirez@sgarnet.bo` · `lfernandez@sgarnet.bo` · `dcastillo@sgarnet.bo` |
+
+> La API REST se consume únicamente con la **service role key** (server-only);
+> por eso el seed concede permisos a `service_role`. La migración
+> `auth_local.sql` ya no es necesaria en instalaciones nuevas (el reset de
+> `schema.sql` incluye esa estructura) y se conserva solo para BDs creadas con
+> el esquema anterior.
+
 ## Estructura
 
 ```
@@ -59,8 +94,9 @@ src/
 El login es **100% de la aplicación** (Supabase se usa solo como base de
 datos): las contraseñas se guardan como **hash bcrypt (bcryptjs)** en
 `usuario.contrasena` y la sesión es una **cookie JWT firmada** con
-`AUTH_SECRET` (`src/lib/session.ts`). Ver `src/backend/README.md` para el
-detalle y la migración `auth_local.sql`.
+`AUTH_SECRET` (`src/lib/session.ts`). El `seed.sql` crea los usuarios iniciales
+con contraseña temporal `Admin1234!`. Ver `src/backend/README.md` para el
+detalle.
 
 Documentación de la capa de servicios: [src/backend/README.md](src/backend/README.md).
 
@@ -69,6 +105,10 @@ Documentación de la capa de servicios: [src/backend/README.md](src/backend/READ
 Ver [.env.example](.env.example). Copia a `.env.local` con tus claves reales
 de Supabase, Stripe, OpenAI y `AUTH_SECRET`. `.env.local` está en
 `.gitignore`.
+
+Para Supabase solo se necesitan `NEXT_PUBLIC_SUPABASE_URL` y
+`SUPABASE_SERVICE_ROLE_KEY` (la anon/publishable key ya no se usa: todas las
+consultas van por el cliente server-only con service role).
 
 ## Despliegue
 

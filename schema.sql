@@ -1,388 +1,128 @@
 -- ============================================================
--- SCRIPT DE CREACIÓN DE BASE DE DATOS (DISEÑO FÍSICO)
--- PROYECTO: SISTEMA DE GESTIÓN DE SERVICIOS DE SEGURIDAD
+-- REINICIO TOTAL DEL ESQUEMA
+-- ============================================================
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+
+BEGIN;
+
+-- ============================================================
+-- SISTEMA DE GESTIÓN DE SERVICIOS DE SEGURIDAD
+-- PostgreSQL
 -- ============================================================
 
-
--- 1. TABLAS INDEPENDIENTES
---    Sin llaves foráneas
-
--- Tabla: ROL
+-- ============================================================
+-- 1. SEGURIDAD Y CONTROL DE ACCESO
+-- ============================================================
 
 CREATE TABLE ROL (
     id SERIAL PRIMARY KEY,
-    nombre VARCHAR(50) NOT NULL,
-    descripcion TEXT
+    nombre VARCHAR(50) NOT NULL UNIQUE,
+    descripcion VARCHAR(255)
 );
-
--- Tabla: MODULO
 
 CREATE TABLE MODULO (
     id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL
+    nombre VARCHAR(100) NOT NULL UNIQUE
 );
-
--- Tabla: ACCION
 
 CREATE TABLE ACCION (
     id SERIAL PRIMARY KEY,
-    nombre VARCHAR(50) NOT NULL
+    nombre VARCHAR(100) NOT NULL UNIQUE
 );
-
--- Tabla: FUNCION
 
 CREATE TABLE FUNCION (
     id SERIAL PRIMARY KEY,
     modulo_id INTEGER NOT NULL,
     nombre VARCHAR(100) NOT NULL,
-    descripcion TEXT,
+    descripcion VARCHAR(255),
 
-    FOREIGN KEY (modulo_id)
+    CONSTRAINT fk_funcion_modulo
+        FOREIGN KEY (modulo_id)
         REFERENCES MODULO(id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE
 );
-
--- Tabla: CLIENTE
-
-CREATE TABLE CLIENTE (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(150) NOT NULL,
-    tipo_cliente VARCHAR(30) NOT NULL,
-    razon_social VARCHAR(150),
-    documento_identidad VARCHAR(30) UNIQUE,
-    correo VARCHAR(100),
-    telefono VARCHAR(20),
-    telefono_alternativo VARCHAR(20),
-    fecha_registro DATE DEFAULT CURRENT_DATE
-);
-
--- Tabla: CATEGORIA_PRODUCTO
-
-CREATE TABLE CATEGORIA_PRODUCTO (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL,
-    descripcion TEXT
-);
-
--- Tabla: PRODUCTO
-
-CREATE TABLE PRODUCTO (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(150) NOT NULL,
-    descripcion_tecnica TEXT,
-    unidad_medida VARCHAR(30),
-    margen_ganancia NUMERIC(10,2)
-        CHECK (margen_ganancia >= 0),
-    precio_compra_actual NUMERIC(10,2) NOT NULL
-        CHECK (precio_compra_actual >= 0),
-    stock_disponible NUMERIC(10,2) DEFAULT 0
-        CHECK (stock_disponible >= 0),
-    stock_minimo NUMERIC(10,2) DEFAULT 0
-        CHECK (stock_minimo >= 0),
-    categoria_id INTEGER NOT NULL,
-
-    FOREIGN KEY (categoria_id)
-        REFERENCES CATEGORIA_PRODUCTO(id)
-        ON DELETE RESTRICT
-);
-
--- Tabla: PROVEEDOR
-
-CREATE TABLE PROVEEDOR (
-    id SERIAL PRIMARY KEY,
-    razon_social VARCHAR(150) NOT NULL,
-    nit VARCHAR(30) UNIQUE NOT NULL,
-    contacto VARCHAR(100),
-    telefono VARCHAR(20),
-    correo VARCHAR(100)
-);
-
--- Tabla: SERVICIO
-
-CREATE TABLE SERVICIO (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(150) NOT NULL,
-    descripcion TEXT,
-    precio_hora_base NUMERIC(10,2) NOT NULL
-        CHECK (precio_hora_base >= 0)
-);
-
-
--- 2. TABLAS DE NIVEL 1
---    Dependen de las tablas independientes
-
--- Tabla: ROL_FUNCION
--- Relación entre ROL, FUNCION y ACCION
 
 CREATE TABLE ROL_FUNCION (
+    id SERIAL PRIMARY KEY,
     rol_id INTEGER NOT NULL,
     funcion_id INTEGER NOT NULL,
     accion_id INTEGER NOT NULL,
-    descripcion TEXT,
-	
-    PRIMARY KEY (rol_id, funcion_id, accion_id),
+    descripcion VARCHAR(255),
 
-    FOREIGN KEY (rol_id)
+    CONSTRAINT fk_rol_funcion_rol
+        FOREIGN KEY (rol_id)
         REFERENCES ROL(id)
-        ON DELETE CASCADE,
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (funcion_id)
+    CONSTRAINT fk_rol_funcion_funcion
+        FOREIGN KEY (funcion_id)
         REFERENCES FUNCION(id)
-        ON DELETE CASCADE,
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (accion_id)
+    CONSTRAINT fk_rol_funcion_accion
+        FOREIGN KEY (accion_id)
         REFERENCES ACCION(id)
         ON DELETE CASCADE
-);
+        ON UPDATE CASCADE,
 
--- Tabla: USUARIO
+    CONSTRAINT uq_rol_funcion
+        UNIQUE (rol_id, funcion_id, accion_id)
+);
 
 CREATE TABLE USUARIO (
     id SERIAL PRIMARY KEY,
     rol_id INTEGER NOT NULL,
     nombre VARCHAR(150) NOT NULL,
-    correo VARCHAR(100) UNIQUE NOT NULL,
+    correo VARCHAR(150) NOT NULL UNIQUE,
     contrasena VARCHAR(255) NOT NULL,
-    telefono VARCHAR(20),
-    estado BOOLEAN DEFAULT TRUE,
+    telefono VARCHAR(30),
+    estado BOOLEAN NOT NULL DEFAULT TRUE,
 
-    FOREIGN KEY (rol_id)
+    CONSTRAINT fk_usuario_rol
+        FOREIGN KEY (rol_id)
         REFERENCES ROL(id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE
 );
-
--- Tabla: ESTABLECIMIENTO
-
-CREATE TABLE ESTABLECIMIENTO (
-    id SERIAL PRIMARY KEY,
-    cliente_id INTEGER NOT NULL,
-    nombre_establecimiento VARCHAR(150) NOT NULL,
-    direccion TEXT,
-    tipo_inmueble VARCHAR(50),
-    latitud NUMERIC(10,7),
-    longitud NUMERIC(10,7),
-
-    FOREIGN KEY (cliente_id)
-        REFERENCES CLIENTE(id)
-        ON DELETE CASCADE
-);
-
--- Tabla: PROVEEDOR - PRODUCTO
--- Relación muchos a muchos
-
-CREATE TABLE PRODUCTO_PROVEEDOR (
-    producto_id INTEGER NOT NULL,
-    proveedor_id INTEGER NOT NULL,
-    precio_compra NUMERIC(10,2) NOT NULL
-        CHECK (precio_compra >= 0),
-    codigo_item_proveedor VARCHAR(100),
-
-    PRIMARY KEY (producto_id, proveedor_id),
-
-    FOREIGN KEY (producto_id)
-        REFERENCES PRODUCTO(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (proveedor_id)
-        REFERENCES PROVEEDOR(id)
-        ON DELETE CASCADE
-);
-
--- Tabla: SISTEMA_INSTALADO
-
-CREATE TABLE SISTEMA_INSTALADO (
-    id SERIAL PRIMARY KEY,
-    orden_trabajo_id INTEGER,
-    establecimiento_id INTEGER NOT NULL,
-    nombre_sistema VARCHAR(150) NOT NULL,
-    fecha_instalacion DATE,
-    numero_serie VARCHAR(100),
-    periodicidad_meses INTEGER DEFAULT 6
-        CHECK (periodicidad_meses > 0),
-    fecha_ultimo_mantenimiento DATE,
-    fecha_proximo_mantenimiento DATE,
-    observaciones TEXT,
-
-    FOREIGN KEY (establecimiento_id)
-        REFERENCES ESTABLECIMIENTO(id)
-        ON DELETE CASCADE
-);
-
-
--- 3. TABLAS DE NIVEL 2
---    Procesos principales del sistema
-
--- Tabla: BITACORA
-
-CREATE TABLE BITACORA (
-    id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL,
-    fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    accion VARCHAR(100) NOT NULL,
-    descripcion TEXT,
-
-    FOREIGN KEY (usuario_id)
-        REFERENCES USUARIO(id)
-        ON DELETE CASCADE
-);
-
--- Tabla: TOKEN_RECUPERACION
 
 CREATE TABLE TOKEN_RECUPERACION (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL,
-    token VARCHAR(255) NOT NULL,
-    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_expiracion TIMESTAMP NOT NULL,
-    usado BOOLEAN DEFAULT FALSE,
+    usado BOOLEAN NOT NULL DEFAULT FALSE,
 
-    FOREIGN KEY (usuario_id)
+    CONSTRAINT fk_token_usuario
+        FOREIGN KEY (usuario_id)
         REFERENCES USUARIO(id)
         ON DELETE CASCADE
+        ON UPDATE CASCADE
 );
 
--- Tabla: MOVIMIENTO_KARDEX
-
-CREATE TABLE MOVIMIENTO_KARDEX (
+CREATE TABLE BITACORA (
     id SERIAL PRIMARY KEY,
-    producto_id INTEGER NOT NULL,
     usuario_id INTEGER NOT NULL,
-    tipo_movimiento VARCHAR(20) NOT NULL,
-    cantidad NUMERIC(10,2) NOT NULL
-        CHECK (cantidad > 0),
-    stock_anterior NUMERIC(10,2) NOT NULL
-        CHECK (stock_anterior >= 0),
-    origen_movimiento VARCHAR(100),
-    fecha_movimiento TIMESTAMP
-        DEFAULT CURRENT_TIMESTAMP,
-    observacion TEXT,
-    CHECK (
-        tipo_movimiento IN
-        ('ENTRADA', 'SALIDA', 'AJUSTE')
-    ),
+    fecha_hora TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    accion VARCHAR(100) NOT NULL,
+    descripcion TEXT,
 
-    FOREIGN KEY (producto_id)
-        REFERENCES PRODUCTO(id)
-        ON DELETE RESTRICT,
-
-    FOREIGN KEY (usuario_id)
+    CONSTRAINT fk_bitacora_usuario
+        FOREIGN KEY (usuario_id)
         REFERENCES USUARIO(id)
-        ON DELETE RESTRICT
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
 );
 
--- Tabla: COTIZACION
-
-CREATE TABLE COTIZACION (
-    id SERIAL PRIMARY KEY,
-    cliente_id INTEGER NOT NULL,
-    establecimiento_id INTEGER,
-    usuario_id INTEGER NOT NULL,
-    numero_cotizacion VARCHAR(50) UNIQUE NOT NULL,
-    fecha_emision DATE DEFAULT CURRENT_DATE,
-    fecha_vencimiento DATE NOT NULL,
-    estado VARCHAR(30) DEFAULT 'PENDIENTE',
-    total NUMERIC(12,2) DEFAULT 0
-        CHECK (total >= 0),
-    CHECK (
-        estado IN
-        ('PENDIENTE', 'APROBADA', 'RECHAZADA')
-    ),
-
-    FOREIGN KEY (cliente_id)
-        REFERENCES CLIENTE(id)
-        ON DELETE RESTRICT,
-
-    FOREIGN KEY (establecimiento_id)
-        REFERENCES ESTABLECIMIENTO(id)
-        ON DELETE SET NULL,
-
-    FOREIGN KEY (usuario_id)
-        REFERENCES USUARIO(id)
-        ON DELETE RESTRICT
-);
-
--- Tabla: DETALLE_COTIZACION_PRODUCTO
-
-CREATE TABLE DETALLE_COTIZACION_PRODUCTO (
-    id SERIAL PRIMARY KEY,
-    cotizacion_id INTEGER NOT NULL,
-    producto_id INTEGER NOT NULL,
-    cantidad NUMERIC(10,2) NOT NULL
-        CHECK (cantidad > 0),
-    precio_unitario NUMERIC(10,2) NOT NULL
-        CHECK (precio_unitario >= 0),
-    subtotal NUMERIC(12,2) NOT NULL
-        CHECK (subtotal >= 0),
-
-    FOREIGN KEY (cotizacion_id)
-        REFERENCES COTIZACION(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (producto_id)
-        REFERENCES PRODUCTO(id)
-        ON DELETE RESTRICT
-);
-
--- Tabla: DETALLE_COTIZACION_SERVICIO
-
-CREATE TABLE DETALLE_COTIZACION_SERVICIO (
-    id SERIAL PRIMARY KEY,
-    cotizacion_id INTEGER NOT NULL,
-    servicio_id INTEGER NOT NULL,
-    horas_estimadas NUMERIC(10,2) NOT NULL
-        CHECK (horas_estimadas > 0),
-    precio_hora NUMERIC(10,2) NOT NULL
-        CHECK (precio_hora >= 0),
-    subtotal NUMERIC(12,2) NOT NULL
-        CHECK (subtotal >= 0),
-
-    FOREIGN KEY (cotizacion_id)
-        REFERENCES COTIZACION(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (servicio_id)
-        REFERENCES SERVICIO(id)
-        ON DELETE RESTRICT
-);
-
--- Tabla: ORDEN_TRABAJO
-
-CREATE TABLE ORDEN_TRABAJO (
-    id SERIAL PRIMARY KEY,
-    cotizacion_id INTEGER,
-    codigo_orden VARCHAR(50) UNIQUE NOT NULL,
-    tipo_trabajo VARCHAR(100) NOT NULL,
-    estado VARCHAR(30) DEFAULT 'PROGRAMADA',
-    fecha_programada DATE,
-    fecha_inicio_real TIMESTAMP,
-    horas_fin_real NUMERIC(10,2),
-    observaciones_tecnico TEXT,
-
-    FOREIGN KEY (cotizacion_id)
-        REFERENCES COTIZACION(id)
-        ON DELETE SET NULL
-);
-
--- Tabla: ORDEN_TRABAJO_TECNICO
--- Relación entre órdenes y técnicos
-
-CREATE TABLE ORDEN_TRABAJO_TECNICO (
-    id SERIAL PRIMARY KEY,
-    orden_trabajo_id INTEGER NOT NULL,
-    usuario_id INTEGER NOT NULL,
-    es_lider BOOLEAN DEFAULT FALSE,
-    UNIQUE (orden_trabajo_id, usuario_id),
-
-    FOREIGN KEY (orden_trabajo_id)
-        REFERENCES ORDEN_TRABAJO(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (usuario_id)
-        REFERENCES USUARIO(id)
-        ON DELETE RESTRICT
-);
-
--- Tabla: CARGA_HORARIA_TECNICO
+-- ============================================================
+-- 2. DISPONIBILIDAD DE TÉCNICOS
+-- ============================================================
 
 CREATE TABLE CARGA_HORARIA_TECNICO (
     id SERIAL PRIMARY KEY,
@@ -390,15 +130,17 @@ CREATE TABLE CARGA_HORARIA_TECNICO (
     dia_semana VARCHAR(20) NOT NULL,
     hora_inicio TIME NOT NULL,
     hora_fin TIME NOT NULL,
-    activo BOOLEAN DEFAULT TRUE,
-    CHECK (hora_fin > hora_inicio),
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
 
-    FOREIGN KEY (usuario_id)
+    CONSTRAINT fk_carga_horaria_usuario
+        FOREIGN KEY (usuario_id)
         REFERENCES USUARIO(id)
         ON DELETE CASCADE
-);
+        ON UPDATE CASCADE,
 
--- Tabla: BLOQUEO_TECNICO
+    CONSTRAINT chk_horario_tecnico
+        CHECK (hora_fin > hora_inicio)
+);
 
 CREATE TABLE BLOQUEO_TECNICO (
     id SERIAL PRIMARY KEY,
@@ -407,114 +149,505 @@ CREATE TABLE BLOQUEO_TECNICO (
     fecha_fin TIMESTAMP NOT NULL,
     motivo VARCHAR(255),
     tipo VARCHAR(50),
-    CHECK (fecha_fin > fecha_inicio),
 
-    FOREIGN KEY (usuario_id)
+    CONSTRAINT fk_bloqueo_usuario
+        FOREIGN KEY (usuario_id)
         REFERENCES USUARIO(id)
         ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_fecha_bloqueo
+        CHECK (fecha_fin > fecha_inicio)
 );
 
--- Tabla: DETALLE_CONSUMO_MATERIAL
+-- ============================================================
+-- 3. CLIENTES Y ESTABLECIMIENTOS
+-- ============================================================
+
+CREATE TABLE CLIENTE (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    tipo_cliente VARCHAR(30) NOT NULL,
+    razon_social VARCHAR(200),
+    documento_identidad VARCHAR(50) UNIQUE,
+    correo VARCHAR(150),
+    telefono VARCHAR(30),
+    telefono_alternativo VARCHAR(30),
+    fecha_registro DATE NOT NULL DEFAULT CURRENT_DATE
+);
+
+CREATE TABLE ESTABLECIMIENTO (
+    id SERIAL PRIMARY KEY,
+    cliente_id INTEGER NOT NULL,
+    nombre_establecimiento VARCHAR(150) NOT NULL,
+    direccion VARCHAR(255) NOT NULL,
+    tipo_inmueble VARCHAR(100),
+    latitud NUMERIC(10,7),
+    longitud NUMERIC(10,7),
+
+    CONSTRAINT fk_establecimiento_cliente
+        FOREIGN KEY (cliente_id)
+        REFERENCES CLIENTE(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+-- ============================================================
+-- 4. CATÁLOGO E INVENTARIO
+-- ============================================================
+
+CREATE TABLE CATEGORIA_PRODUCTO (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion VARCHAR(255)
+);
+
+CREATE TABLE PRODUCTO (
+    id SERIAL PRIMARY KEY,
+    categoria_id INTEGER NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    descripcion_tecnica TEXT,
+    unidad_medida VARCHAR(50) NOT NULL,
+    margen_ganancia NUMERIC(10,2) NOT NULL DEFAULT 0,
+    precio_compra_actual NUMERIC(12,2) NOT NULL DEFAULT 0,
+    stock_disponible NUMERIC(12,2) NOT NULL DEFAULT 0,
+    stock_minimo NUMERIC(12,2) NOT NULL DEFAULT 0,
+
+    CONSTRAINT fk_producto_categoria
+        FOREIGN KEY (categoria_id)
+        REFERENCES CATEGORIA_PRODUCTO(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_producto_margen
+        CHECK (margen_ganancia >= 0),
+
+    CONSTRAINT chk_producto_precio
+        CHECK (precio_compra_actual >= 0),
+
+    CONSTRAINT chk_producto_stock
+        CHECK (stock_disponible >= 0),
+
+    CONSTRAINT chk_producto_stock_minimo
+        CHECK (stock_minimo >= 0)
+);
+
+CREATE TABLE PROVEEDOR (
+    id SERIAL PRIMARY KEY,
+    razon_social VARCHAR(200) NOT NULL,
+    nit VARCHAR(50) UNIQUE,
+    contacto VARCHAR(150),
+    telefono VARCHAR(30),
+    correo VARCHAR(150)
+);
+
+CREATE TABLE PRODUCTO_PROVEEDOR (
+    id SERIAL PRIMARY KEY,
+    producto_id INTEGER NOT NULL,
+    proveedor_id INTEGER NOT NULL,
+    precio_compra NUMERIC(12,2) NOT NULL DEFAULT 0,
+    codigo_item_proveedor VARCHAR(100),
+
+    CONSTRAINT fk_producto_proveedor_producto
+        FOREIGN KEY (producto_id)
+        REFERENCES PRODUCTO(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_producto_proveedor_proveedor
+        FOREIGN KEY (proveedor_id)
+        REFERENCES PROVEEDOR(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT uq_producto_proveedor
+        UNIQUE (producto_id, proveedor_id),
+
+    CONSTRAINT chk_precio_proveedor
+        CHECK (precio_compra >= 0)
+);
+
+CREATE TABLE IMAGEN_PRODUCTO (
+    id SERIAL PRIMARY KEY,
+    producto_id INTEGER NOT NULL,
+    url_imagen VARCHAR(500) NOT NULL,
+    es_principal BOOLEAN NOT NULL DEFAULT FALSE,
+    orden INTEGER DEFAULT 1,
+
+    CONSTRAINT fk_imagen_producto
+        FOREIGN KEY (producto_id)
+        REFERENCES PRODUCTO(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_orden_imagen
+        CHECK (orden >= 1)
+);
+
+-- ============================================================
+-- 5. SERVICIOS
+-- ============================================================
+
+CREATE TABLE SERVICIO (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    descripcion TEXT,
+    precio_hora_base NUMERIC(12,2) NOT NULL DEFAULT 0,
+
+    CONSTRAINT chk_precio_hora
+        CHECK (precio_hora_base >= 0)
+);
+
+-- ============================================================
+-- 6. SISTEMAS INSTALADOS
+-- ============================================================
+
+CREATE TABLE SISTEMA_INSTALADO (
+    id SERIAL PRIMARY KEY,
+    establecimiento_id INTEGER NOT NULL,
+    orden_trabajo_id INTEGER,
+    nombre_sistema VARCHAR(150) NOT NULL,
+    fecha_instalacion DATE NOT NULL,
+    numero_serie VARCHAR(100),
+    periodicidad_meses INTEGER NOT NULL DEFAULT 6,
+    fecha_ultimo_mantenimiento DATE,
+    fecha_proximo_mantenimiento DATE,
+    observaciones TEXT,
+
+    CONSTRAINT fk_sistema_establecimiento
+        FOREIGN KEY (establecimiento_id)
+        REFERENCES ESTABLECIMIENTO(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_periodicidad
+        CHECK (periodicidad_meses > 0)
+);
+
+-- ============================================================
+-- 7. COTIZACIONES
+-- ============================================================
+
+CREATE TABLE COTIZACION (
+    id SERIAL PRIMARY KEY,
+    cliente_id INTEGER NOT NULL,
+    establecimiento_id INTEGER,
+    usuario_id INTEGER NOT NULL,
+    numero_cotizacion VARCHAR(50) NOT NULL UNIQUE,
+    fecha_emision DATE NOT NULL DEFAULT CURRENT_DATE,
+    fecha_vencimiento DATE,
+    estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
+    total NUMERIC(12,2) NOT NULL DEFAULT 0,
+
+    CONSTRAINT fk_cotizacion_cliente
+        FOREIGN KEY (cliente_id)
+        REFERENCES CLIENTE(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_cotizacion_establecimiento
+        FOREIGN KEY (establecimiento_id)
+        REFERENCES ESTABLECIMIENTO(id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_cotizacion_usuario
+        FOREIGN KEY (usuario_id)
+        REFERENCES USUARIO(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_cotizacion_total
+        CHECK (total >= 0),
+
+    CONSTRAINT chk_cotizacion_fechas
+        CHECK (
+            fecha_vencimiento IS NULL
+            OR fecha_vencimiento >= fecha_emision
+        )
+);
+
+CREATE TABLE DETALLE_COTIZACION_PRODUCTO (
+    id SERIAL PRIMARY KEY,
+    cotizacion_id INTEGER NOT NULL,
+    producto_id INTEGER NOT NULL,
+    cantidad NUMERIC(12,2) NOT NULL,
+    precio_unitario NUMERIC(12,2) NOT NULL,
+    subtotal NUMERIC(12,2) NOT NULL,
+
+    CONSTRAINT fk_detalle_cot_producto_cotizacion
+        FOREIGN KEY (cotizacion_id)
+        REFERENCES COTIZACION(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_detalle_cot_producto_producto
+        FOREIGN KEY (producto_id)
+        REFERENCES PRODUCTO(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_detalle_cot_producto_cantidad
+        CHECK (cantidad > 0),
+
+    CONSTRAINT chk_detalle_cot_producto_precio
+        CHECK (precio_unitario >= 0),
+
+    CONSTRAINT chk_detalle_cot_producto_subtotal
+        CHECK (subtotal >= 0)
+);
+
+CREATE TABLE DETALLE_COTIZACION_SERVICIO (
+    id SERIAL PRIMARY KEY,
+    cotizacion_id INTEGER NOT NULL,
+    servicio_id INTEGER NOT NULL,
+    horas_estimadas NUMERIC(10,2) NOT NULL,
+    precio_hora NUMERIC(12,2) NOT NULL,
+    subtotal NUMERIC(12,2) NOT NULL,
+
+    CONSTRAINT fk_detalle_cot_servicio_cotizacion
+        FOREIGN KEY (cotizacion_id)
+        REFERENCES COTIZACION(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_detalle_cot_servicio_servicio
+        FOREIGN KEY (servicio_id)
+        REFERENCES SERVICIO(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_horas_estimadas
+        CHECK (horas_estimadas > 0),
+
+    CONSTRAINT chk_precio_hora_detalle
+        CHECK (precio_hora >= 0),
+
+    CONSTRAINT chk_subtotal_servicio
+        CHECK (subtotal >= 0)
+);
+
+-- ============================================================
+-- 8. MANTENIMIENTO
+-- ============================================================
+
+CREATE TABLE MANTENIMIENTO_TICKET (
+    id SERIAL PRIMARY KEY,
+    sistema_instalado_id INTEGER NOT NULL,
+    tipo_mantenimiento VARCHAR(30) NOT NULL,
+    nivel_urgencia VARCHAR(30),
+    descripcion_incidencia TEXT NOT NULL,
+    fecha_reporte TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    estado VARCHAR(30) NOT NULL DEFAULT 'ABIERTO',
+
+    CONSTRAINT fk_ticket_sistema
+        FOREIGN KEY (sistema_instalado_id)
+        REFERENCES SISTEMA_INSTALADO(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+-- ============================================================
+-- 9. ÓRDENES DE TRABAJO
+-- ============================================================
+
+CREATE TABLE ORDEN_TRABAJO (
+    id SERIAL PRIMARY KEY,
+    cotizacion_id INTEGER,
+    mantenimiento_ticket_id INTEGER,
+    codigo_orden VARCHAR(50) NOT NULL UNIQUE,
+    tipo_trabajo VARCHAR(100) NOT NULL,
+    estado VARCHAR(50) NOT NULL DEFAULT 'PROGRAMADA',
+    fecha_inicio_programada TIMESTAMP,
+    fecha_fin_programada TIMESTAMP,
+    fecha_inicio_real TIMESTAMP,
+    fecha_fin_real TIMESTAMP,
+    observaciones_tecnico TEXT,
+
+    CONSTRAINT fk_orden_cotizacion
+        FOREIGN KEY (cotizacion_id)
+        REFERENCES COTIZACION(id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_orden_ticket
+        FOREIGN KEY (mantenimiento_ticket_id)
+        REFERENCES MANTENIMIENTO_TICKET(id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
+
+    CONSTRAINT uq_orden_ticket
+        UNIQUE (mantenimiento_ticket_id),
+
+    CONSTRAINT chk_fechas_programadas
+        CHECK (
+            fecha_fin_programada IS NULL
+            OR fecha_inicio_programada IS NULL
+            OR fecha_fin_programada >= fecha_inicio_programada
+        ),
+
+    CONSTRAINT chk_fechas_reales
+        CHECK (
+            fecha_fin_real IS NULL
+            OR fecha_inicio_real IS NULL
+            OR fecha_fin_real >= fecha_inicio_real
+        )
+);
+
+-- Clave foránea diferida para SISTEMA_INSTALADO
+ALTER TABLE SISTEMA_INSTALADO
+ADD CONSTRAINT fk_sistema_orden
+FOREIGN KEY (orden_trabajo_id)
+REFERENCES ORDEN_TRABAJO(id)
+ON DELETE SET NULL
+ON UPDATE CASCADE;
+
+-- ============================================================
+-- 10. TÉCNICOS ASIGNADOS
+-- ============================================================
+
+CREATE TABLE ORDEN_TRABAJO_TECNICO (
+    id SERIAL PRIMARY KEY,
+    orden_trabajo_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    es_lider BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT fk_orden_tecnico_orden
+        FOREIGN KEY (orden_trabajo_id)
+        REFERENCES ORDEN_TRABAJO(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_orden_tecnico_usuario
+        FOREIGN KEY (usuario_id)
+        REFERENCES USUARIO(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT uq_orden_tecnico
+        UNIQUE (orden_trabajo_id, usuario_id)
+);
+
+-- ============================================================
+-- 11. CONSUMO DE MATERIALES
+-- ============================================================
 
 CREATE TABLE DETALLE_CONSUMO_MATERIAL (
     id SERIAL PRIMARY KEY,
     orden_trabajo_id INTEGER NOT NULL,
     producto_id INTEGER NOT NULL,
-    cantidad_utilizada NUMERIC(10,2) NOT NULL
-        CHECK (cantidad_utilizada > 0),
+    cantidad_utilizada NUMERIC(12,2) NOT NULL,
     observacion TEXT,
-    fecha_registro TIMESTAMP
-        DEFAULT CURRENT_TIMESTAMP,
+    fecha_registro TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (orden_trabajo_id)
+    CONSTRAINT fk_consumo_orden
+        FOREIGN KEY (orden_trabajo_id)
         REFERENCES ORDEN_TRABAJO(id)
-        ON DELETE CASCADE,
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (producto_id)
+    CONSTRAINT fk_consumo_producto
+        FOREIGN KEY (producto_id)
         REFERENCES PRODUCTO(id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_cantidad_consumida
+        CHECK (cantidad_utilizada > 0)
 );
 
--- Tabla: NOTA_SERVICIO
+-- ============================================================
+-- 12. NOTA DE SERVICIO
+-- ============================================================
 
 CREATE TABLE NOTA_SERVICIO (
     id SERIAL PRIMARY KEY,
     orden_trabajo_id INTEGER NOT NULL,
-    numero_nota VARCHAR(50) UNIQUE NOT NULL,
-    anticipo_pagado NUMERIC(12,2) DEFAULT 0
-        CHECK (anticipo_pagado >= 0),
-    fecha_emision DATE DEFAULT CURRENT_DATE,
-    estado VARCHAR(30) DEFAULT 'PENDIENTE',
-    monto_total NUMERIC(12,2) NOT NULL
-        CHECK (monto_total >= 0),
+    numero_nota VARCHAR(50) NOT NULL UNIQUE,
+    anticipo_pagado NUMERIC(12,2) NOT NULL DEFAULT 0,
+    fecha_emision DATE NOT NULL DEFAULT CURRENT_DATE,
+    estado VARCHAR(30) NOT NULL,
+    monto_total NUMERIC(12,2) NOT NULL DEFAULT 0,
 
-    FOREIGN KEY (orden_trabajo_id)
+    CONSTRAINT fk_nota_orden
+        FOREIGN KEY (orden_trabajo_id)
         REFERENCES ORDEN_TRABAJO(id)
         ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT uq_nota_orden
+        UNIQUE (orden_trabajo_id),
+
+    CONSTRAINT chk_anticipo
+        CHECK (anticipo_pagado >= 0),
+
+    CONSTRAINT chk_monto_nota
+        CHECK (monto_total >= 0)
 );
 
--- Tabla: MANTENIMIENTO_TICKET
-
-CREATE TABLE MANTENIMIENTO_TICKET (
-    id SERIAL PRIMARY KEY,
-    sistema_instalado_id INTEGER NOT NULL,
-    orden_trabajo_id INTEGER,
-    tipo_mantenimiento VARCHAR(30) NOT NULL,
-    nivel_urgencia VARCHAR(30),
-    descripcion_incidencia TEXT NOT NULL,
-    fecha_reporte TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    estado VARCHAR(30) DEFAULT 'ABIERTO',
-    CHECK (
-        tipo_mantenimiento IN
-        ('PREVENTIVO', 'CORRECTIVO')
-    ),
-
-    FOREIGN KEY (sistema_instalado_id)
-        REFERENCES SISTEMA_INSTALADO(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (orden_trabajo_id)
-        REFERENCES ORDEN_TRABAJO(id)
-        ON DELETE SET NULL
-);
-
--- Tabla: ALERTA_NOTIFICACION
+-- ============================================================
+-- 13. ALERTAS
+-- ============================================================
 
 CREATE TABLE ALERTA_NOTIFICACION (
     id SERIAL PRIMARY KEY,
     sistema_instalado_id INTEGER NOT NULL,
     mensaje TEXT NOT NULL,
-    fecha_alerta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    leido BOOLEAN DEFAULT FALSE,
+    fecha_alerta TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    leido BOOLEAN NOT NULL DEFAULT FALSE,
 
-    FOREIGN KEY (sistema_instalado_id)
+    CONSTRAINT fk_alerta_sistema
+        FOREIGN KEY (sistema_instalado_id)
         REFERENCES SISTEMA_INSTALADO(id)
         ON DELETE CASCADE
+        ON UPDATE CASCADE
 );
 
---    Ventas y facturación
-
--- Tabla: CAJA
+-- ============================================================
+-- 14. CAJA
+-- ============================================================
 
 CREATE TABLE CAJA (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL,
-    fecha_apertura TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    fecha_apertura TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_cierre TIMESTAMP,
-    monto_inicial NUMERIC(12,2) NOT NULL
-        CHECK (monto_inicial >= 0),
-    monto_final_sistema NUMERIC(12,2)
-        CHECK (monto_final_sistema >= 0),
-    monto_final_real NUMERIC(12,2)
-        CHECK (monto_final_real >= 0),
-    estado VARCHAR(30) DEFAULT 'ABIERTA',
+    monto_inicial NUMERIC(12,2) NOT NULL DEFAULT 0,
+    monto_final_sistema NUMERIC(12,2),
+    monto_final_real NUMERIC(12,2),
+    estado VARCHAR(30) NOT NULL DEFAULT 'ABIERTA',
 
-    FOREIGN KEY (usuario_id)
+    CONSTRAINT fk_caja_usuario
+        FOREIGN KEY (usuario_id)
         REFERENCES USUARIO(id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_monto_inicial
+        CHECK (monto_inicial >= 0),
+
+    CONSTRAINT chk_monto_final_sistema
+        CHECK (
+            monto_final_sistema IS NULL
+            OR monto_final_sistema >= 0
+        ),
+
+    CONSTRAINT chk_monto_final_real
+        CHECK (
+            monto_final_real IS NULL
+            OR monto_final_real >= 0
+        ),
+
+    CONSTRAINT chk_fecha_cierre
+        CHECK (
+            fecha_cierre IS NULL
+            OR fecha_cierre >= fecha_apertura
+        )
 );
 
--- Tabla: VENTA
+-- ============================================================
+-- 15. VENTAS
+-- ============================================================
 
 CREATE TABLE VENTA (
     id SERIAL PRIMARY KEY,
@@ -523,124 +656,160 @@ CREATE TABLE VENTA (
     usuario_id INTEGER NOT NULL,
     cotizacion_id INTEGER,
     orden_trabajo_id INTEGER,
-    tipo_comprobante VARCHAR(50),
+    tipo_comprobante VARCHAR(50) NOT NULL,
     nro_comprobante VARCHAR(50),
-    fecha_emision TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    subtotal NUMERIC(12,2) NOT NULL
-        CHECK (subtotal >= 0),
-    descuento NUMERIC(12,2) DEFAULT 0
-        CHECK (descuento >= 0),
-    total NUMERIC(12,2) NOT NULL
-        CHECK (total >= 0),
-    estado VARCHAR(30) DEFAULT 'EMITIDA',
+    fecha_emision TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
+    descuento NUMERIC(12,2) NOT NULL DEFAULT 0,
+    total NUMERIC(12,2) NOT NULL DEFAULT 0,
+    estado VARCHAR(30) NOT NULL DEFAULT 'EMITIDA',
 
-    FOREIGN KEY (caja_id)
+    CONSTRAINT fk_venta_caja
+        FOREIGN KEY (caja_id)
         REFERENCES CAJA(id)
-        ON DELETE RESTRICT,
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (cliente_id)
+    CONSTRAINT fk_venta_cliente
+        FOREIGN KEY (cliente_id)
         REFERENCES CLIENTE(id)
-        ON DELETE RESTRICT,
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (usuario_id)
+    CONSTRAINT fk_venta_usuario
+        FOREIGN KEY (usuario_id)
         REFERENCES USUARIO(id)
-        ON DELETE RESTRICT,
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (cotizacion_id)
+    CONSTRAINT fk_venta_cotizacion
+        FOREIGN KEY (cotizacion_id)
         REFERENCES COTIZACION(id)
-        ON DELETE SET NULL,
+        ON DELETE SET NULL
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (orden_trabajo_id)
+    CONSTRAINT fk_venta_orden
+        FOREIGN KEY (orden_trabajo_id)
         REFERENCES ORDEN_TRABAJO(id)
         ON DELETE SET NULL
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_venta_subtotal
+        CHECK (subtotal >= 0),
+
+    CONSTRAINT chk_venta_descuento
+        CHECK (descuento >= 0),
+
+    CONSTRAINT chk_venta_total
+        CHECK (total >= 0)
 );
 
--- Tabla: DETALLE_VENTA
+-- ============================================================
+-- 16. DETALLE DE VENTA
+-- ============================================================
 
 CREATE TABLE DETALLE_VENTA (
     id SERIAL PRIMARY KEY,
     venta_id INTEGER NOT NULL,
-    producto_id INTEGER,
-    servicio_id INTEGER,
-    cantidad NUMERIC(10,2) NOT NULL
-        CHECK (cantidad > 0),
-    precio_unitario NUMERIC(10,2) NOT NULL
-        CHECK (precio_unitario >= 0),
-    subtotal NUMERIC(12,2) NOT NULL
-        CHECK (subtotal >= 0),
+    producto_id INTEGER NOT NULL,
+    cantidad NUMERIC(12,2) NOT NULL,
+    precio_unitario NUMERIC(12,2) NOT NULL,
+    subtotal NUMERIC(12,2) NOT NULL,
 
-    -- Cada detalle debe corresponder a PRODUCTO
-    -- o a SERVICIO, pero no a ambos.
-    CHECK (
-        (producto_id IS NOT NULL AND servicio_id IS NULL)
-        OR
-        (producto_id IS NULL AND servicio_id IS NOT NULL)
-    ),
-
-    FOREIGN KEY (venta_id)
+    CONSTRAINT fk_detalle_venta_venta
+        FOREIGN KEY (venta_id)
         REFERENCES VENTA(id)
-        ON DELETE CASCADE,
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
 
-    FOREIGN KEY (producto_id)
+    CONSTRAINT fk_detalle_venta_producto
+        FOREIGN KEY (producto_id)
         REFERENCES PRODUCTO(id)
-        ON DELETE RESTRICT,
-
-    FOREIGN KEY (servicio_id)
-        REFERENCES SERVICIO(id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_detalle_venta_cantidad
+        CHECK (cantidad > 0),
+
+    CONSTRAINT chk_detalle_venta_precio
+        CHECK (precio_unitario >= 0),
+
+    CONSTRAINT chk_detalle_venta_subtotal
+        CHECK (subtotal >= 0)
 );
 
--- Tabla: IMAGEN_PRODUCTO
+-- ============================================================
+-- 17. KARDEX
+-- ============================================================
 
-CREATE TABLE IMAGEN_PRODUCTO (
+CREATE TABLE MOVIMIENTO_KARDEX (
     id SERIAL PRIMARY KEY,
     producto_id INTEGER NOT NULL,
-    url_imagen TEXT NOT NULL,
-    es_principal BOOLEAN DEFAULT FALSE,
-    orden INTEGER DEFAULT 1,
+    usuario_id INTEGER NOT NULL,
+    tipo_movimiento VARCHAR(30) NOT NULL,
+    cantidad NUMERIC(12,2) NOT NULL,
+    stock_anterior NUMERIC(12,2) NOT NULL,
+    origen_movimiento VARCHAR(100),
+    fecha_movimiento TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    observacion TEXT,
 
-    FOREIGN KEY (producto_id)
+    CONSTRAINT fk_kardex_producto
+        FOREIGN KEY (producto_id)
         REFERENCES PRODUCTO(id)
-        ON DELETE CASCADE
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_kardex_usuario
+        FOREIGN KEY (usuario_id)
+        REFERENCES USUARIO(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_kardex_tipo
+        CHECK (
+            tipo_movimiento IN ('ENTRADA', 'SALIDA', 'AJUSTE')
+        ),
+
+    CONSTRAINT chk_kardex_cantidad
+        CHECK (cantidad > 0),
+
+    CONSTRAINT chk_kardex_stock
+        CHECK (stock_anterior >= 0)
 );
 
--- 5. RESTRICCIONES ADICIONALES
-
--- Evitar nombres de rol repetidos
-ALTER TABLE ROL
-ADD CONSTRAINT uq_rol_nombre
-UNIQUE (nombre);
-
-
--- Evitar nombres de módulos repetidos
-ALTER TABLE MODULO
-ADD CONSTRAINT uq_modulo_nombre
-UNIQUE (nombre);
-
-
--- Evitar nombres de acciones repetidas
-ALTER TABLE ACCION
-ADD CONSTRAINT uq_accion_nombre
-UNIQUE (nombre);
-
-
--- Evitar nombres de categorías repetidos
-ALTER TABLE CATEGORIA_PRODUCTO
-ADD CONSTRAINT uq_categoria_nombre
-UNIQUE (nombre);
-
-
--- Evitar números de serie repetidos
-ALTER TABLE SISTEMA_INSTALADO
-ADD CONSTRAINT uq_sistema_numero_serie
-UNIQUE (numero_serie);
-
-
--- Evitar códigos de proveedor repetidos
-ALTER TABLE PRODUCTO_PROVEEDOR
-ADD CONSTRAINT uq_codigo_item_proveedor
-UNIQUE (proveedor_id, codigo_item_proveedor);
-
 -- ============================================================
--- FIN DEL SCRIPT
+-- 18. ÍNDICES DE RENDIMIENTO
 -- ============================================================
+
+CREATE INDEX idx_usuario_rol ON USUARIO(rol_id);
+CREATE INDEX idx_token_usuario ON TOKEN_RECUPERACION(usuario_id);
+CREATE INDEX idx_bitacora_usuario ON BITACORA(usuario_id);
+CREATE INDEX idx_carga_usuario ON CARGA_HORARIA_TECNICO(usuario_id);
+CREATE INDEX idx_bloqueo_usuario ON BLOQUEO_TECNICO(usuario_id);
+CREATE INDEX idx_establecimiento_cliente ON ESTABLECIMIENTO(cliente_id);
+CREATE INDEX idx_producto_categoria ON PRODUCTO(categoria_id);
+CREATE INDEX idx_producto_proveedor_producto ON PRODUCTO_PROVEEDOR(producto_id);
+CREATE INDEX idx_producto_proveedor_proveedor ON PRODUCTO_PROVEEDOR(proveedor_id);
+CREATE INDEX idx_imagen_producto ON IMAGEN_PRODUCTO(producto_id);
+CREATE INDEX idx_sistema_establecimiento ON SISTEMA_INSTALADO(establecimiento_id);
+CREATE INDEX idx_sistema_orden ON SISTEMA_INSTALADO(orden_trabajo_id);
+CREATE INDEX idx_cotizacion_cliente ON COTIZACION(cliente_id);
+CREATE INDEX idx_cotizacion_usuario ON COTIZACION(usuario_id);
+CREATE INDEX idx_cotizacion_establecimiento ON COTIZACION(establecimiento_id);
+CREATE INDEX idx_detalle_cot_producto_cotizacion ON DETALLE_COTIZACION_PRODUCTO(cotizacion_id);
+CREATE INDEX idx_detalle_cot_servicio_cotizacion ON DETALLE_COTIZACION_SERVICIO(cotizacion_id);
+CREATE INDEX idx_orden_cotizacion ON ORDEN_TRABAJO(cotizacion_id);
+CREATE INDEX idx_orden_tecnico_usuario ON ORDEN_TRABAJO_TECNICO(usuario_id);
+CREATE INDEX idx_consumo_orden ON DETALLE_CONSUMO_MATERIAL(orden_trabajo_id);
+CREATE INDEX idx_consumo_producto ON DETALLE_CONSUMO_MATERIAL(producto_id);
+CREATE INDEX idx_ticket_sistema ON MANTENIMIENTO_TICKET(sistema_instalado_id);
+CREATE INDEX idx_alerta_sistema ON ALERTA_NOTIFICACION(sistema_instalado_id);
+CREATE INDEX idx_caja_usuario ON CAJA(usuario_id);
+CREATE INDEX idx_venta_cliente ON VENTA(cliente_id);
+CREATE INDEX idx_venta_usuario ON VENTA(usuario_id);
+CREATE INDEX idx_detalle_venta_venta ON DETALLE_VENTA(venta_id);
+CREATE INDEX idx_detalle_venta_producto ON DETALLE_VENTA(producto_id);
+CREATE INDEX idx_kardex_producto ON MOVIMIENTO_KARDEX(producto_id);
+CREATE INDEX idx_kardex_usuario ON MOVIMIENTO_KARDEX(usuario_id);
+
+COMMIT;
