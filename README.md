@@ -1,8 +1,8 @@
 # SmartService
 
-Aplicación web full-stack para la gestión de un **taller de motocicletas**
-(clientes, motocicletas, inventario, ventas y órdenes de servicio), con
-asistente IA y procesamiento de pagos.
+Sistema de gestión de servicios de seguridad: clientes, establecimientos,
+sistemas instalados, mantenimiento, cotizaciones, órdenes de trabajo,
+productos, ventas y caja.
 
 ## Stack
 
@@ -41,11 +41,13 @@ npm run lint    # eslint
 
 ```
 src/
-├── app/          # rutas (App Router)
+├── app/          # rutas (App Router) + Server Actions en actions/
 ├── backend/      # lógica de negocio por dominios (server-only)
-│   └── clients/  # ejemplo: clientes del taller
+│   └── (usuarios, clientes, establecimientos, productos,
+│       proveedores, servicios, cotizaciones, ordenes, ventas)
 └── lib/          # clientes de servicios externos
-    ├── supabase/
+    ├── supabase/   # clientes tipados + database.types.ts
+    ├── auth.ts     # getCurrentUser / requireUser
     ├── stripe.ts
     └── openai.ts
 ```
