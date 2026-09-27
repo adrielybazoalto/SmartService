@@ -1,6 +1,7 @@
 // ============================================================
 // TIPOS GENERADOS MANUALMENTE A PARTIR DE `schema.sql`
-// (Servicios de Seguridad) + migración `auth_bridge.sql` (auth_uid)
+// (Servicios de Seguridad) + migraciones `auth_bridge.sql` y `auth_local.sql`
+// (auth_uid retirado; `contrasena` = hash bcryptjs, NOT NULL)
 // NOTA: cuando tengas acceso CLI, regenérate con:
 //   supabase gen types typescript --project-id <ref> --schema public
 // ============================================================
@@ -220,20 +221,18 @@ export type Database = {
           rol_id: number
           nombre: string
           correo: string
-          contrasena: string | null
+          contrasena: string
           telefono: string | null
           estado: boolean
-          auth_uid: string | null
         }
         Insert: {
           id?: number
           rol_id: number
           nombre: string
           correo: string
-          contrasena?: string | null
+          contrasena: string
           telefono?: string | null
           estado?: boolean
-          auth_uid?: string | null
         }
         Update: {
           id?: number
@@ -243,7 +242,6 @@ export type Database = {
           contrasena?: string
           telefono?: string | null
           estado?: boolean
-          auth_uid?: string | null
         }
         Relationships: [
           {
@@ -251,13 +249,6 @@ export type Database = {
             columns: ['rol_id']
             isOneToOne: false
             referencedRelation: 'rol'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'usuario_auth_uid_fkey'
-            columns: ['auth_uid']
-            isOneToOne: true
-            referencedRelation: 'users'
             referencedColumns: ['id']
           },
         ]

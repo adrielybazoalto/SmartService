@@ -1,12 +1,15 @@
 import { requireUser } from '@/lib/auth'
 import type { Db } from '@/lib/supabase/types'
+import { hashContrasena, verificarContrasena } from '@/lib/password'
 import {
   actualizarUsuarioSchema,
   asignarPermisoSchema,
+  cambiarContrasenaSchema,
   crearRolSchema,
   crearUsuarioSchema,
   type ActualizarUsuarioInput,
   type AsignarPermisoInput,
+  type CambiarContrasenaInput,
   type CrearRolInput,
   type CrearUsuarioInput,
 } from './schema'
@@ -86,62 +89,26 @@ export async function getUsuarioPorCorreo(db: Db, correo: string): Promise<Usuar
   return data
 }
 
-/**
- * Usuario de NEGOCIO vinculado a la sesión activa de Supabase Auth
- * (por auth_uid o, en su defecto, por correo). Requiere sesión.
- */
-export async function getUsuarioAutenticado(db: Db): Promise<Usuario> {
-  const user = await requireUser()
-
-  const filtros = [`auth_uid.eq.${user.id}`]
-  if (user.email) filtros.push(`correo.eq.${user.email}`)
-
-  const { data, error } = await db.from('usuario').select('*').or(filtros.join(',')).maybeSingle()
-  if (error) throw new Error(`No se pudo cargar tu perfil: ${error.message}`)
-  if (!data) {
-    throw new Error('Tu cuenta de Supabase Auth no está vinculada a un usuario del sistema.')
-  }
-  return data
+/** Usuario de NEGOCIO de la sesión activa (JWT propia, cookie firmada). */
+export async function getUsuarioAutenticado(): Promise<Usuario> {
+  return requireUser()
 }
 
 /**
- * Crea la credencial en Supabase Auth (email confirmado) y registra la fila
- * USUARIO vinculada por auth_uid. Requiere cliente con SERVICE ROLE.
+ * Crea un usuario del sistema. `contrasena` llega en texto plano SOLO desde
+ * el Server Action; aquí se guarda su hash bcrypt (bcryptjs) en la BD.
  */
-export async function crearUsuarioConAuth(
-  db: Db,
-  input: CrearUsuarioInput,
-  password: string,
-): Promise<Usuario> {
+export async function crearUsuario(db: Db, input: CrearUsuarioInput): Promise<Usuario> {
   const parsed = crearUsuarioSchema.parse(input)
-
-  const { data: authData, error: authError } = await db.auth.admin.createUser({
-    email: parsed.correo,
-    password,
-    email_confirm: true,
-  })
-  if (authError) throw new Error(`No se pudo crear la cuenta de acceso: ${authError.message}`)
+  const contrasenaHash = await hashContrasena(parsed.contrasena)
 
   const { data, error } = await db
     .from('usuario')
     .insert({
       ...parsed,
       correo: parsed.correo.toLowerCase(),
-      contrasena: null,
-      auth_uid: authData.user?.id ?? null,
+      contrasena: contrasenaHash,
     })
-    .select()
-    .single()
-  if (error) throw new Error(`No se pudo registrar el usuario: ${error.message}`)
-  return data
-}
-
-/** Registra solo la fila USUARIO (usuarios de negocio sin credencial Auth inicial). */
-export async function crearUsuario(db: Db, input: CrearUsuarioInput): Promise<Usuario> {
-  const parsed = crearUsuarioSchema.parse(input)
-  const { data, error } = await db
-    .from('usuario')
-    .insert({ ...parsed, correo: parsed.correo.toLowerCase(), contrasena: null })
     .select()
     .single()
   if (error) throw new Error(`No se pudo registrar el usuario: ${error.message}`)
@@ -154,26 +121,45 @@ export async function actualizarUsuario(
   input: ActualizarUsuarioInput,
 ): Promise<Usuario> {
   const parsed = actualizarUsuarioSchema.parse(input)
-  const { data, error } = await db.from('usuario').update(parsed).eq('id', id).select().single()
+  const { contrasena, ...resto } = parsed
+
+  let updates: ActualizarUsuarioInput = { ...resto }
+  if (contrasena !== undefined) {
+    updates = { ...updates, contrasena: await hashContrasena(contrasena) }
+  }
+
+  const { data, error } = await db.from('usuario').update(updates).eq('id', id).select().single()
   if (error) throw new Error(`No se pudo actualizar el usuario: ${error.message}`)
   return data
 }
 
-/** Elimina fila USUARIO y su credencial en Supabase Auth (admin / service role). */
-export async function eliminarUsuario(db: Db, id: number): Promise<void> {
+/** Cambia la contraseña del propio perfil tras verificar la actual. */
+export async function cambiarContrasena(
+  db: Db,
+  usuarioId: number,
+  input: CambiarContrasenaInput,
+): Promise<void> {
+  const parsed = cambiarContrasenaSchema.parse(input)
+
   const { data: usuario, error: errGet } = await db
     .from('usuario')
-    .select('auth_uid')
-    .eq('id', id)
+    .select('contrasena')
+    .eq('id', usuarioId)
     .maybeSingle()
-  if (errGet) throw new Error(`No se pudo consultar el usuario: ${errGet.message}`)
-  if (!usuario) throw new Error('El usuario no existe.')
+  if (errGet || !usuario) throw new Error('El usuario no existe.')
 
-  if (usuario.auth_uid) {
-    const { error: errAuth } = await db.auth.admin.deleteUser(usuario.auth_uid)
-    if (errAuth) throw new Error(`No se pudo eliminar la cuenta de acceso: ${errAuth.message}`)
-  }
+  const valido = await verificarContrasena(parsed.contrasenaActual, usuario.contrasena)
+  if (!valido) throw new Error('La contraseña actual es incorrecta.')
 
+  const { error } = await db
+    .from('usuario')
+    .update({ contrasena: await hashContrasena(parsed.contrasenaNueva) })
+    .eq('id', usuarioId)
+  if (error) throw new Error(`No se pudo actualizar la contraseña: ${error.message}`)
+}
+
+/** Elimina la fila USUARIO (ya no hay credencial en Supabase Auth). */
+export async function eliminarUsuario(db: Db, id: number): Promise<void> {
   const { error } = await db.from('usuario').delete().eq('id', id)
   if (error) throw new Error(`No se pudo eliminar el usuario: ${error.message}`)
 }

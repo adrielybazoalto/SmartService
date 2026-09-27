@@ -1,9 +1,11 @@
 import { z } from 'zod'
+import { contrasenaSchema } from '@/lib/password'
 
 /**
- * NOTA: `contrasena` NO está en estos esquemas. Las credenciales las
- * gestiona Supabase Auth (auth.users); la columna legacy `contrasena`
- * deja de ser obligatoria con la migración auth_bridge.sql.
+ * NOTA: las credenciales las gestiona la APLICACIÓN con bcryptjs.
+ * La contraseña llega aquí en texto plano desde el Server Action, se
+ * valida con `contrasenaSchema` y el servicio guarda SOLO su hash
+ * en `usuario.contrasena` (migración `auth_local.sql`).
  */
 
 export const crearUsuarioSchema = z.object({
@@ -12,6 +14,7 @@ export const crearUsuarioSchema = z.object({
   correo: z.string().email('Correo inválido').max(100),
   telefono: z.string().max(20).nullable().optional(),
   estado: z.boolean().default(true),
+  contrasena: contrasenaSchema,
 })
 
 export const actualizarUsuarioSchema = z.object({
@@ -20,6 +23,13 @@ export const actualizarUsuarioSchema = z.object({
   correo: z.string().email().max(100).optional(),
   telefono: z.string().max(20).nullable().optional(),
   estado: z.boolean().optional(),
+  contrasena: contrasenaSchema.optional(),
+})
+
+/** Cambio de contraseña del propio perfil (verifica la actual). */
+export const cambiarContrasenaSchema = z.object({
+  contrasenaActual: z.string().min(1, 'La contraseña actual es obligatoria'),
+  contrasenaNueva: contrasenaSchema,
 })
 
 export const crearRolSchema = z.object({
@@ -38,5 +48,6 @@ export const asignarPermisoSchema = z.object({
 
 export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>
 export type ActualizarUsuarioInput = z.infer<typeof actualizarUsuarioSchema>
+export type CambiarContrasenaInput = z.infer<typeof cambiarContrasenaSchema>
 export type CrearRolInput = z.infer<typeof crearRolSchema>
 export type AsignarPermisoInput = z.infer<typeof asignarPermisoSchema>

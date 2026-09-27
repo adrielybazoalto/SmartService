@@ -20,7 +20,7 @@ src/backend/
 
 | Dominio | Tablas | Contenido |
 | --- | --- | --- |
-| `usuarios` | `rol`, `usuario`, `rol_funcion` | RBAC + vínculo con Supabase Auth (`auth_uid`) |
+| `usuarios` | `rol`, `usuario`, `rol_funcion` | RBAC + credenciales con hash **bcryptjs** en `contrasena` |
 | `clientes` | `cliente` | CRUD y búsqueda de clientes |
 | `establecimientos` | `establecimiento`, `sistema_instalado` | CRUD + cómputo de próximo mantenimiento |
 | `productos` | `categoria_producto`, `producto`, `imagen_producto`, `movimiento_kardex` | CRUD, kardex con actualización de stock, stock bajo |
@@ -33,18 +33,19 @@ src/backend/
 ## Patrón de uso (Server Action)
 
 Los **Server Actions** (`'use server'` en `src/app/**/actions.ts`) llaman a los
-servicios con el **cliente de sesión** para que apliquen RLS por usuario:
+servicios con el **cliente service role** (Supabase es solo BD); la
+autorización real la aporta la **sesión JWT propia**:
 
 ```ts
 import { requireUser } from '@/lib/auth'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { crearCliente, crearClienteSchema, type CrearClienteInput } from '@/backend/clientes'
 
 export async function crearClienteAction(data: CrearClienteInput) {
-  await requireUser()                       // 1. sesión de Supabase Auth
+  await requireUser()                       // 1. sesión JWT propia (cookie firmada)
   const parsed = crearClienteSchema.parse(data) // 2. validación zod
-  const supabase = await createSupabaseServerClient() // 3. cliente RLS
-  return crearCliente(supabase, parsed)     // 4. servicio del dominio
+  const db = getSupabaseServiceClient()     // 3. service role (server-only)
+  return crearCliente(db, parsed)           // 4. servicio del dominio
 }
 ```
 
@@ -52,27 +53,25 @@ Ver ejemplo completo en `src/app/actions/clientes.ts` y `src/app/actions/auth.ts
 
 ## Reglas
 
-- **Clientes de Supabase**, según el contexto:
-  - `createSupabaseServerClient()` (`@supabase/ssr`) — sesión del usuario, aplica
-    **RLS por `auth.uid()`**. Es el cliente por defecto de la capa de datos.
-  - `getSupabaseBrowserClient()` — navegador (componentes cliente).
-  - `getSupabaseServiceClient()` — **service role**, BYPASSA RLS. Solo para
-    tareas privilegiadas (crear/eliminar credenciales, tareas internas). Nunca
-    en acciones que reciban input del cliente directamente.
+- **Cliente de Supabase**: la app usa únicamente
+  `getSupabaseServiceClient()` (**service role**, server-only, nunca expuesto
+  al navegador). No hay cliente del lado del navegador ni RLS por usuario.
 - Los servicios reciben el cliente como parámetro (`db: Db`) → testables y
   reutilizables; no importan secretos ni variables de entorno.
 - Validación **siempre con Zod** en `schema.ts`; el servicio re-valida el input.
 - Errores descriptivos en español; la UI los captura y muestra.
-- No exponer claves secretas (`SUPABASE_SERVICE_ROLE_KEY`, etc.).
+- No exponer claves secretas (`SUPABASE_SERVICE_ROLE_KEY`, `AUTH_SECRET`, etc.).
 
 ## Autenticación y base de datos
 
-- **Supabase Auth** gestiona credenciales (`auth.users`). La tabla `usuario` se
-  vincula mediante `auth_uid UUID REFERENCES auth.users(id)` (migración
-  `auth_bridge.sql`), y la columna legacy `contrasena` deja de ser obligatoria.
-- **RLS**: políticas `authenticated` sobre las tablas de negocio (una sola
-  organización; permisos finos vía `rol_funcion` en la app). `usuario` solo se
-  puede modificar sobre el propio perfil. Para regenerar tipos:
+- **Auth de la app** (`bcryptjs` + `jose`): la contraseña se guarda como
+  **hash bcrypt** en `usuario.contrasena` (nunca en texto plano) y la sesión
+  es una **cookie JWT firmada** (`src/lib/session.ts`) con `AUTH_SECRET`.
+  Login/registro: `src/app/actions/auth.ts` + `src/backend/usuarios`.
+- **Supabase = solo base de datos** (migración `auth_local.sql`): se eliminó
+  `auth_uid` y el uso de Supabase Auth; RLS queda habilitado como defensa en
+  profundidad, pero la autorización real vive en la aplicación
+  (`requireUser` + `rol_funcion`). Para regenerar tipos:
   `supabase gen types typescript --project-id <ref> --schema public`.
 
 ## Notas / mejoras pendientes
@@ -82,4 +81,5 @@ Ver ejemplo completo en `src/app/actions/clientes.ts` y `src/app/actions/auth.ts
   conviene migrar a una **función SQL / RPC** en Postgres.
 - Restaurar stock al anular ventas (TODO en `ventas/service.ts`).
 - `listarProductosConStockBajo` filtra en memoria; optimizable con RPC.
-- Agregar `middleware`/`proxy` de Next para refresco de sesión en navegación.
+- `proxy.ts` (Next 16) hace un check OPTIMISTICO de sesión en rutas; la
+  validación fuerte vive en los Server Actions (`requireUser`).

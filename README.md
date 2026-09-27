@@ -46,18 +46,29 @@ src/
 │   └── (usuarios, clientes, establecimientos, productos,
 │       proveedores, servicios, cotizaciones, ordenes, ventas)
 └── lib/          # clientes de servicios externos
-    ├── supabase/   # clientes tipados + database.types.ts
-    ├── auth.ts     # getCurrentUser / requireUser
+    ├── supabase/   # cliente tipado (database.types) + service role
+    ├── auth.ts     # getCurrentUser / requireUser (sesión JWT propia)
+    ├── session.ts  # cookie de sesión firmada (jose)
+    ├── password.ts # hash bcryptjs + regla de contraseña
     ├── stripe.ts
     └── openai.ts
 ```
+
+## Autenticación
+
+El login es **100% de la aplicación** (Supabase se usa solo como base de
+datos): las contraseñas se guardan como **hash bcrypt (bcryptjs)** en
+`usuario.contrasena` y la sesión es una **cookie JWT firmada** con
+`AUTH_SECRET` (`src/lib/session.ts`). Ver `src/backend/README.md` para el
+detalle y la migración `auth_local.sql`.
 
 Documentación de la capa de servicios: [src/backend/README.md](src/backend/README.md).
 
 ## Variables de entorno
 
 Ver [.env.example](.env.example). Copia a `.env.local` con tus claves reales
-de Supabase, Stripe y OpenAI. `.env.local` está en `.gitignore`.
+de Supabase, Stripe, OpenAI y `AUTH_SECRET`. `.env.local` está en
+`.gitignore`.
 
 ## Despliegue
 
