@@ -15,12 +15,26 @@ const OPCIONES_HORA: Intl.DateTimeFormatOptions = {
 }
 
 interface FechaHoraBoliviaProps {
-  /** Timestamp ISO (p. ej. "2026-09-28T19:30:00+00:00") desde la BD. */
+  /** Timestamp desde la BD: "2026-09-28T23:43:31.570184" (TIMESTAMP sin zona, UTC). */
   fecha: string
 }
 
+/**
+ * BITACORA.fecha_hora es TIMESTAMP (sin zona) y guarda un instante UTC
+ * (CURRENT_TIMESTAMP); PostgREST lo devuelve ingénuo ("...T23:43:31" sin Z).
+ * Pasarlo directo a `new Date` hace que el navegador lo interprete como hora
+ * LOCAL (reloj 4 h adelantado en La Paz, o desfasado en otra zona). Aquí se
+ * ancla a UTC explícitamente —respetando el offset si la columna llegara a ser
+ * timestamptz— para luego formatearlo en America/La_Paz (UTC-4).
+ */
+function aInstanteUTC(fecha: string): Date {
+  const base = fecha.trim().replace(' ', 'T')
+  const tieneZona = /(Z|[+-]\d{2}:\d{2})$/.test(base)
+  return new Date(tieneZona ? base : `${base}Z`)
+}
+
 function formatearEnLaPaz(fecha: string): string {
-  const instante = new Date(fecha)
+  const instante = aInstanteUTC(fecha)
   if (Number.isNaN(instante.getTime())) return fecha
   return instante.toLocaleString('es-BO', OPCIONES_HORA)
 }
