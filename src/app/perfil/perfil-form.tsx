@@ -180,9 +180,12 @@ export function PerfilForm({
             minLength={8}
             maxLength={72}
             autoComplete="new-password"
-            placeholder="Mínimo 8 caracteres, con mayúscula y número"
             className={inputClase}
           />
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Debe contener al menos 8 caracteres, mayúscula, minúscula, número y un
+            carácter especial.
+          </p>
         </div>
 
         <div>
