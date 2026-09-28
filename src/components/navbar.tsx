@@ -1,23 +1,20 @@
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
+import { getModulosPermitidos } from '@/lib/permisos'
 import { logoutAction } from '@/app/actions/auth'
 
-const enlaces = [
-  { href: '/perfil', etiqueta: 'Mi perfil' },
-  { href: '/usuarios', etiqueta: 'Usuarios' },
-  { href: '/roles', etiqueta: 'Roles' },
-  { href: '/bitacora', etiqueta: 'Bitácora' },
-] as const
-
 /**
- * Barra de navegación global (CU05 a CU06). Solo se renderiza con sesión
- * activa: muestra el acceso a todas las rutas unificadas del equipo y el
- * botón de cerrar sesión (Server Action). Los enlaces también se obtienen
- * gracias a que el layout es dinámico (getCurrentUser lee la sesión).
+ * Barra de navegación global (RBAC Nivel 1).
+ * Solo se renderiza con sesión activa y muestra ÚNICAMENTE los módulos que el
+ * rol del usuario tiene permitidos en la BD (PERMISO ⋈ ROL_PERMISO). Si el
+ * Administrador edita los permisos del rol en /roles (futuro), este menú
+ * cambia automáticamente sin tocar código.
  */
 export async function Navbar() {
   const usuario = await getCurrentUser()
   if (!usuario) return null
+
+  const enlaces = await getModulosPermitidos()
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
@@ -30,12 +27,12 @@ export async function Navbar() {
           SmartService
         </Link>
 
-        {/* Enlaces a las rutas unificadas */}
+        {/* Enlaces a los módulos permitidos según el rol */}
         <nav className="hidden items-center gap-1 sm:flex" aria-label="Navegación principal">
           {enlaces.map((enlace) => (
             <Link
-              key={enlace.href}
-              href={enlace.href}
+              key={enlace.ruta}
+              href={enlace.ruta}
               className="rounded-full px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
             >
               {enlace.etiqueta}
@@ -60,20 +57,22 @@ export async function Navbar() {
       </div>
 
       {/* Enlaces de bajo ancho (móvil) */}
-      <nav
-        className="flex items-center justify-center gap-1 border-t border-zinc-200 py-2 sm:hidden dark:border-zinc-800"
-        aria-label="Navegación móvil"
-      >
-        {enlaces.map((enlace) => (
-          <Link
-            key={enlace.href}
-            href={enlace.href}
-            className="rounded-full px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
-          >
-            {enlace.etiqueta}
-          </Link>
-        ))}
-      </nav>
+      {enlaces.length > 0 && (
+        <nav
+          className="flex items-center justify-center gap-1 border-t border-zinc-200 py-2 sm:hidden dark:border-zinc-800"
+          aria-label="Navegación móvil"
+        >
+          {enlaces.map((enlace) => (
+            <Link
+              key={enlace.ruta}
+              href={enlace.ruta}
+              className="rounded-full px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+            >
+              {enlace.etiqueta}
+            </Link>
+          ))}
+        </nav>
+      )}
     </header>
   )
 }

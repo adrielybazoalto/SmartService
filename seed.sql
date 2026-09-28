@@ -112,6 +112,43 @@ INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion) VALUES
 ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
 -- ============================================================
+-- 5B. TABLA: PERMISO / ROL_PERMISO (RBAC por RUTAS - menú y protección)
+-- La interfaz lee aquí qué módulos puede ver cada rol. Matriz por defecto:
+--   ADMINISTRADOR: 8/8 módulos
+--   ENCARGADO:     perfil, cotizaciones, órdenes de trabajo, caja, ventas
+--   TECNICO:       perfil, cotizaciones (lectura), órdenes de trabajo
+-- ============================================================
+INSERT INTO PERMISO (id, nombre, ruta, descripcion) VALUES
+(1, 'PERFIL', '/perfil', 'Configuración de perfil personal'),
+(2, 'USUARIOS', '/usuarios', 'Gestión de usuarios del sistema'),
+(3, 'ROLES', '/roles', 'Administración de roles y permisos'),
+(4, 'BITACORA', '/bitacora', 'Consulta de auditoría de eventos'),
+(5, 'COTIZACIONES', '/cotizaciones', 'Cotizaciones y servicios'),
+(6, 'ORDENES_TRABAJO', '/ordenes-trabajo', 'Órdenes de trabajo'),
+(7, 'CAJA', '/caja', 'Control y arqueo de caja'),
+(8, 'VENTAS', '/ventas', 'Registro de ventas')
+ON CONFLICT (nombre) DO NOTHING;
+
+-- ADMINISTRADOR: acceso total (todos los módulos)
+INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion) VALUES
+(1, 1, 'Acceso total'), (1, 2, 'Acceso total'), (1, 3, 'Acceso total'),
+(1, 4, 'Acceso total'), (1, 5, 'Acceso total'), (1, 6, 'Acceso total'),
+(1, 7, 'Acceso total'), (1, 8, 'Acceso total')
+ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+
+-- ENCARGADO: módulos operativos (NO /usuarios, /roles, /bitacora)
+INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion) VALUES
+(2, 1, 'Módulo propio'), (2, 5, 'Cotizaciones y servicios'),
+(2, 6, 'Órdenes de trabajo'), (2, 7, 'Caja'), (2, 8, 'Ventas')
+ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+
+-- TECNICO: cotizaciones (lectura), órdenes de trabajo y perfil
+INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion) VALUES
+(3, 1, 'Módulo propio'), (3, 5, 'Cotizaciones (solo lectura)'),
+(3, 6, 'Órdenes de trabajo')
+ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+
+-- ============================================================
 -- 6. TABLA: USUARIO (CU01, CU03, CU05)
 -- Contraseña temporal "Admin1234!" (bcrypt cost 10). ¡Cambiar al ingresar!
 -- ============================================================
@@ -130,9 +167,9 @@ ON CONFLICT (correo) DO NOTHING;
 -- ============================================================
 -- 7. TABLA: TOKEN_RECUPERACION (CU02)
 -- ============================================================
-INSERT INTO TOKEN_RECUPERACION (id, usuario_id, token, fecha_creacion, fecha_expiracion, usado) VALUES
-(1, 3, 'tok_rec_8f3a9b2c1d4e5f6a7b8c9d0e1f2a3b4c', '2026-09-20 08:30:00', '2026-09-20 09:30:00', TRUE),
-(2, 6, 'tok_rec_5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a', '2026-09-27 15:00:00', '2026-09-27 17:00:00', FALSE)
+INSERT INTO TOKEN_RECUPERACION (id, usuario_id, hash_token, fecha_creacion, fecha_expiracion, usado) VALUES
+(1, 3, encode(sha256('tok_rec_8f3a9b2c1d4e5f6a7b8c9d0e1f2a3b4c'::bytea), 'hex'), '2026-09-20 08:30:00', '2026-09-20 09:30:00', TRUE),
+(2, 6, encode(sha256('tok_rec_5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a'::bytea), 'hex'), '2026-09-27 15:00:00', '2026-09-27 17:00:00', FALSE)
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
@@ -155,6 +192,8 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================
 SELECT setval(pg_get_serial_sequence('ROL', 'id'), COALESCE(MAX(id), 1)) FROM ROL;
 SELECT setval(pg_get_serial_sequence('MODULO', 'id'), COALESCE(MAX(id), 1)) FROM MODULO;
+SELECT setval(pg_get_serial_sequence('PERMISO', 'id'), COALESCE(MAX(id), 1)) FROM PERMISO;
+SELECT setval(pg_get_serial_sequence('ROL_PERMISO', 'id'), COALESCE(MAX(id), 1)) FROM ROL_PERMISO;
 SELECT setval(pg_get_serial_sequence('ACCION', 'id'), COALESCE(MAX(id), 1)) FROM ACCION;
 SELECT setval(pg_get_serial_sequence('FUNCION', 'id'), COALESCE(MAX(id), 1)) FROM FUNCION;
 SELECT setval(pg_get_serial_sequence('ROL_FUNCION', 'id'), COALESCE(MAX(id), 1)) FROM ROL_FUNCION;

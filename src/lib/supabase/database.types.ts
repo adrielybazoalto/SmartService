@@ -220,6 +220,63 @@ export type Database = {
           },
         ]
       }
+      permiso: {
+        Row: {
+          id: number
+          nombre: string
+          ruta: string
+          descripcion: string | null
+        }
+        Insert: {
+          id?: number
+          nombre: string
+          ruta: string
+          descripcion?: string | null
+        }
+        Update: {
+          id?: number
+          nombre?: string
+          ruta?: string
+          descripcion?: string | null
+        }
+        Relationships: []
+      }
+      rol_permiso: {
+        Row: {
+          id: number
+          rol_id: number
+          permiso_id: number
+          descripcion: string | null
+        }
+        Insert: {
+          id?: number
+          rol_id: number
+          permiso_id: number
+          descripcion?: string | null
+        }
+        Update: {
+          id?: number
+          rol_id?: number
+          permiso_id?: number
+          descripcion?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'rol_permiso_rol_id_fkey'
+            columns: ['rol_id']
+            isOneToOne: false
+            referencedRelation: 'rol'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rol_permiso_permiso_id_fkey'
+            columns: ['permiso_id']
+            isOneToOne: false
+            referencedRelation: 'permiso'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       usuario: {
         Row: {
           id: number
