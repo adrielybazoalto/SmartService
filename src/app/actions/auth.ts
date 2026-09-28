@@ -1,95 +1,158 @@
+
 'use server'
 
-import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-import { loginSchema } from '@/backend/usuarios/schema'
 import { createClient } from '@supabase/supabase-js'
-import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import bcrypt from 'bcryptjs'
+import { cookies } from 'next/headers'
 
-export async function introducirDatos(correo: string, password: string) {
-  return loginSchema.safeParse({ correo, password })
-}
-
-export async function enviarFormulario(formData: FormData) {
-  const rawCorreo = String(formData.get('correo') ?? '')
-  const rawPassword = String(formData.get('password') ?? '')
-  return await introducirDatos(rawCorreo, rawPassword)
-}
-
-export async function validarCredenciales(correo: string, password: string) {
+// 1. VALIDAR CREDENCIALES (INICIAR SESIÓN)
+export async function validarCredenciales(
+  correo: string,
+  contrasena: string
+) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
-  
+
+  // Buscar al usuario por correo
   const { data: usuario, error } = await supabase
-    .from('usuarios')
+    .from('usuario')
     .select('*')
-    .eq('correo', correo)
+    .eq('correo', correo.trim())
     .single()
 
-  if (error || !usuario) {
-    return { data: null, error: 'Usuario no encontrado' }
+  // Error al consultar la base de datos
+  if (error) {
+    return {
+      success: false,
+      error: `Error Supabase: ${error.message} | Código: ${error.code}`
+    }
   }
 
-  if (usuario.contrasena !== password && usuario.password !== password) {
-    return { data: null, error: 'Contraseña incorrecta' }
+  // Usuario no encontrado
+  if (!usuario) {
+    return {
+      success: false,
+      error: 'El usuario no está registrado en el sistema.'
+    }
   }
 
-  return { data: { user: usuario }, error: null }
-}
+  // Comparar contraseña ingresada con el hash almacenado
+  const passwordValida = await bcrypt.compare(
+    contrasena,
+    usuario.contrasena
+  )
 
-export async function registrarAcceso(usuarioId: string, correo: string) {
-  try {
-    const serviceClient = getSupabaseServiceClient()
+  // Contraseña incorrecta
+  if (!passwordValida) {
+    return {
+      success: false,
+      error: 'Contraseña incorrecta. Inténtalo de nuevo.'
+    }
+  }
 
-    await serviceClient.from('bitacora').insert({
-      usuario_id: usuarioId,
-      fecha_hora: new Date().toISOString(),
+  // Registrar inicio de sesión en la bitácora
+  const { error: errorBitacora } = await supabase
+    .from('bitacora')
+    .insert({
+      usuario_id: usuario.id,
+      fecha_hora: new Date()
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 19),
       accion: 'INICIO_SESION',
-      descripcion: `El usuario corporativo ${correo} inició sesión en SmartService.`,
-    } as any)
-  } catch (err) {
-    console.error('[BITACORA ERROR] Error al registrar acceso en base de datos:', err)
+      descripcion: `Inicio de sesión exitoso del usuario ${usuario.correo}`
+    })
+
+  // Si ocurre un error en la bitácora, no impedir el inicio de sesión
+  if (errorBitacora) {
+    console.error('Error al registrar en BITACORA:', errorBitacora)
+  }
+
+  // Crear cookie de sesión
+  const cookieStore = await cookies()
+
+  cookieStore.set(
+    'smartservice_user',
+    JSON.stringify({
+      id: usuario.id,
+      correo: usuario.correo,
+      rol: usuario.rol_id
+    }),
+    {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24,
+      path: '/'
+    }
+  )
+
+  return {
+    success: true,
+    usuario,
+    error: null
   }
 }
+// 2. RECUPERAR / ACTUALIZAR CONTRASEÑA
+export async function recuperarContrasena(
+  correo: string,
+  nuevaContrasenaPlana: string
+) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
-export async function redirigirPanel() {
-  revalidatePath('/', 'layout')
-  redirect('/')
-}
+  // Buscar al usuario por correo
+  const { data: usuario, error: errorBusqueda } = await supabase
+    .from('usuario')
+    .select('*')
+    .eq('correo', correo.trim())
+    .single()
 
-export async function iniciarSesion(prevState: any, formData: FormData) {
-  const validation = await enviarFormulario(formData)
-
-  if (!validation.success) {
-    const errors = validation.error.flatten().fieldErrors
+  // Usuario no encontrado
+  if (errorBusqueda || !usuario) {
     return {
       success: false,
-      errors: {
-        correo: errors.correo?.[0],
-        password: errors.password?.[0],
-      },
+      error: 'El correo electrónico no está registrado en el sistema.'
     }
   }
 
-  const { correo, password } = validation.data
+  // Generar hash de la nueva contraseña
+  const salt = await bcrypt.genSalt(10)
+  const hashedPassword = await bcrypt.hash(
+    nuevaContrasenaPlana,
+    salt
+  )
 
-  const { data, error } = await validarCredenciales(correo, password)
+  // Actualizar contraseña
+  const { error: errorUpdate } = await supabase
+    .from('usuario')
+    .update({
+      contrasena: hashedPassword
+    })
+    .eq('correo', correo.trim())
 
-  if (error || !data?.user) {
+  if (errorUpdate) {
     return {
       success: false,
-      errors: { correo: 'Correo o contraseña incorrectos. Verifica tus credenciales.' },
+      error: 'Hubo un error al actualizar la contraseña en la base de datos.'
     }
   }
 
-  await registrarAcceso(data.user.id || data.user.id_usuario, correo)
-
-  await redirigirPanel()
+  return {
+    success: true,
+    error: null
+  }
 }
+// 3. CERRAR SESIÓN (LOGOUT)
+export async function cerrarSesion() {
+  const cookieStore = await cookies()
 
-export async function logoutAction() {
-  revalidatePath('/', 'layout')
-  redirect('/login')
+  cookieStore.delete('smartservice_user')
+
+  return {
+    success: true
+  }
 }
