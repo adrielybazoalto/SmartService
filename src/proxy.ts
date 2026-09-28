@@ -6,7 +6,7 @@ import { jwtVerify } from 'jose'
 // src/lib/session.ts (no importamos ese módulo aquí: es server-only).
 const COOKIE_NAME = 'sesion'
 
-const RUTAS_PUBLICAS = ['/login']
+const RUTAS_PUBLICAS = ['/login', '/recuperar']
 
 function getSecret(): Uint8Array {
   const secret = process.env.AUTH_SECRET ?? ''

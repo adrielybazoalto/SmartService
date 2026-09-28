@@ -15,6 +15,8 @@ export async function getCurrentUser(): Promise<Tables<'usuario'> | null> {
 
   if (error || !data) return null
   if (!data.estado) return null
+  // Sesión emitida antes de la última invalidación (CU02) → ya no es válida
+  if (sesion.version !== data.version_sesion) return null
   return data
 }
 

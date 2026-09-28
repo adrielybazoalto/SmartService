@@ -61,6 +61,7 @@ export async function loginAction(
       nombre: usuario.nombre,
       correo: usuario.correo,
       rol_id: usuario.rol_id,
+      version: usuario.version_sesion,
     })
     redirigir = true
   } catch (e) {

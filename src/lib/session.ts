@@ -9,6 +9,8 @@ export interface SesionUsuario {
   nombre: string
   correo: string
   rol_id: number
+  /** Versión de sesión: se incrementa al invalidar sesiones (CU02). */
+  version: number
 }
 
 function getSecret(): Uint8Array {
@@ -51,6 +53,7 @@ export async function getSession(): Promise<SesionUsuario | null> {
       nombre: String(payload.nombre ?? ''),
       correo: String(payload.correo ?? ''),
       rol_id: Number(payload.rol_id ?? 0),
+      version: Number(payload.version ?? 0),
     }
   } catch {
     return null

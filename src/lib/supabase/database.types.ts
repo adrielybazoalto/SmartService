@@ -229,6 +229,7 @@ export type Database = {
           contrasena: string
           telefono: string | null
           estado: boolean
+          version_sesion: number
         }
         Insert: {
           id?: number
@@ -238,6 +239,7 @@ export type Database = {
           contrasena: string
           telefono?: string | null
           estado?: boolean
+          version_sesion?: number
         }
         Update: {
           id?: number
@@ -247,6 +249,7 @@ export type Database = {
           contrasena?: string
           telefono?: string | null
           estado?: boolean
+          version_sesion?: number
         }
         Relationships: [
           {
@@ -425,7 +428,7 @@ export type Database = {
         Row: {
           id: number
           usuario_id: number
-          token: string
+          hash_token: string
           fecha_creacion: string
           fecha_expiracion: string
           usado: boolean
@@ -433,7 +436,7 @@ export type Database = {
         Insert: {
           id?: number
           usuario_id: number
-          token: string
+          hash_token: string
           fecha_creacion?: string
           fecha_expiracion: string
           usado?: boolean
@@ -441,7 +444,7 @@ export type Database = {
         Update: {
           id?: number
           usuario_id?: number
-          token?: string
+          hash_token?: string
           fecha_creacion?: string
           fecha_expiracion?: string
           usado?: boolean
