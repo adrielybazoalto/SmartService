@@ -53,11 +53,14 @@ export async function fetchRolesYPermisos(): Promise<{
   roles: RolEntity[];
   modulos: ModuloPermiso[];
   asignacion: { [rolId: number]: string[] };
+  esSesionAdministrador: boolean;
 }> {
   // Única condición de acceso: permiso ROLES activo en rol_permiso (BD).
   if (!(await tienePermisoModulo("/roles"))) {
     throw new Error("No autorizado: tu rol no tiene el permiso del módulo Roles.");
   }
+  const usuario = await requireUser();
+  const esSesionAdministrador = usuario.rol?.nombre === "ADMINISTRADOR";
 
   const db = getSupabaseServiceClient();
 
@@ -89,6 +92,7 @@ export async function fetchRolesYPermisos(): Promise<{
       etiqueta: moduloPorRuta(m.ruta)?.etiqueta ?? m.nombre,
     })),
     asignacion,
+    esSesionAdministrador,
   };
 }
 
@@ -118,6 +122,15 @@ export async function guardarPermisosRol(
     .maybeSingle();
   if (erRol) return { ok: false, mensaje: "No se pudo consultar el rol seleccionado." };
   if (!rol) return { ok: false, mensaje: "El rol seleccionado no es válido." };
+
+  // Protección del rol ADMINISTRADOR: solo un Administrador puede modificar
+  // sus permisos (peticiones de otros roles se rechazan por autorización).
+  if (rol.nombre === "ADMINISTRADOR" && usuario.rol?.nombre !== "ADMINISTRADOR") {
+    return {
+      ok: false,
+      mensaje: "No tienes permisos para modificar el rol Administrador.",
+    };
+  }
 
   const unicos = [...new Set(nombresPermisos)];
   let permisosIds: number[] = [];

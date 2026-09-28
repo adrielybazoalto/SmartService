@@ -23,6 +23,7 @@ export default function RolesPage() {
   const [modulos, setModulos] = useState<ModuloPermiso[]>([]);
   const [asignacion, setAsignacion] = useState<{ [rolId: number]: string[] }>({});
   const [rolSeleccionadoId, setRolSeleccionadoId] = useState<number>(1);
+  const [esSesionAdministrador, setEsSesionAdministrador] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export default function RolesPage() {
       setRoles(data.roles);
       setModulos(data.modulos);
       setAsignacion(data.asignacion);
+      setEsSesionAdministrador(data.esSesionAdministrador);
       setRolSeleccionadoId((prev) =>
         data.roles.some((r) => r.id === prev) ? prev : data.roles[0]?.id ?? 1,
       );
@@ -49,8 +51,11 @@ export default function RolesPage() {
 
   const rolSeleccionado = roles.find((r) => r.id === rolSeleccionadoId);
   const activosDelRol = new Set(asignacion[rolSeleccionadoId] ?? []);
+  // Los permisos del rol ADMINISTRADOR solo pueden modificarlos Administradores.
+  const rolBloqueado = rolSeleccionado?.nombre === "ADMINISTRADOR" && !esSesionAdministrador;
 
   const toggleModulo = (nombre: string) => {
+    if (rolBloqueado) return;
     setAsignacion((prev) => {
       const actuales = new Set(prev[rolSeleccionadoId] ?? []);
       if (actuales.has(nombre)) actuales.delete(nombre);
@@ -112,7 +117,7 @@ export default function RolesPage() {
           </div>
           <button
             onClick={handleGuardarCambios}
-            disabled={guardando}
+            disabled={guardando || rolBloqueado}
             className="shrink-0 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-zinc-300 dark:disabled:bg-zinc-700"
           >
             {guardando ? "Guardando…" : "Guardar Cambios"}
@@ -128,6 +133,12 @@ export default function RolesPage() {
         {mensajeError && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
             ⚠ {mensajeError}
+          </div>
+        )}
+
+        {rolBloqueado && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            🔒 Los permisos del rol Administrador solo pueden ser modificados por un Administrador.
           </div>
         )}
 
@@ -182,7 +193,9 @@ export default function RolesPage() {
                 </span>
               </h2>
               <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                Activa o desactiva los módulos que este rol puede ver en el Navbar y el Dashboard.
+                {rolBloqueado
+                  ? "Modo solo lectura: selecciona otro rol para gestionar sus permisos."
+                  : "Activa o desactiva los módulos que este rol puede ver en el Navbar y el Dashboard."}
               </p>
             </div>
 
@@ -221,11 +234,12 @@ export default function RolesPage() {
                         aria-checked={activo}
                         aria-label={`Permitir ${modulo.etiqueta}`}
                         onClick={() => toggleModulo(modulo.nombre)}
-                        className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
+                        disabled={rolBloqueado}
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                           activo
                             ? "bg-emerald-500"
                             : "bg-zinc-300 dark:bg-zinc-700"
-                        }`}
+                        } ${rolBloqueado ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                       >
                         <span
                           className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
