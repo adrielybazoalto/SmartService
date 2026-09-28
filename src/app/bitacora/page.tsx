@@ -1,5 +1,6 @@
 import { listarBitacoraAction } from '@/app/actions/bitacora'
 import { FiltrosBitacora } from './filtros-bitacora'
+import { FechaHoraBolivia } from './fecha-hora'
 
 export const metadata = {
   title: 'Bitácora de Auditoría — SmartService',
@@ -75,7 +76,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
               {eventos.map((evento) => (
                 <tr key={evento.id} className="border-t border-zinc-200 dark:border-zinc-800">
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {new Date(evento.fecha_hora).toLocaleString('es-BO')}
+                    <FechaHoraBolivia fecha={evento.fecha_hora} />
                   </td>
                   <td className="px-4 py-3">{evento.usuario_id}</td>
                   <td className="px-4 py-3">{evento.accion}</td>
