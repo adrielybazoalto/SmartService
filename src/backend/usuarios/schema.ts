@@ -51,3 +51,18 @@ export type ActualizarUsuarioInput = z.infer<typeof actualizarUsuarioSchema>
 export type CambiarContrasenaInput = z.infer<typeof cambiarContrasenaSchema>
 export type CrearRolInput = z.infer<typeof crearRolSchema>
 export type AsignarPermisoInput = z.infer<typeof asignarPermisoSchema>
+
+// CU01: Inicio de Sesión
+
+export const loginSchema = z.object({
+  correo: z
+    .string()
+    .min(1, 'El correo electrónico es obligatorio')
+    .email('Ingresa un correo electrónico válido'),
+  password: z
+    .string()
+    .min(1, 'La contraseña es obligatoria')
+    .min(6, 'La contraseña debe tener al menos 6 caracteres'),
+})
+
+export type LoginInput = z.infer<typeof loginSchema>
