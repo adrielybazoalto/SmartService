@@ -1,7 +1,7 @@
 'use server'
 
 import { requireRole } from '@/lib/auth'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import {
   listarBitacora,
   filtrarBitacoraSchema,
@@ -13,6 +13,6 @@ export async function listarBitacoraAction(filtros: FiltrarBitacoraInput = {}) {
 
   const parsed = filtrarBitacoraSchema.parse(filtros)
 
-  const supabase = await createSupabaseServerClient()
-  return listarBitacora(supabase, parsed)
+  const db = getSupabaseServiceClient()
+  return listarBitacora(db, parsed)
 }
