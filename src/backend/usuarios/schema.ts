@@ -26,11 +26,21 @@ export const actualizarUsuarioSchema = z.object({
   contrasena: contrasenaSchema.optional(),
 })
 
-/** Cambio de contraseña del propio perfil (verifica la actual). */
-export const cambiarContrasenaSchema = z.object({
-  contrasenaActual: z.string().min(1, 'La contraseña actual es obligatoria'),
-  contrasenaNueva: contrasenaSchema,
-})
+/**
+ * Cambio de contraseña del propio perfil (CU05).
+ * Verifica la contraseña actual, aplica las reglas de `contrasenaSchema` a la
+ * nueva y exige que la confirmación coincida.
+ */
+export const cambiarContrasenaSchema = z
+  .object({
+    contrasenaActual: z.string().min(1, 'La contraseña actual es obligatoria'),
+    contrasenaNueva: contrasenaSchema,
+    confirmacion: z.string().min(1, 'Confirma la nueva contraseña'),
+  })
+  .refine((d) => d.contrasenaNueva === d.confirmacion, {
+    message: 'La confirmación no coincide con la nueva contraseña',
+    path: ['confirmacion'],
+  })
 
 export const crearRolSchema = z.object({
   nombre: z.string().min(1, 'El nombre es obligatorio').max(50),

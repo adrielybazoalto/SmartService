@@ -16,7 +16,7 @@ export default async function PaginaPerfil() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Configuración de perfil</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          CU05 — Actualiza tus datos personales.
+          CU05 — Edita tus datos personales y cambia tu contraseña.
         </p>
       </header>
 

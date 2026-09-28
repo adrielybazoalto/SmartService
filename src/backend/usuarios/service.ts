@@ -205,7 +205,13 @@ export async function actualizarUsuario(
   return data
 }
 
-/** Cambia la contraseña del propio perfil tras verificar la actual. */
+/**
+ * Cambia la contraseña del propio perfil (CU05).
+ * Verifica la contraseña actual ANTES de aplicar el cambio; si no coincide,
+ * lanza 'Contraseña actual incorrecta' y cancela el cambio sin tocar la BD.
+ * Registra OBLIGATORIAMENTE el evento `CAMBIAR_CONTRASENA` en BITACORA
+ * (la descripción nunca incluye contraseñas).
+ */
 export async function cambiarContrasena(
   db: Db,
   usuarioId: number,
@@ -221,13 +227,20 @@ export async function cambiarContrasena(
   if (errGet || !usuario) throw new Error('El usuario no existe.')
 
   const valido = await verificarContrasena(parsed.contrasenaActual, usuario.contrasena)
-  if (!valido) throw new Error('La contraseña actual es incorrecta.')
+  if (!valido) throw new Error('Contraseña actual incorrecta')
 
   const { error } = await db
     .from('usuario')
     .update({ contrasena: await hashContrasena(parsed.contrasenaNueva) })
     .eq('id', usuarioId)
   if (error) throw new Error(`No se pudo actualizar la contraseña: ${error.message}`)
+
+  // BITÁCORA (CU05): registro obligatorio del evento de cambio de contraseña
+  await registrarBitacora(db, {
+    usuario_id: usuarioId,
+    accion: 'CAMBIAR_CONTRASENA',
+    descripcion: 'Cambio de contraseña del propio perfil.',
+  })
 }
 
 /** Elimina la fila USUARIO (ya no hay credencial en Supabase Auth). */
