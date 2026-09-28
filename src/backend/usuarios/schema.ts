@@ -26,11 +26,21 @@ export const actualizarUsuarioSchema = z.object({
   contrasena: contrasenaSchema.optional(),
 })
 
-/** Cambio de contraseña del propio perfil (verifica la actual). */
-export const cambiarContrasenaSchema = z.object({
-  contrasenaActual: z.string().min(1, 'La contraseña actual es obligatoria'),
-  contrasenaNueva: contrasenaSchema,
-})
+/**
+ * Cambio de contraseña del propio perfil (CU05).
+ * Verifica la contraseña actual, aplica las reglas de `contrasenaSchema` a la
+ * nueva y exige que la confirmación coincida.
+ */
+export const cambiarContrasenaSchema = z
+  .object({
+    contrasenaActual: z.string().min(1, 'La contraseña actual es obligatoria'),
+    contrasenaNueva: contrasenaSchema,
+    confirmacion: z.string().min(1, 'Confirma la nueva contraseña'),
+  })
+  .refine((d) => d.contrasenaNueva === d.confirmacion, {
+    message: 'La confirmación no coincide con la nueva contraseña',
+    path: ['confirmacion'],
+  })
 
 export const crearRolSchema = z.object({
   nombre: z.string().min(1, 'El nombre es obligatorio').max(50),
@@ -46,11 +56,21 @@ export const asignarPermisoSchema = z.object({
   descripcion: z.string().nullable().optional(),
 })
 
+/**
+ * Perfil personal (CU05): solo se editan nombre y teléfono.
+ * Correo, rol y estado son de SOLO LECTURA en este caso de uso.
+ */
+export const actualizarPerfilSchema = z.object({
+  nombre: z.string().min(2, 'El nombre es obligatorio').max(150),
+  telefono: z.string().max(20).nullable().optional(),
+})
+
 export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>
 export type ActualizarUsuarioInput = z.infer<typeof actualizarUsuarioSchema>
 export type CambiarContrasenaInput = z.infer<typeof cambiarContrasenaSchema>
 export type CrearRolInput = z.infer<typeof crearRolSchema>
 export type AsignarPermisoInput = z.infer<typeof asignarPermisoSchema>
+export type ActualizarPerfilInput = z.infer<typeof actualizarPerfilSchema>
 
 // CU01: Inicio de Sesión
 
