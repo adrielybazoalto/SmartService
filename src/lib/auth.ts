@@ -23,3 +23,29 @@ export async function requireUser(): Promise<User> {
   }
   return user
 }
+/**
+ * Requiere que el usuario autenticado tenga uno de los roles indicados.
+ * RLS (ver auth_bridge.sql) permite a cualquier `authenticated` leer/escribir;
+ * el filtro fino por rol se hace aquí, en la capa de aplicación.
+ */
+export async function requireRole(...rolesPermitidos: string[]): Promise<User> {
+  const user = await requireUser()
+
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase
+    .from('usuario')
+    .select('rol:rol_id(nombre)')
+    .eq('auth_uid', user.id)
+    .single()
+
+  if (error || !data) {
+    throw new Error('No autorizado: no se encontró el perfil de usuario.')
+  }
+
+  const nombreRol = data.rol?.nombre
+  if (!nombreRol || !rolesPermitidos.includes(nombreRol)) {
+    throw new Error('No autorizado: tu rol no tiene acceso a esta función.')
+  }
+
+  return user
+}
