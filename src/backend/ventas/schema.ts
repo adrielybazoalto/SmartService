@@ -10,20 +10,11 @@ export const cerrarCajaSchema = z.object({
   monto_final_real: z.coerce.number().min(0, 'El monto final real no puede ser negativo'),
 })
 
-export const detalleVentaInputSchema = z.discriminatedUnion('tipo', [
-  z.object({
-    tipo: z.literal('PRODUCTO'),
-    producto_id: z.number().int().positive(),
-    cantidad: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
-    precio_unitario: z.coerce.number().min(0),
-  }),
-  z.object({
-    tipo: z.literal('SERVICIO'),
-    servicio_id: z.number().int().positive(),
-    cantidad: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
-    precio_unitario: z.coerce.number().min(0),
-  }),
-])
+export const detalleVentaInputSchema = z.object({
+  producto_id: z.number().int().positive(),
+  cantidad: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+  precio_unitario: z.coerce.number().min(0),
+})
 
 export const crearVentaSchema = z.object({
   caja_id: z.number().int().positive(),
@@ -31,7 +22,9 @@ export const crearVentaSchema = z.object({
   usuario_id: z.number().int().positive(),
   cotizacion_id: z.number().int().positive().nullable().optional(),
   orden_trabajo_id: z.number().int().positive().nullable().optional(),
-  tipo_comprobante: z.enum(TIPO_COMPROBANTE).nullable().optional(),
+  tipo_comprobante: z.enum(TIPO_COMPROBANTE, {
+    message: 'Debe seleccionar el tipo de comprobante',
+  }),
   nro_comprobante: z.string().max(50).nullable().optional(),
   descuento: z.coerce.number().min(0).default(0),
   estado: z.enum(ESTADO_VENTA).default('EMITIDA'),

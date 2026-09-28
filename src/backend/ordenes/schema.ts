@@ -3,10 +3,20 @@ import { ESTADO_ORDEN } from './types'
 
 export const crearOrdenTrabajoSchema = z.object({
   cotizacion_id: z.number().int().positive().nullable().optional(),
+  mantenimiento_ticket_id: z.number().int().positive().nullable().optional(),
   codigo_orden: z.string().min(1, 'El código de orden es obligatorio').max(50),
   tipo_trabajo: z.string().min(1, 'El tipo de trabajo es obligatorio').max(100),
   estado: z.enum(ESTADO_ORDEN).default('PROGRAMADA'),
-  fecha_programada: z.string().date('Fecha inválida').nullable().optional(),
+  fecha_inicio_programada: z
+    .string()
+    .datetime({ offset: true, message: 'Fecha inválida' })
+    .nullable()
+    .optional(),
+  fecha_fin_programada: z
+    .string()
+    .datetime({ offset: true, message: 'Fecha inválida' })
+    .nullable()
+    .optional(),
   observaciones_tecnico: z.string().nullable().optional(),
 })
 

@@ -25,8 +25,8 @@ import type {
 } from './types'
 
 /** Convierte un número a string con decimales (las columnas NUMERIC son strings). */
-function num(v: number | null | undefined, decimales = 2): string | null {
-  return v == null ? null : v.toFixed(decimales)
+function num(v: number, decimales = 2): string {
+  return v.toFixed(decimales)
 }
 
 // ---------------------------------------------------------------------------

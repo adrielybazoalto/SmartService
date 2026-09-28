@@ -1,6 +1,9 @@
 // ============================================================
 // TIPOS GENERADOS MANUALMENTE A PARTIR DE `schema.sql`
-// (Servicios de Seguridad) + migración `auth_bridge.sql` (auth_uid)
+// (Servicios de Seguridad) — re-sincronizados con el reset de `schema.sql`
+// (auth_uid retirado; `contrasena` = hash bcryptjs NOT NULL; ROL_FUNCION y
+// PRODUCTO_PROVEEDOR con `id` serial; DETALLE_VENTA solo producto;
+// ORDEN_TRABAJO con mantenimiento_ticket_id y fechas programadas/real)
 // NOTA: cuando tengas acceso CLI, regenérate con:
 //   supabase gen types typescript --project-id <ref> --schema public
 // ============================================================
@@ -89,8 +92,8 @@ export type Database = {
           id: number
           nombre: string
           descripcion_tecnica: string | null
-          unidad_medida: string | null
-          margen_ganancia: string | null
+          unidad_medida: string
+          margen_ganancia: string
           precio_compra_actual: string
           stock_disponible: string
           stock_minimo: string
@@ -100,22 +103,22 @@ export type Database = {
           id?: number
           nombre: string
           descripcion_tecnica?: string | null
-          unidad_medida?: string | null
-          margen_ganancia?: string | null
-          precio_compra_actual: string
-          stock_disponible?: string | null
-          stock_minimo?: string | null
+          unidad_medida: string
+          margen_ganancia?: string
+          precio_compra_actual?: string
+          stock_disponible?: string
+          stock_minimo?: string
           categoria_id: number
         }
         Update: {
           id?: number
           nombre?: string
           descripcion_tecnica?: string | null
-          unidad_medida?: string | null
-          margen_ganancia?: string | null
+          unidad_medida?: string
+          margen_ganancia?: string
           precio_compra_actual?: string
-          stock_disponible?: string | null
-          stock_minimo?: string | null
+          stock_disponible?: string
+          stock_minimo?: string
           categoria_id?: number
         }
         Relationships: [
@@ -132,7 +135,7 @@ export type Database = {
         Row: {
           id: number
           razon_social: string
-          nit: string
+          nit: string | null
           contacto: string | null
           telefono: string | null
           correo: string | null
@@ -140,7 +143,7 @@ export type Database = {
         Insert: {
           id?: number
           razon_social: string
-          nit: string
+          nit?: string | null
           contacto?: string | null
           telefono?: string | null
           correo?: string | null
@@ -148,7 +151,7 @@ export type Database = {
         Update: {
           id?: number
           razon_social?: string
-          nit?: string
+          nit?: string | null
           contacto?: string | null
           telefono?: string | null
           correo?: string | null
@@ -173,18 +176,21 @@ export type Database = {
       }
       rol_funcion: {
         Row: {
+          id: number
           rol_id: number
           funcion_id: number
           accion_id: number
           descripcion: string | null
         }
         Insert: {
+          id?: number
           rol_id: number
           funcion_id: number
           accion_id: number
           descripcion?: string | null
         }
         Update: {
+          id?: number
           rol_id?: number
           funcion_id?: number
           accion_id?: number
@@ -220,20 +226,18 @@ export type Database = {
           rol_id: number
           nombre: string
           correo: string
-          contrasena: string | null
+          contrasena: string
           telefono: string | null
           estado: boolean
-          auth_uid: string | null
         }
         Insert: {
           id?: number
           rol_id: number
           nombre: string
           correo: string
-          contrasena?: string | null
+          contrasena: string
           telefono?: string | null
           estado?: boolean
-          auth_uid?: string | null
         }
         Update: {
           id?: number
@@ -243,7 +247,6 @@ export type Database = {
           contrasena?: string
           telefono?: string | null
           estado?: boolean
-          auth_uid?: string | null
         }
         Relationships: [
           {
@@ -253,13 +256,6 @@ export type Database = {
             referencedRelation: 'rol'
             referencedColumns: ['id']
           },
-          {
-            foreignKeyName: 'usuario_auth_uid_fkey'
-            columns: ['auth_uid']
-            isOneToOne: true
-            referencedRelation: 'users'
-            referencedColumns: ['id']
-          },
         ]
       }
       establecimiento: {
@@ -267,7 +263,7 @@ export type Database = {
           id: number
           cliente_id: number
           nombre_establecimiento: string
-          direccion: string | null
+          direccion: string
           tipo_inmueble: string | null
           latitud: string | null
           longitud: string | null
@@ -276,7 +272,7 @@ export type Database = {
           id?: number
           cliente_id: number
           nombre_establecimiento: string
-          direccion?: string | null
+          direccion: string
           tipo_inmueble?: string | null
           latitud?: string | null
           longitud?: string | null
@@ -285,7 +281,7 @@ export type Database = {
           id?: number
           cliente_id?: number
           nombre_establecimiento?: string
-          direccion?: string | null
+          direccion?: string
           tipo_inmueble?: string | null
           latitud?: string | null
           longitud?: string | null
@@ -302,18 +298,21 @@ export type Database = {
       }
       producto_proveedor: {
         Row: {
+          id: number
           producto_id: number
           proveedor_id: number
           precio_compra: string
           codigo_item_proveedor: string | null
         }
         Insert: {
+          id?: number
           producto_id: number
           proveedor_id: number
           precio_compra: string
           codigo_item_proveedor?: string | null
         }
         Update: {
+          id?: number
           producto_id?: number
           proveedor_id?: number
           precio_compra?: string
@@ -342,7 +341,7 @@ export type Database = {
           orden_trabajo_id: number | null
           establecimiento_id: number
           nombre_sistema: string
-          fecha_instalacion: string | null
+          fecha_instalacion: string
           numero_serie: string | null
           periodicidad_meses: number
           fecha_ultimo_mantenimiento: string | null
@@ -354,7 +353,7 @@ export type Database = {
           orden_trabajo_id?: number | null
           establecimiento_id: number
           nombre_sistema: string
-          fecha_instalacion?: string | null
+          fecha_instalacion: string
           numero_serie?: string | null
           periodicidad_meses?: number
           fecha_ultimo_mantenimiento?: string | null
@@ -366,7 +365,7 @@ export type Database = {
           orden_trabajo_id?: number | null
           establecimiento_id?: number
           nombre_sistema?: string
-          fecha_instalacion?: string | null
+          fecha_instalacion?: string
           numero_serie?: string | null
           periodicidad_meses?: number
           fecha_ultimo_mantenimiento?: string | null
@@ -379,6 +378,13 @@ export type Database = {
             columns: ['establecimiento_id']
             isOneToOne: false
             referencedRelation: 'establecimiento'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'fk_sistema_orden'
+            columns: ['orden_trabajo_id']
+            isOneToOne: false
+            referencedRelation: 'orden_trabajo'
             referencedColumns: ['id']
           },
         ]
@@ -509,7 +515,7 @@ export type Database = {
           usuario_id: number
           numero_cotizacion: string
           fecha_emision: string
-          fecha_vencimiento: string
+          fecha_vencimiento: string | null
           estado: string
           total: string
         }
@@ -520,7 +526,7 @@ export type Database = {
           usuario_id: number
           numero_cotizacion: string
           fecha_emision?: string
-          fecha_vencimiento: string
+          fecha_vencimiento?: string | null
           estado?: string
           total?: string
         }
@@ -531,7 +537,7 @@ export type Database = {
           usuario_id?: number
           numero_cotizacion?: string
           fecha_emision?: string
-          fecha_vencimiento?: string
+          fecha_vencimiento?: string | null
           estado?: string
           total?: string
         }
@@ -647,34 +653,40 @@ export type Database = {
         Row: {
           id: number
           cotizacion_id: number | null
+          mantenimiento_ticket_id: number | null
           codigo_orden: string
           tipo_trabajo: string
           estado: string
-          fecha_programada: string | null
+          fecha_inicio_programada: string | null
+          fecha_fin_programada: string | null
           fecha_inicio_real: string | null
-          horas_fin_real: string | null
+          fecha_fin_real: string | null
           observaciones_tecnico: string | null
         }
         Insert: {
           id?: number
           cotizacion_id?: number | null
+          mantenimiento_ticket_id?: number | null
           codigo_orden: string
           tipo_trabajo: string
           estado?: string
-          fecha_programada?: string | null
+          fecha_inicio_programada?: string | null
+          fecha_fin_programada?: string | null
           fecha_inicio_real?: string | null
-          horas_fin_real?: string | null
+          fecha_fin_real?: string | null
           observaciones_tecnico?: string | null
         }
         Update: {
           id?: number
           cotizacion_id?: number | null
+          mantenimiento_ticket_id?: number | null
           codigo_orden?: string
           tipo_trabajo?: string
           estado?: string
-          fecha_programada?: string | null
+          fecha_inicio_programada?: string | null
+          fecha_fin_programada?: string | null
           fecha_inicio_real?: string | null
-          horas_fin_real?: string | null
+          fecha_fin_real?: string | null
           observaciones_tecnico?: string | null
         }
         Relationships: [
@@ -683,6 +695,13 @@ export type Database = {
             columns: ['cotizacion_id']
             isOneToOne: false
             referencedRelation: 'cotizacion'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'orden_trabajo_mantenimiento_ticket_id_fkey'
+            columns: ['mantenimiento_ticket_id']
+            isOneToOne: false
+            referencedRelation: 'mantenimiento_ticket'
             referencedColumns: ['id']
           },
         ]
@@ -851,7 +870,7 @@ export type Database = {
           numero_nota: string
           anticipo_pagado?: string
           fecha_emision?: string
-          estado?: string
+          estado: string
           monto_total: string
         }
         Update: {
@@ -877,7 +896,6 @@ export type Database = {
         Row: {
           id: number
           sistema_instalado_id: number
-          orden_trabajo_id: number | null
           tipo_mantenimiento: string
           nivel_urgencia: string | null
           descripcion_incidencia: string
@@ -887,7 +905,6 @@ export type Database = {
         Insert: {
           id?: number
           sistema_instalado_id: number
-          orden_trabajo_id?: number | null
           tipo_mantenimiento: string
           nivel_urgencia?: string | null
           descripcion_incidencia: string
@@ -897,7 +914,6 @@ export type Database = {
         Update: {
           id?: number
           sistema_instalado_id?: number
-          orden_trabajo_id?: number | null
           tipo_mantenimiento?: string
           nivel_urgencia?: string | null
           descripcion_incidencia?: string
@@ -910,13 +926,6 @@ export type Database = {
             columns: ['sistema_instalado_id']
             isOneToOne: false
             referencedRelation: 'sistema_instalado'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'mantenimiento_ticket_orden_trabajo_id_fkey'
-            columns: ['orden_trabajo_id']
-            isOneToOne: false
-            referencedRelation: 'orden_trabajo'
             referencedColumns: ['id']
           },
         ]
@@ -969,7 +978,7 @@ export type Database = {
           usuario_id: number
           fecha_apertura?: string
           fecha_cierre?: string | null
-          monto_inicial: string
+          monto_inicial?: string
           monto_final_sistema?: string | null
           monto_final_real?: string | null
           estado?: string
@@ -1002,7 +1011,7 @@ export type Database = {
           usuario_id: number
           cotizacion_id: number | null
           orden_trabajo_id: number | null
-          tipo_comprobante: string | null
+          tipo_comprobante: string
           nro_comprobante: string | null
           fecha_emision: string
           subtotal: string
@@ -1017,7 +1026,7 @@ export type Database = {
           usuario_id: number
           cotizacion_id?: number | null
           orden_trabajo_id?: number | null
-          tipo_comprobante?: string | null
+          tipo_comprobante: string
           nro_comprobante?: string | null
           fecha_emision?: string
           subtotal: string
@@ -1032,7 +1041,7 @@ export type Database = {
           usuario_id?: number
           cotizacion_id?: number | null
           orden_trabajo_id?: number | null
-          tipo_comprobante?: string | null
+          tipo_comprobante?: string
           nro_comprobante?: string | null
           fecha_emision?: string
           subtotal?: string
@@ -1082,8 +1091,7 @@ export type Database = {
         Row: {
           id: number
           venta_id: number
-          producto_id: number | null
-          servicio_id: number | null
+          producto_id: number
           cantidad: string
           precio_unitario: string
           subtotal: string
@@ -1091,8 +1099,7 @@ export type Database = {
         Insert: {
           id?: number
           venta_id: number
-          producto_id?: number | null
-          servicio_id?: number | null
+          producto_id: number
           cantidad: string
           precio_unitario: string
           subtotal: string
@@ -1100,8 +1107,7 @@ export type Database = {
         Update: {
           id?: number
           venta_id?: number
-          producto_id?: number | null
-          servicio_id?: number | null
+          producto_id?: number
           cantidad?: string
           precio_unitario?: string
           subtotal?: string
@@ -1119,13 +1125,6 @@ export type Database = {
             columns: ['producto_id']
             isOneToOne: false
             referencedRelation: 'producto'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'detalle_venta_servicio_id_fkey'
-            columns: ['servicio_id']
-            isOneToOne: false
-            referencedRelation: 'servicio'
             referencedColumns: ['id']
           },
         ]
