@@ -17,20 +17,23 @@ export interface ModuloRegistrado {
   clave: string
   ruta: string
   etiqueta: string
-  /** true si la página existe hoy; los módulos futuros aparecerán al crearse. */
-  implementado: boolean
+  /** Breve descripción mostrada en las tarjetas del panel principal. */
+  descripcion: string
 }
 
-/** Catálogo de módulos. La fila en PERMISO (BD) otorga el acceso. */
+/**
+ * Catálogo de módulos. La fila en PERMISO (BD) otorga el acceso; el orden
+ * aquí define el orden de los enlaces del navbar y de las tarjetas del panel.
+ */
 export const MODULOS: ModuloRegistrado[] = [
-  { clave: 'PERFIL', ruta: '/perfil', etiqueta: 'Mi perfil', implementado: true },
-  { clave: 'USUARIOS', ruta: '/usuarios', etiqueta: 'Usuarios', implementado: true },
-  { clave: 'ROLES', ruta: '/roles', etiqueta: 'Roles', implementado: true },
-  { clave: 'BITACORA', ruta: '/bitacora', etiqueta: 'Bitácora', implementado: true },
-  { clave: 'COTIZACIONES', ruta: '/cotizaciones', etiqueta: 'Cotizaciones', implementado: false },
-  { clave: 'ORDENES_TRABAJO', ruta: '/ordenes-trabajo', etiqueta: 'Órdenes de trabajo', implementado: false },
-  { clave: 'CAJA', ruta: '/caja', etiqueta: 'Caja', implementado: false },
-  { clave: 'VENTAS', ruta: '/ventas', etiqueta: 'Ventas', implementado: false },
+  { clave: 'USUARIOS', ruta: '/usuarios', etiqueta: 'Usuarios', descripcion: 'Gestión de usuarios del sistema' },
+  { clave: 'ROLES', ruta: '/roles', etiqueta: 'Roles', descripcion: 'Roles y matriz de permisos' },
+  { clave: 'BITACORA', ruta: '/bitacora', etiqueta: 'Bitácora', descripcion: 'Auditoría de eventos y accesos' },
+  { clave: 'COTIZACIONES', ruta: '/cotizaciones', etiqueta: 'Cotizaciones', descripcion: 'Cotizaciones y servicios' },
+  { clave: 'ORDENES_TRABAJO', ruta: '/ordenes-trabajo', etiqueta: 'Órdenes de trabajo', descripcion: 'Órdenes de trabajo y asignaciones' },
+  { clave: 'CAJA', ruta: '/caja', etiqueta: 'Caja', descripcion: 'Control y arqueo de caja' },
+  { clave: 'VENTAS', ruta: '/ventas', etiqueta: 'Ventas', descripcion: 'Registro de ventas' },
+  { clave: 'PERFIL', ruta: '/perfil', etiqueta: 'Mi perfil', descripcion: 'Configuración de perfil personal' },
 ]
 
 export function moduloPorRuta(ruta: string): ModuloRegistrado | undefined {
@@ -56,13 +59,13 @@ export const getPermisosDeRol = cache(async (rolId: number): Promise<string[]> =
     .filter((nombre): nombre is string => Boolean(nombre))
 })
 
-/** Módulos implementados que el usuario autenticado puede ver (Nivel 1). */
+/** Módulos que el usuario autenticado tiene permitidos (Nivel 1: navbar + panel). */
 export async function getModulosPermitidos(): Promise<ModuloRegistrado[]> {
   const usuario = await getCurrentUser()
   if (!usuario) return []
 
   const claves = await getPermisosDeRol(usuario.rol_id)
-  return MODULOS.filter((m) => m.implementado && claves.includes(m.clave))
+  return MODULOS.filter((m) => claves.includes(m.clave))
 }
 
 /**
