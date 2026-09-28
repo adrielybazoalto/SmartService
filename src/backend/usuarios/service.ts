@@ -1,19 +1,22 @@
 import { requireUser } from '@/lib/auth'
 import type { Db } from '@/lib/supabase/types'
 import { hashContrasena, verificarContrasena } from '@/lib/password'
+import { registrarBitacora } from '@/backend/bitacora'
 import {
+  actualizarPerfilSchema,
   actualizarUsuarioSchema,
   asignarPermisoSchema,
   cambiarContrasenaSchema,
   crearRolSchema,
   crearUsuarioSchema,
+  type ActualizarPerfilInput,
   type ActualizarUsuarioInput,
   type AsignarPermisoInput,
   type CambiarContrasenaInput,
   type CrearRolInput,
   type CrearUsuarioInput,
 } from './schema'
-import type { NuevoRol, NuevoRolFuncion, Rol, Usuario } from './types'
+import type { NuevoRol, NuevoRolFuncion, PerfilUsuario, Rol, Usuario } from './types'
 
 // ---------------------------------------------------------------------------
 // ROLES
@@ -92,6 +95,75 @@ export async function getUsuarioPorCorreo(db: Db, correo: string): Promise<Usuar
 /** Usuario de NEGOCIO de la sesión activa (JWT propia, cookie firmada). */
 export async function getUsuarioAutenticado(): Promise<Usuario> {
   return requireUser()
+}
+
+// ---------------------------------------------------------------------------
+// PERFIL PERSONAL (CU05)
+// ---------------------------------------------------------------------------
+
+/** Perfil del usuario autenticado con el nombre de su rol. */
+export async function getPerfil(db: Db): Promise<PerfilUsuario> {
+  const usuario = await requireUser()
+
+  const { data, error } = await db
+    .from('usuario')
+    .select('*, rol(nombre)')
+    .eq('id', usuario.id)
+    .single()
+  if (error) throw new Error(`No se pudo cargar el perfil: ${error.message}`)
+  return data as PerfilUsuario
+}
+
+/**
+ * Actualiza nombre y teléfono del propio perfil (CU05).
+ * El correo, el rol y el estado no se tocan aquí (solo lectura).
+ * Registra OBLIGATORIAMENTE el evento `ACTUALIZAR_PERFIL` en BITACORA.
+ */
+export async function actualizarPerfil(
+  db: Db,
+  usuarioId: number,
+  input: ActualizarPerfilInput,
+): Promise<Usuario> {
+  const parsed = actualizarPerfilSchema.parse(input)
+
+  // Estado previo para describir el cambio en la bitácora
+  const { data: previo, error: errPrev } = await db
+    .from('usuario')
+    .select('*')
+    .eq('id', usuarioId)
+    .maybeSingle()
+  if (errPrev || !previo) throw new Error('No se encontró el usuario.')
+
+  const { data, error } = await db
+    .from('usuario')
+    .update({ nombre: parsed.nombre, telefono: parsed.telefono ?? null })
+    .eq('id', usuarioId)
+    .select()
+    .single()
+  if (error) throw new Error(`No se pudo actualizar el perfil: ${error.message}`)
+
+  // BITÁCORA (CU05): registro obligatorio con la descripción del cambio
+  const telefonoPrev = previo.telefono ?? null
+  const telefonoNuevo = parsed.telefono ?? null
+  const cambios: string[] = []
+  if (previo.nombre !== parsed.nombre) {
+    cambios.push(`nombre "${previo.nombre}" → "${parsed.nombre}"`)
+  }
+  if (telefonoPrev !== telefonoNuevo) {
+    cambios.push(`teléfono "${telefonoPrev ?? '—'}" → "${telefonoNuevo ?? '—'}"`)
+  }
+  const descripcion =
+    cambios.length > 0
+      ? `Perfil actualizado: ${cambios.join('; ')}.`
+      : 'Perfil actualizado (sin cambios detectados en nombre ni teléfono).'
+
+  await registrarBitacora(db, {
+    usuario_id: usuarioId,
+    accion: 'ACTUALIZAR_PERFIL',
+    descripcion,
+  })
+
+  return data
 }
 
 /**

@@ -46,8 +46,18 @@ export const asignarPermisoSchema = z.object({
   descripcion: z.string().nullable().optional(),
 })
 
+/**
+ * Perfil personal (CU05): solo se editan nombre y teléfono.
+ * Correo, rol y estado son de SOLO LECTURA en este caso de uso.
+ */
+export const actualizarPerfilSchema = z.object({
+  nombre: z.string().min(2, 'El nombre es obligatorio').max(150),
+  telefono: z.string().max(20).nullable().optional(),
+})
+
 export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>
 export type ActualizarUsuarioInput = z.infer<typeof actualizarUsuarioSchema>
 export type CambiarContrasenaInput = z.infer<typeof cambiarContrasenaSchema>
 export type CrearRolInput = z.infer<typeof crearRolSchema>
 export type AsignarPermisoInput = z.infer<typeof asignarPermisoSchema>
+export type ActualizarPerfilInput = z.infer<typeof actualizarPerfilSchema>
