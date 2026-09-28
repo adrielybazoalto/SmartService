@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
 // 1. VALIDAR CREDENCIALES (INICIAR SESIÓN)
 export async function validarCredenciales(
@@ -152,7 +153,7 @@ export async function cerrarSesion() {
 
   cookieStore.delete('smartservice_user')
 
-  return {
-    success: true
-  }
+  
+    redirect('/')
+  
 }
