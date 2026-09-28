@@ -1,5 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { requireRole } from "@/lib/auth";
+import { moduloPorRuta } from "@/lib/permisos";
+import { registrarEvento } from "@/backend/bitacora";
+
 export interface RolEntity {
   id: number;
   nombre: string;
@@ -8,230 +14,151 @@ export interface RolEntity {
   colorBadge: string;
 }
 
-export interface PermisoItem {
-  id: string;
-  nombre: string;
-}
-
-export interface ModuloGranular {
+/** Permiso a nivel de módulo/ruta (fila de la tabla PERMISO de la BD). */
+export interface ModuloPermiso {
   id: number;
-  codigo: string;
   nombre: string;
-  permisosDisponibles: PermisoItem[];
+  ruta: string;
+  descripcion: string;
+  etiqueta: string;
 }
 
 export interface RespuestaAccionRoles {
   ok: boolean;
   mensaje: string;
-  data?: any;
 }
 
-// Catálogo de roles
-const ROLES_CATALOGO: RolEntity[] = [
-  {
-    id: 1,
-    nombre: "ADMINISTRADOR",
-    descripcion: "Acceso total a todos los módulos y configuración global del sistema.",
-    letra: "A",
-    colorBadge: "bg-purple-100 text-purple-700 border-purple-300",
-  },
-  {
-    id: 2,
-    nombre: "ENCARGADO",
-    descripcion: "Gestión de personal, clientes, inventario, cotizaciones, ventas y supervisión de órdenes.",
-    letra: "E",
-    colorBadge: "bg-blue-100 text-blue-700 border-blue-300",
-  },
-  {
-    id: 3,
-    nombre: "TECNICO",
-    descripcion: "Consulta de agenda, inventario y registro operativo en órdenes de trabajo y mantenimiento.",
-    letra: "T",
-    colorBadge: "bg-emerald-100 text-emerald-700 border-emerald-300",
-  },
-];
-
-// Catálogo de los 8 módulos con permisos granulares (NO exportar como variable en use server)
-const MODULOS_GRANULARES: ModuloGranular[] = [
-  {
-    id: 1,
-    codigo: "seguridad",
-    nombre: "Seguridad y Accesos",
-    permisosDisponibles: [
-      { id: "ver_usuarios", nombre: "Ver usuarios" },
-      { id: "crear_usuarios", nombre: "Crear usuarios" },
-      { id: "editar_usuarios", nombre: "Editar usuarios" },
-      { id: "activar_desactivar", nombre: "Activar/desactivar" },
-      { id: "gestionar_roles", nombre: "Gestionar roles" },
-      { id: "ver_bitacora", nombre: "Ver bitácora" },
-    ],
-  },
-  {
-    id: 2,
-    codigo: "personal_tecnico",
-    nombre: "Personal Técnico",
-    permisosDisponibles: [
-      { id: "ver_tecnicos", nombre: "Ver técnicos" },
-      { id: "gestionar_jornadas", nombre: "Gestionar jornadas" },
-      { id: "registrar_bloqueos", nombre: "Registrar bloqueos" },
-      { id: "verificar_disponibilidad", nombre: "Verificar disponibilidad" },
-    ],
-  },
-  {
-    id: 3,
-    codigo: "clientes",
-    nombre: "Clientes y Establecimientos",
-    permisosDisponibles: [
-      { id: "ver_clientes", nombre: "Ver clientes" },
-      { id: "registrar_clientes", nombre: "Registrar clientes" },
-      { id: "editar_clientes", nombre: "Editar clientes" },
-      { id: "gestionar_establecimientos", nombre: "Gestionar establecimientos" },
-    ],
-  },
-  {
-    id: 4,
-    codigo: "inventario",
-    nombre: "Catálogo e Inventario",
-    permisosDisponibles: [
-      { id: "ver_productos", nombre: "Ver productos" },
-      { id: "crear_editar_productos", nombre: "Crear/editar productos" },
-      { id: "gestionar_proveedores", nombre: "Gestionar proveedores" },
-      { id: "movimientos_kardex", nombre: "Movimientos de Kárdex" },
-    ],
-  },
-  {
-    id: 5,
-    codigo: "cotizaciones",
-    nombre: "Cotizaciones y Servicios",
-    permisosDisponibles: [
-      { id: "ver_cotizaciones", nombre: "Ver cotizaciones" },
-      { id: "crear_cotizaciones", nombre: "Crear cotizaciones" },
-      { id: "editar_cotizaciones", nombre: "Editar cotizaciones" },
-      { id: "aprobar_rechazar", nombre: "Aprobar/rechazar cotizaciones" },
-      { id: "generar_pdf", nombre: "Generar PDF" },
-    ],
-  },
-  {
-    id: 6,
-    codigo: "ventas_caja",
-    nombre: "Ventas y Caja",
-    permisosDisponibles: [
-      { id: "ver_ventas", nombre: "Ver ventas" },
-      { id: "registrar_venta", nombre: "Registrar venta" },
-      { id: "abrir_cerrar_caja", nombre: "Abrir/cerrar caja" },
-      { id: "realizar_arqueo", nombre: "Realizar arqueo" },
-    ],
-  },
-  {
-    id: 7,
-    codigo: "ordenes_trabajo",
-    nombre: "Órdenes de Trabajo",
-    permisosDisponibles: [
-      { id: "ver_ordenes", nombre: "Ver órdenes" },
-      { id: "crear_ordenes", nombre: "Crear órdenes" },
-      { id: "asignar_tecnicos", nombre: "Asignar técnicos" },
-      { id: "cambiar_estado_ot", nombre: "Cambiar estado" },
-      { id: "registrar_trabajo_materiales", nombre: "Registrar trabajo/materiales" },
-    ],
-  },
-  {
-    id: 8,
-    codigo: "mantenimiento_alertas",
-    nombre: "Mantenimiento y Alertas",
-    permisosDisponibles: [
-      { id: "ver_mantenimientos", nombre: "Ver mantenimientos" },
-      { id: "ver_tickets", nombre: "Ver tickets" },
-      { id: "programar_mantenimiento", nombre: "Programar mantenimiento" },
-      { id: "visualizar_alertas", nombre: "Visualizar alertas" },
-    ],
-  },
-];
-
-// Matriz inicial de asignaciones
-let MATRIZ_ASIGNADA: { [rolId: number]: { [moduloCodigo: string]: string[] } } = {
-  1: {
-    seguridad: ["ver_usuarios", "crear_usuarios", "editar_usuarios", "activar_desactivar", "gestionar_roles", "ver_bitacora"],
-    personal_tecnico: ["ver_tecnicos", "gestionar_jornadas", "registrar_bloqueos", "verificar_disponibilidad"],
-    clientes: ["ver_clientes", "registrar_clientes", "editar_clientes", "gestionar_establecimientos"],
-    inventario: ["ver_productos", "crear_editar_productos", "gestionar_proveedores", "movimientos_kardex"],
-    cotizaciones: ["ver_cotizaciones", "crear_cotizaciones", "editar_cotizaciones", "aprobar_rechazar", "generar_pdf"],
-    ventas_caja: ["ver_ventas", "registrar_venta", "abrir_cerrar_caja", "realizar_arqueo"],
-    ordenes_trabajo: ["ver_ordenes", "crear_ordenes", "asignar_tecnicos", "cambiar_estado_ot", "registrar_trabajo_materiales"],
-    mantenimiento_alertas: ["ver_mantenimientos", "ver_tickets", "programar_mantenimiento", "visualizar_alertas"],
-  },
-  2: {
-    seguridad: ["ver_usuarios"],
-    personal_tecnico: ["ver_tecnicos", "gestionar_jornadas", "registrar_bloqueos", "verificar_disponibilidad"],
-    clientes: ["ver_clientes", "registrar_clientes", "editar_clientes", "gestionar_establecimientos"],
-    inventario: ["ver_productos", "crear_editar_productos", "gestionar_proveedores", "movimientos_kardex"],
-    cotizaciones: ["ver_cotizaciones", "crear_cotizaciones", "editar_cotizaciones", "aprobar_rechazar", "generar_pdf"],
-    ventas_caja: ["ver_ventas", "registrar_venta", "abrir_cerrar_caja", "realizar_arqueo"],
-    ordenes_trabajo: ["ver_ordenes", "crear_ordenes", "asignar_tecnicos", "cambiar_estado_ot"],
-    mantenimiento_alertas: ["ver_mantenimientos", "ver_tickets", "programar_mantenimiento", "visualizar_alertas"],
-  },
-  3: {
-    seguridad: [],
-    personal_tecnico: ["ver_tecnicos", "verificar_disponibilidad"],
-    clientes: ["ver_clientes"],
-    inventario: ["ver_productos"],
-    cotizaciones: ["ver_cotizaciones"],
-    ventas_caja: [],
-    ordenes_trabajo: ["ver_ordenes", "cambiar_estado_ot", "registrar_trabajo_materiales"],
-    mantenimiento_alertas: ["ver_mantenimientos", "ver_tickets", "visualizar_alertas"],
-  },
+const COLORES_BADGE: Record<string, string> = {
+  ADMINISTRADOR: "bg-purple-100 text-purple-700 border-purple-300",
+  ENCARGADO: "bg-blue-100 text-blue-700 border-blue-300",
+  TECNICO: "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
-// Función asíncrona de auditoría
-async function registrarAuditoria(accion: string, detalle: string) {
-  const log = {
-    id: Date.now(),
-    usuario_id: 1,
-    fecha_hora: new Date().toISOString(),
-    accion,
-    descripcion: detalle,
+function rolAEntidad(rol: { id: number; nombre: string; descripcion: string | null }): RolEntity {
+  return {
+    id: rol.id,
+    nombre: rol.nombre,
+    descripcion: rol.descripcion ?? "",
+    letra: rol.nombre.charAt(0),
+    colorBadge: COLORES_BADGE[rol.nombre] ?? "bg-zinc-100 text-zinc-700 border-zinc-300",
   };
-  console.log("📝 [BITACORA CU04/CU06]:", log);
 }
 
-// Server Action para obtener los datos
+/**
+ * Lee desde la base de datos: roles (ROL), catálogo de módulos (PERMISO) y la
+ * asignación actual de cada rol (ROL_PERMISO). El Navbar y el Dashboard leen
+ * la misma consulta, así que lo que se ve aquí es lo que verán los usuarios.
+ */
 export async function fetchRolesYPermisos(): Promise<{
   roles: RolEntity[];
-  modulos: ModuloGranular[];
-  matriz: { [rolId: number]: { [moduloCodigo: string]: string[] } };
+  modulos: ModuloPermiso[];
+  asignacion: { [rolId: number]: string[] };
 }> {
+  await requireRole("ADMINISTRADOR");
+
+  const db = getSupabaseServiceClient();
+
+  const { data: roles, error: er } = await db.from("rol").select("*").order("id");
+  if (er) throw new Error(`No se pudieron cargar los roles: ${er.message}`);
+
+  const { data: modulos, error: em } = await db.from("permiso").select("*").order("id");
+  if (em) throw new Error(`No se pudieron cargar los módulos: ${em.message}`);
+
+  const { data: rp, error: era } = await db
+    .from("rol_permiso")
+    .select("rol_id, permiso:permiso_id(nombre)");
+  if (era) throw new Error(`No se pudieron cargar las asignaciones: ${era.message}`);
+
+  const asignacion: { [rolId: number]: string[] } = {};
+  for (const fila of rp ?? []) {
+    const nombre = fila.permiso?.nombre;
+    if (!nombre) continue;
+    (asignacion[fila.rol_id] ??= []).push(nombre);
+  }
+
   return {
-    roles: JSON.parse(JSON.stringify(ROLES_CATALOGO)),
-    modulos: JSON.parse(JSON.stringify(MODULOS_GRANULARES)),
-    matriz: JSON.parse(JSON.stringify(MATRIZ_ASIGNADA)),
+    roles: (roles ?? []).map(rolAEntidad),
+    modulos: (modulos ?? []).map((m) => ({
+      id: m.id,
+      nombre: m.nombre,
+      ruta: m.ruta,
+      descripcion: m.descripcion ?? "",
+      etiqueta: moduloPorRuta(m.ruta)?.etiqueta ?? m.nombre,
+    })),
+    asignacion,
   };
 }
 
-// Server Action para guardar
-export async function postAsignacionPermiso(
+/**
+ * Guarda la asignación COMPLETA de módulos de un rol en ROL_PERMISO (BD) y
+ * revalida el sitio para que el Navbar y el Dashboard reflejen los cambios de
+ * inmediato en la siguiente carga o navegación.
+ */
+export async function guardarPermisosRol(
   rolId: number,
-  nuevaMatrizDelRol: { [moduloCodigo: string]: string[] }
+  nombresPermisos: string[],
 ): Promise<RespuestaAccionRoles> {
-  const rol = ROLES_CATALOGO.find((r) => r.id === rolId);
-  if (!rol) {
-    return { ok: false, mensaje: "El rol seleccionado no es válido." };
-  }
+  const usuario = await requireRole("ADMINISTRADOR");
+
+  const db = getSupabaseServiceClient();
+  const { data: rol, error: erRol } = await db
+    .from("rol")
+    .select("id, nombre")
+    .eq("id", rolId)
+    .maybeSingle();
+  if (erRol) return { ok: false, mensaje: "No se pudo consultar el rol seleccionado." };
+  if (!rol) return { ok: false, mensaje: "El rol seleccionado no es válido." };
 
   if (rolId === 1) {
     return {
       ok: false,
-      mensaje: "Aviso de seguridad: El rol Administrador Principal no puede perder permisos del sistema.",
+      mensaje: "El rol Administrador Principal no puede perder permisos del sistema.",
     };
   }
 
-  MATRIZ_ASIGNADA[rolId] = JSON.parse(JSON.stringify(nuevaMatrizDelRol));
+  const unicos = [...new Set(nombresPermisos)];
+  let permisosIds: number[] = [];
 
-  await registrarAuditoria(
-    "CONFIGURAR_ROLES_PERMISOS",
-    `Se actualizaron los permisos específicos para el rol: ${rol.nombre}`
-  );
+  if (unicos.length > 0) {
+    const { data: permisos, error } = await db
+      .from("permiso")
+      .select("id, nombre")
+      .in("nombre", unicos);
+    if (error) return { ok: false, mensaje: `No se pudieron validar los permisos: ${error.message}` };
+    if ((permisos ?? []).length !== unicos.length) {
+      return { ok: false, mensaje: "Uno o más permisos seleccionados no existen en el sistema." };
+    }
+    permisosIds = (permisos ?? []).map((p) => p.id);
+  }
+
+  // Reemplaza la asignación completa del rol (pequeña y atómica: ≤8 filas).
+  const { error: borrado } = await db.from("rol_permiso").delete().eq("rol_id", rolId);
+  if (borrado) return { ok: false, mensaje: `No se pudo actualizar: ${borrado.message}` };
+
+  if (permisosIds.length > 0) {
+    const { error: insercion } = await db.from("rol_permiso").insert(
+      permisosIds.map((permisoId) => ({
+        rol_id: rolId,
+        permiso_id: permisoId,
+        descripcion: "Asignado desde /roles (Consola RBAC)",
+      })),
+    );
+    if (insercion) return { ok: false, mensaje: `No se pudo guardar: ${insercion.message}` };
+  }
+
+  await registrarEvento(db, {
+    usuario_id: usuario.id,
+    accion: "CONFIGURAR_ROLES_PERMISOS",
+    descripcion: `Se guardaron ${permisosIds.length} permiso(s) de módulos para el rol ${rol.nombre}`,
+  });
+
+  // Reflejo inmediato: invalida el caché del layout raíz (Navbar) y del panel.
+  revalidatePath("/", "layout");
+  revalidatePath("/roles");
+  revalidatePath("/");
 
   return {
     ok: true,
-    mensaje: `Permisos para el rol ${rol.nombre} actualizados y registrados en bitácora correctamente.`,
+    mensaje: `Permisos del rol ${rol.nombre} guardados en la base de datos y aplicados al instante.`,
   };
 }

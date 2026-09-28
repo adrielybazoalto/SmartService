@@ -1,69 +1,63 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   fetchRolesYPermisos,
-  postAsignacionPermiso,
+  guardarPermisosRol,
   RolEntity,
-  ModuloGranular,
+  ModuloPermiso,
 } from "../actions/roles";
+import { IconoModulo } from "@/components/icono-modulo";
 
+/**
+ * Consola RBAC (módulo /roles): lee roles, módulos y asignaciones DESDE LA
+ * BASE DE DATOS (ROL, PERMISO, ROL_PERMISO). Al guardar, persiste en la BD y
+ * refresca el sitio (router.refresh + revalidatePath) para que el Dashboard y
+ * el Navbar reflejen los cambios de inmediato en cualquier sesión.
+ */
 export default function RolesPage() {
+  const router = useRouter();
   const [montado, setMontado] = useState(false);
   const [roles, setRoles] = useState<RolEntity[]>([]);
-  const [modulos, setModulos] = useState<ModuloGranular[]>([]);
-  const [matrizPermisos, setMatrizPermisos] = useState<{
-    [rolId: number]: { [moduloCodigo: string]: string[] };
-  }>({});
-
+  const [modulos, setModulos] = useState<ModuloPermiso[]>([]);
+  const [asignacion, setAsignacion] = useState<{ [rolId: number]: string[] }>({});
   const [rolSeleccionadoId, setRolSeleccionadoId] = useState<number>(1);
   const [guardando, setGuardando] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
 
-  const cargarConfiguracion = async () => {
+  const cargarConfiguracion = useCallback(async () => {
     try {
       const data = await fetchRolesYPermisos();
       setRoles(data.roles);
       setModulos(data.modulos);
-      setMatrizPermisos(data.matriz);
-      if (data.roles.length > 0) {
-        setRolSeleccionadoId(data.roles[0].id);
-      }
-    } catch (err) {
+      setAsignacion(data.asignacion);
+      setRolSeleccionadoId((prev) =>
+        data.roles.some((r) => r.id === prev) ? prev : data.roles[0]?.id ?? 1,
+      );
+    } catch {
       setMensajeError("Error al cargar los permisos desde el servidor.");
     } finally {
       setMontado(true);
     }
-  };
+  }, []);
 
   useEffect(() => {
     cargarConfiguracion();
-  }, []);
+  }, [cargarConfiguracion]);
 
-  const togglePermiso = (moduloCodigo: string, permisoId: string) => {
-    if (rolSeleccionadoId === 1) {
-      setMensajeError("Aviso: El rol Administrador Principal no puede perder permisos del sistema.");
-      setTimeout(() => setMensajeError(null), 3500);
-      return;
-    }
+  const rolSeleccionado = roles.find((r) => r.id === rolSeleccionadoId);
+  const esRolAdministrador = rolSeleccionadoId === 1;
+  const activosDelRol = new Set(asignacion[rolSeleccionadoId] ?? []);
 
-    setMatrizPermisos((prev) => {
-      const permisosRol = prev[rolSeleccionadoId] || {};
-      const listaPermisosModulo = permisosRol[moduloCodigo] || [];
-      const existe = listaPermisosModulo.includes(permisoId);
-
-      const nuevaLista = existe
-        ? listaPermisosModulo.filter((id) => id !== permisoId)
-        : [...listaPermisosModulo, permisoId];
-
-      return {
-        ...prev,
-        [rolSeleccionadoId]: {
-          ...permisosRol,
-          [moduloCodigo]: nuevaLista,
-        },
-      };
+  const toggleModulo = (nombre: string) => {
+    if (esRolAdministrador) return;
+    setAsignacion((prev) => {
+      const actuales = new Set(prev[rolSeleccionadoId] ?? []);
+      if (actuales.has(nombre)) actuales.delete(nombre);
+      else actuales.add(nombre);
+      return { ...prev, [rolSeleccionadoId]: [...actuales] };
     });
   };
 
@@ -71,162 +65,195 @@ export default function RolesPage() {
     setGuardando(true);
     setMensajeError(null);
     setMensajeExito(null);
-
-    const permisosDelRol = matrizPermisos[rolSeleccionadoId] || {};
-    const resp = await postAsignacionPermiso(rolSeleccionadoId, permisosDelRol);
-
-    setGuardando(false);
-    if (resp.ok) {
-      setMensajeExito(resp.mensaje);
-      setTimeout(() => setMensajeExito(null), 3500);
-    } else {
-      setMensajeError(resp.mensaje);
-      setTimeout(() => setMensajeError(null), 4000);
+    try {
+      const listaActiva = modulos
+        .filter((m) => activosDelRol.has(m.nombre))
+        .map((m) => m.nombre);
+      const resp = await guardarPermisosRol(rolSeleccionadoId, listaActiva);
+      if (resp.ok) {
+        setMensajeExito(resp.mensaje);
+        router.refresh(); // re-renderiza los server components (Navbar, etc.)
+        await cargarConfiguracion(); // resincroniza con la BD
+      } else {
+        setMensajeError(resp.mensaje);
+      }
+    } catch (e) {
+      setMensajeError(e instanceof Error ? e.message : "No se pudo guardar.");
+    } finally {
+      setGuardando(false);
     }
   };
 
   if (!montado) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-sm font-medium text-slate-500">Cargando roles y permisos del sistema...</p>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm font-medium text-zinc-500">Cargando roles y permisos del sistema…</p>
       </div>
     );
   }
 
-  const rolActual = roles.find((r) => r.id === rolSeleccionadoId);
-  const permisosRolActual = matrizPermisos[rolSeleccionadoId] || {};
-
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-10 text-slate-800">
-      <div className="max-w-7xl mx-auto space-y-6">
-
+    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <div className="flex flex-col gap-6">
         {/* Cabecera */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between dark:border-zinc-800 dark:bg-zinc-950">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
-              Caso de Uso 04 • Seguridad y Gestión de Accesos
+            <span className="inline-block rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              RBAC • Roles y Permisos
             </span>
-            <h1 className="text-2xl font-bold mt-2 text-slate-900">Configuración de Roles y Permisos</h1>
-            <p className="text-sm text-slate-500">
-              Parametrización detallada de permisos para los 8 módulos operativos de SmartService.
+            <h1 className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+              Configuración de Roles y Permisos
+            </h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Asignación de módulos por rol, guardada en la base de datos (
+              <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
+                rol_permiso
+              </code>
+              ). Los cambios se reflejan al instante en el Navbar y el Dashboard.
             </p>
           </div>
           <button
             onClick={handleGuardarCambios}
-            disabled={guardando}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-medium text-sm rounded-xl shadow-sm transition-all"
+            disabled={guardando || esRolAdministrador}
+            className="shrink-0 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-zinc-300 dark:disabled:bg-zinc-700"
           >
-            {guardando ? "Guardando..." : "Guardar Cambios"}
+            {guardando ? "Guardando…" : "Guardar Cambios"}
           </button>
         </div>
 
         {/* Notificaciones */}
         {mensajeExito && (
-          <div className="p-4 rounded-xl text-sm font-medium border bg-emerald-50 text-emerald-900 border-emerald-200">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
             ✓ {mensajeExito}
           </div>
         )}
         {mensajeError && (
-          <div className="p-4 rounded-xl text-sm font-medium border bg-rose-50 text-rose-900 border-rose-200">
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
             ⚠ {mensajeError}
           </div>
         )}
 
-        {/* Contenedor Principal */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          
-          {/* Columna Izquierda: Roles */}
-          <div className="md:col-span-4 border-r border-slate-200 p-4 space-y-2 bg-slate-50/50">
-            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">
+        {esRolAdministrador && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            🔒 El rol <strong>Administrador Principal</strong> tiene acceso total al sistema y sus
+            permisos no pueden modificarse.
+          </div>
+        )}
+
+        {/* Contenedor principal */}
+        <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm md:grid-cols-12 dark:border-zinc-800 dark:bg-zinc-950">
+          {/* Columna izquierda: roles */}
+          <div className="space-y-2 border-b border-zinc-200 bg-zinc-50/60 p-4 md:col-span-4 md:border-b-0 md:border-r dark:border-zinc-800 dark:bg-zinc-900/40">
+            <h2 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
               Roles del Sistema
             </h2>
             {roles.map((rol) => {
               const seleccionado = rolSeleccionadoId === rol.id;
+              const cuenta = (asignacion[rol.id] ?? []).length;
               return (
                 <button
                   key={rol.id}
                   onClick={() => setRolSeleccionadoId(rol.id)}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-xl text-left transition-all ${
+                  className={`flex w-full items-center gap-3 rounded-xl p-3.5 text-left transition-all ${
                     seleccionado
-                      ? "bg-white shadow-sm border border-slate-200 text-indigo-600 font-semibold"
-                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
+                      ? "border border-zinc-200 bg-white font-semibold text-zinc-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
+                      : "text-zinc-600 hover:bg-white/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900/60"
                   }`}
                 >
                   <span
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border shrink-0 ${rol.colorBadge}`}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${rol.colorBadge}`}
                   >
                     {rol.letra}
                   </span>
-                  <div>
-                    <span className="block text-sm leading-tight font-medium text-slate-900">{rol.nombre}</span>
-                    <span className="text-[11px] text-slate-400 font-normal line-clamp-2">{rol.descripcion}</span>
-                  </div>
+                  <span className="flex-1">
+                    <span className="block text-sm leading-tight font-medium text-zinc-900 dark:text-zinc-50">
+                      {rol.nombre}
+                    </span>
+                    <span className="line-clamp-2 text-[11px] font-normal text-zinc-400">
+                      {rol.descripcion}
+                    </span>
+                  </span>
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                    {cuenta}/{modulos.length}
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Columna Derecha: Matriz Granular */}
-          <div className="md:col-span-8 p-6 space-y-6">
-            <div className="border-b border-slate-100 pb-4">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Permisos asignados al rol:{" "}
-                <span className="text-indigo-600">{rolActual?.nombre}</span>
+          {/* Columna derecha: módulos */}
+          <div className="space-y-6 p-6 md:col-span-8">
+            <div className="border-b border-zinc-100 pb-4 dark:border-zinc-800">
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                Módulos del rol:{" "}
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {rolSeleccionado?.nombre}
+                </span>
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Habilita o deshabilita los privilegios específicos de cada módulo.
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {esRolAdministrador
+                  ? "Acceso fijo: todos los módulos están habilitados."
+                  : "Activa o desactiva los módulos que este rol puede ver en el Navbar y el Dashboard."}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[620px] overflow-y-auto pr-1">
+            <div className="grid max-h-[620px] grid-cols-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-2">
               {modulos.map((modulo) => {
-                const permisosActivos = permisosRolActual[modulo.codigo] || [];
-
+                const activo = activosDelRol.has(modulo.nombre);
                 return (
                   <div
                     key={modulo.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all space-y-3"
+                    className={`space-y-3 rounded-xl border p-4 transition-all ${
+                      activo
+                        ? "border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/30"
+                        : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+                    }`}
                   >
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <h3 className="text-sm font-semibold text-slate-800">
-                        {modulo.id}. {modulo.nombre}
-                      </h3>
-                      <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                        {permisosActivos.length}/{modulo.permisosDisponibles.length}
-                      </span>
+                    <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-2 dark:border-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                            activo
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                              : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                          }`}
+                        >
+                          <IconoModulo clave={modulo.nombre} className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                            {modulo.etiqueta}
+                          </h3>
+                          <code className="text-[11px] text-zinc-400">{modulo.ruta}</code>
+                        </div>
+                      </div>
+                      <button
+                        role="switch"
+                        aria-checked={activo}
+                        aria-label={`Permitir ${modulo.etiqueta}`}
+                        onClick={() => toggleModulo(modulo.nombre)}
+                        disabled={esRolAdministrador}
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                          activo
+                            ? "bg-emerald-500"
+                            : "bg-zinc-300 dark:bg-zinc-700"
+                        } ${esRolAdministrador ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                      >
+                        <span
+                          className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                            activo ? "translate-x-5" : ""
+                          }`}
+                        />
+                      </button>
                     </div>
-
-                    <div className="space-y-1.5">
-                      {modulo.permisosDisponibles.map((permiso) => {
-                        const activo = permisosActivos.includes(permiso.id);
-
-                        return (
-                          <label
-                            key={permiso.id}
-                            className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-100 text-xs transition-colors"
-                          >
-                            <span className={`font-medium ${activo ? "text-slate-900" : "text-slate-500"}`}>
-                              {permiso.nombre}
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={activo}
-                              onChange={() => togglePermiso(modulo.codigo, permiso.id)}
-                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
-                            />
-                          </label>
-                        );
-                      })}
-                    </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{modulo.descripcion}</p>
                   </div>
                 );
               })}
             </div>
           </div>
-
         </div>
-
       </div>
-    </div>
+    </main>
   );
 }
