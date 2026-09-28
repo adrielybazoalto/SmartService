@@ -13,9 +13,6 @@ export default async function PaginaLogin({
   const { next } = await searchParams
   const destino = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
 
-  return (
-    <main className="flex min-h-full flex-1 items-center justify-center bg-zinc-50 px-4 dark:bg-black">
-      <LoginForm destino={destino} />
-    </main>
-  )
+  // El diseño visual (fondo oscuro, efectos, tarjeta glass) vive en LoginForm
+  return <LoginForm destino={destino} />
 }
