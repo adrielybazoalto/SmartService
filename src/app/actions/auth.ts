@@ -6,29 +6,39 @@ import { loginSchema } from '@/backend/usuarios/schema'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 
-/**
- * Método del diagrama UML: validarCredenciales() [Pasos 4 y 5]
- * Valida las credenciales utilizando Supabase Auth
- */
+export async function introducirDatos(correo: string, password: string) {
+  return loginSchema.safeParse({ correo, password })
+}
+
+export async function enviarFormulario(formData: FormData) {
+  const rawCorreo = String(formData.get('correo') ?? '')
+  const rawPassword = String(formData.get('password') ?? '')
+  return await introducirDatos(rawCorreo, rawPassword)
+}
+
 export async function validarCredenciales(correo: string, password: string) {
-  // Instanciamos un cliente de Supabase para autenticación del usuario
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
   
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: correo,
-    password: password,
-  })
+  const { data: usuario, error } = await supabase
+    .from('usuarios')
+    .select('*')
+    .eq('correo', correo)
+    .single()
 
-  return { data, error }
+  if (error || !usuario) {
+    return { data: null, error: 'Usuario no encontrado' }
+  }
+
+  if (usuario.contrasena !== password && usuario.password !== password) {
+    return { data: null, error: 'Contraseña incorrecta' }
+  }
+
+  return { data: { user: usuario }, error: null }
 }
 
-/**
- * Método  registrarAcceso() Paso 6
- * Utiliza tu cliente de servicio para registrar el evento en la bitácora ignorando RLS
- */
 export async function registrarAcceso(usuarioId: string, correo: string) {
   try {
     const serviceClient = getSupabaseServiceClient()
@@ -38,24 +48,19 @@ export async function registrarAcceso(usuarioId: string, correo: string) {
       fecha_hora: new Date().toISOString(),
       accion: 'INICIO_SESION',
       descripcion: `El usuario corporativo ${correo} inició sesión en SmartService.`,
-    }as any)
+    } as any)
   } catch (err) {
     console.error('[BITACORA ERROR] Error al registrar acceso en base de datos:', err)
   }
 }
 
-/**
- * Controlador Principal de Inicio de Sesión
- */
-export async function loginAction(prevState: any, formData: FormData) {
-  const rawCorreo = String(formData.get('correo') ?? '')
-  const rawPassword = String(formData.get('password') ?? '')
+export async function redirigirPanel() {
+  revalidatePath('/', 'layout')
+  redirect('/')
+}
 
-  // 1. Validar sintaxis con Zod
-  const validation = loginSchema.safeParse({
-    correo: rawCorreo,
-    password: rawPassword,
-  })
+export async function iniciarSesion(prevState: any, formData: FormData) {
+  const validation = await enviarFormulario(formData)
 
   if (!validation.success) {
     const errors = validation.error.flatten().fieldErrors
@@ -70,7 +75,6 @@ export async function loginAction(prevState: any, formData: FormData) {
 
   const { correo, password } = validation.data
 
-  // 2. Invocar validarCredenciales() [Paso 5]
   const { data, error } = await validarCredenciales(correo, password)
 
   if (error || !data?.user) {
@@ -80,23 +84,12 @@ export async function loginAction(prevState: any, formData: FormData) {
     }
   }
 
-  // 3. Invocar registrarAcceso() usando el Service Role Client [Paso 6]
-  await registrarAcceso(data.user.id, correo)
+  await registrarAcceso(data.user.id || data.user.id_usuario, correo)
 
-  // 4. Redirigir al panel principal [Paso 7: redirigirPanel()]
-  revalidatePath('/', 'layout')
-  redirect('/')
+  await redirigirPanel()
 }
 
-/**
- * Controlador de Cierre de Sesión (Logout)
- */
 export async function logoutAction() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  await supabase.auth.signOut()
   revalidatePath('/', 'layout')
   redirect('/login')
 }
