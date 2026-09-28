@@ -9,6 +9,8 @@ export interface SesionUsuario {
   nombre: string
   correo: string
   rol_id: number
+  /** Nombre del rol (ADMINISTRADOR/ENCARGADO/TECNICO) al momento del ingreso. */
+  rol: string
   /** Versión de sesión: se incrementa al invalidar sesiones (CU02). */
   version: number
 }
@@ -53,6 +55,7 @@ export async function getSession(): Promise<SesionUsuario | null> {
       nombre: String(payload.nombre ?? ''),
       correo: String(payload.correo ?? ''),
       rol_id: Number(payload.rol_id ?? 0),
+      rol: String(payload.rol ?? ''),
       version: Number(payload.version ?? 0),
     }
   } catch {

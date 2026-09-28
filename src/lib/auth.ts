@@ -2,14 +2,19 @@ import { getSession } from '@/lib/session'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import type { Tables } from '@/lib/supabase/types'
 
-export async function getCurrentUser(): Promise<Tables<'usuario'> | null> {
+/** Usuario autenticado con su rol (leído de la BD en cada petición). */
+export type UsuarioConRol = Tables<'usuario'> & {
+  rol: { id: number; nombre: string } | null
+}
+
+export async function getCurrentUser(): Promise<UsuarioConRol | null> {
   const sesion = await getSession()
   if (!sesion) return null
 
   const db = getSupabaseServiceClient()
   const { data, error } = await db
     .from('usuario')
-    .select('*')
+    .select('*, rol:rol_id(id, nombre)')
     .eq('id', sesion.uid)
     .maybeSingle()
 
@@ -20,7 +25,7 @@ export async function getCurrentUser(): Promise<Tables<'usuario'> | null> {
   return data
 }
 
-export async function requireUser(): Promise<Tables<'usuario'>> {
+export async function requireUser(): Promise<UsuarioConRol> {
   const user = await getCurrentUser()
   if (!user) {
     throw new Error('No autorizado: inicia sesión para continuar.')
@@ -32,21 +37,15 @@ export async function requireUser(): Promise<Tables<'usuario'>> {
  * Requiere que el usuario autenticado tenga uno de los roles indicados.
  * El service role client bypasea RLS; el filtro fino por rol vive aquí.
  */
-export async function requireRole(...rolesPermitidos: string[]): Promise<Tables<'usuario'>> {
+export async function requireRole(...rolesPermitidos: string[]): Promise<UsuarioConRol> {
   const user = await requireUser()
 
-  const db = getSupabaseServiceClient()
-  const { data, error } = await db
-    .from('rol')
-    .select('nombre')
-    .eq('id', user.rol_id)
-    .maybeSingle()
-
-  if (error || !data) {
+  const nombreRol = user.rol?.nombre
+  if (!nombreRol) {
     throw new Error('No autorizado: no se encontró el rol del usuario.')
   }
 
-  if (!rolesPermitidos.includes(data.nombre)) {
+  if (!rolesPermitidos.includes(nombreRol)) {
     throw new Error('No autorizado: tu rol no tiene acceso a esta función.')
   }
 

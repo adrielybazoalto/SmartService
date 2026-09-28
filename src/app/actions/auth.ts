@@ -43,7 +43,7 @@ export async function loginAction(
     const db = getSupabaseServiceClient()
     const { data: usuario, error } = await db
       .from('usuario')
-      .select('*')
+      .select('*, rol:rol_id(nombre)')
       .eq('correo', parsed.email)
       .maybeSingle()
     if (error) throw new Error('No se pudo consultar el usuario.')
@@ -61,6 +61,7 @@ export async function loginAction(
       nombre: usuario.nombre,
       correo: usuario.correo,
       rol_id: usuario.rol_id,
+      rol: usuario.rol?.nombre ?? '',
       version: usuario.version_sesion,
     })
     redirigir = true

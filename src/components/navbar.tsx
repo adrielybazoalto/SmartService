@@ -45,6 +45,11 @@ export async function Navbar() {
           <span className="hidden text-sm text-zinc-500 dark:text-zinc-400 md:block">
             {usuario.nombre}
           </span>
+          {usuario.rol?.nombre && (
+            <span className="hidden rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 md:inline-block dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              {usuario.rol.nombre}
+            </span>
+          )}
           <form action={logoutAction}>
             <button
               type="submit"

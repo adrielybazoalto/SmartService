@@ -52,6 +52,7 @@ export async function actualizarPerfilAction(
       nombre: actualizado.nombre,
       correo: actualizado.correo,
       rol_id: actualizado.rol_id,
+      rol: usuario.rol?.nombre ?? '',
       version: actualizado.version_sesion,
     })
 
