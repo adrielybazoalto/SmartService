@@ -32,22 +32,3 @@ export async function requireUser(): Promise<UsuarioConRol> {
   }
   return user
 }
-
-/**
- * Requiere que el usuario autenticado tenga uno de los roles indicados.
- * El service role client bypasea RLS; el filtro fino por rol vive aquí.
- */
-export async function requireRole(...rolesPermitidos: string[]): Promise<UsuarioConRol> {
-  const user = await requireUser()
-
-  const nombreRol = user.rol?.nombre
-  if (!nombreRol) {
-    throw new Error('No autorizado: no se encontró el rol del usuario.')
-  }
-
-  if (!rolesPermitidos.includes(nombreRol)) {
-    throw new Error('No autorizado: tu rol no tiene acceso a esta función.')
-  }
-
-  return user
-}

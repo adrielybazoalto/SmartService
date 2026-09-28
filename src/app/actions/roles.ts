@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
-import { requireRole } from "@/lib/auth";
-import { moduloPorRuta } from "@/lib/permisos";
+import { requireUser } from "@/lib/auth";
+import { moduloPorRuta, tienePermisoModulo } from "@/lib/permisos";
 import { registrarEvento } from "@/backend/bitacora";
 
 export interface RolEntity {
@@ -54,7 +54,10 @@ export async function fetchRolesYPermisos(): Promise<{
   modulos: ModuloPermiso[];
   asignacion: { [rolId: number]: string[] };
 }> {
-  await requireRole("ADMINISTRADOR");
+  // Única condición de acceso: permiso ROLES activo en rol_permiso (BD).
+  if (!(await tienePermisoModulo("/roles"))) {
+    throw new Error("No autorizado: tu rol no tiene el permiso del módulo Roles.");
+  }
 
   const db = getSupabaseServiceClient();
 
@@ -98,7 +101,14 @@ export async function guardarPermisosRol(
   rolId: number,
   nombresPermisos: string[],
 ): Promise<RespuestaAccionRoles> {
-  const usuario = await requireRole("ADMINISTRADOR");
+  // Única condición de acceso: permiso ROLES activo en rol_permiso (BD).
+  if (!(await tienePermisoModulo("/roles"))) {
+    return {
+      ok: false,
+      mensaje: "No autorizado: tu rol no tiene el permiso del módulo Roles.",
+    };
+  }
+  const usuario = await requireUser();
 
   const db = getSupabaseServiceClient();
   const { data: rol, error: erRol } = await db
@@ -108,13 +118,6 @@ export async function guardarPermisosRol(
     .maybeSingle();
   if (erRol) return { ok: false, mensaje: "No se pudo consultar el rol seleccionado." };
   if (!rol) return { ok: false, mensaje: "El rol seleccionado no es válido." };
-
-  if (rolId === 1) {
-    return {
-      ok: false,
-      mensaje: "El rol Administrador Principal no puede perder permisos del sistema.",
-    };
-  }
 
   const unicos = [...new Set(nombresPermisos)];
   let permisosIds: number[] = [];

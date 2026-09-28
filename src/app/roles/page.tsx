@@ -48,11 +48,9 @@ export default function RolesPage() {
   }, [cargarConfiguracion]);
 
   const rolSeleccionado = roles.find((r) => r.id === rolSeleccionadoId);
-  const esRolAdministrador = rolSeleccionadoId === 1;
   const activosDelRol = new Set(asignacion[rolSeleccionadoId] ?? []);
 
   const toggleModulo = (nombre: string) => {
-    if (esRolAdministrador) return;
     setAsignacion((prev) => {
       const actuales = new Set(prev[rolSeleccionadoId] ?? []);
       if (actuales.has(nombre)) actuales.delete(nombre);
@@ -114,7 +112,7 @@ export default function RolesPage() {
           </div>
           <button
             onClick={handleGuardarCambios}
-            disabled={guardando || esRolAdministrador}
+            disabled={guardando}
             className="shrink-0 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-zinc-300 dark:disabled:bg-zinc-700"
           >
             {guardando ? "Guardando…" : "Guardar Cambios"}
@@ -130,13 +128,6 @@ export default function RolesPage() {
         {mensajeError && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
             ⚠ {mensajeError}
-          </div>
-        )}
-
-        {esRolAdministrador && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            🔒 El rol <strong>Administrador Principal</strong> tiene acceso total al sistema y sus
-            permisos no pueden modificarse.
           </div>
         )}
 
@@ -191,9 +182,7 @@ export default function RolesPage() {
                 </span>
               </h2>
               <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                {esRolAdministrador
-                  ? "Acceso fijo: todos los módulos están habilitados."
-                  : "Activa o desactiva los módulos que este rol puede ver en el Navbar y el Dashboard."}
+                Activa o desactiva los módulos que este rol puede ver en el Navbar y el Dashboard.
               </p>
             </div>
 
@@ -232,12 +221,11 @@ export default function RolesPage() {
                         aria-checked={activo}
                         aria-label={`Permitir ${modulo.etiqueta}`}
                         onClick={() => toggleModulo(modulo.nombre)}
-                        disabled={esRolAdministrador}
-                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${
                           activo
                             ? "bg-emerald-500"
                             : "bg-zinc-300 dark:bg-zinc-700"
-                        } ${esRolAdministrador ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                        }`}
                       >
                         <span
                           className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${

@@ -1,7 +1,7 @@
 'use server'
 
-import { requireRole } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { tienePermisoModulo } from '@/lib/permisos'
 import {
   listarBitacora,
   filtrarBitacoraSchema,
@@ -9,7 +9,10 @@ import {
 } from '@/backend/bitacora'
 
 export async function listarBitacoraAction(filtros: FiltrarBitacoraInput = {}) {
-  await requireRole('ADMINISTRADOR')
+  // Única condición de acceso: permiso BITACORA activo en rol_permiso (BD).
+  if (!(await tienePermisoModulo('/bitacora'))) {
+    throw new Error('No autorizado: tu rol no tiene el permiso del módulo Bitácora.')
+  }
 
   const parsed = filtrarBitacoraSchema.parse(filtros)
 

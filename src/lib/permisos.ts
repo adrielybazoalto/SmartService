@@ -69,6 +69,22 @@ export async function getModulosPermitidos(): Promise<ModuloRegistrado[]> {
 }
 
 /**
+ * Nivel 2 — Verificación de acceso por permiso: ¿el usuario autenticado tiene
+ * el permiso ACTIVO de la ruta en ROL_PERMISO? Es la ÚNICA condición de acceso
+ * a cualquier módulo (sin nombres de rol fijos en código).
+ */
+export async function tienePermisoModulo(ruta: string): Promise<boolean> {
+  const usuario = await getCurrentUser()
+  if (!usuario) return false
+
+  const modulo = moduloPorRuta(ruta)
+  if (!modulo) return true // Ruta no registrada en el catálogo: no aplica RBAC.
+
+  const claves = await getPermisosDeRol(usuario.rol_id)
+  return claves.includes(modulo.clave)
+}
+
+/**
  * Nivel 2 — Protección de rutas: valida que el usuario autenticado tenga el
  * permiso de la ruta. Si no, redirige a la pantalla principal con el aviso
  * 'No tiene permisos para acceder a este módulo'. Usar al inicio de layouts o
@@ -78,11 +94,7 @@ export async function requerirAccesoModulo(ruta: string): Promise<void> {
   const usuario = await getCurrentUser()
   if (!usuario) redirect('/login')
 
-  const modulo = moduloPorRuta(ruta)
-  if (!modulo) return // Ruta no registrada en el catálogo: no aplica RBAC.
-
-  const claves = await getPermisosDeRol(usuario.rol_id)
-  if (!claves.includes(modulo.clave)) {
+  if (!(await tienePermisoModulo(ruta))) {
     redirect('/?aviso=sin_permiso')
   }
 }
