@@ -9,6 +9,7 @@ import {
   ModuloPermiso,
 } from "../actions/roles";
 import { IconoModulo } from "@/components/icono-modulo";
+import { PageHeaderBadge } from "@/components/page-header-badge";
 
 /**
  * Consola RBAC (módulo /roles): lee roles, módulos y asignaciones DESDE LA
@@ -101,9 +102,7 @@ export default function RolesPage() {
         {/* Cabecera */}
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
-            <span className="inline-block rounded-md border border-lime-200 bg-lime-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-lime-700">
-              RBAC • Roles y Permisos
-            </span>
+            <PageHeaderBadge paquete="P1" cu="CU04" titulo="CONFIGURAR ROLES Y ASIGNAR PERMISOS" />
             <h1 className="mt-2 text-2xl font-bold text-slate-900">
               Configuración de Roles y Permisos
             </h1>

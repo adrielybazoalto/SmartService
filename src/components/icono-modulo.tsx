@@ -56,6 +56,12 @@ const ICONOS: Record<string, ReactElement> = {
       <circle cx="12" cy="7" r="4" />
     </>
   ),
+  INICIO: (
+    <>
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M9 22V12h6v10" />
+    </>
+  ),
 }
 
 /** Icono del módulo; por defecto usa el de PERFIL si no hay coincidencia. */

@@ -8,6 +8,7 @@ import {
   type RestablecerContrasenaState,
   type SolicitarRecuperacionState,
 } from '@/app/actions/recuperar'
+import { PageHeaderBadge } from '@/components/page-header-badge'
 
 const estadoSolicitud: SolicitarRecuperacionState = { ok: false }
 const estadoRestablecer: RestablecerContrasenaState = { ok: false }
@@ -43,6 +44,7 @@ function Tarjeta({ children }: { children: ReactNode }) {
               SGARNET
             </span>
           </div>
+          <PageHeaderBadge paquete="P1" cu="CU02" />
           <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-[30px]">
             Recuperar contraseña
           </h1>

@@ -1,13 +1,16 @@
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
-import { getModulosPermitidos } from '@/lib/permisos'
+import { getPermisosDeRol } from '@/lib/permisos'
+import { PAQUETES } from '@/lib/navigation'
 import { TarjetaModulo } from '@/components/tarjeta-modulo'
 import { BadgeRol } from '@/components/badge-rol'
+import { PageHeaderBadge } from '@/components/page-header-badge'
 
 /**
- * Panel principal: además de la bienvenida renderiza un grid de tarjetas con
- * los módulos permitidos del rol (leídos de ROL_PERMISO ⋈ PERMISO en la BD),
- * cada una con título, descripción, icono y acceso directo a la ruta.
+ * Panel principal (Ciclo 1 — alcance P1). El grid de tarjetas muestra
+ * EXCLUSIVAMENTE los casos de uso del paquete P1 (CU03..CU06), leídos de
+ * lib/navigation.ts y filtrados por el permiso activo del rol (RBAC en BD).
+ * No se agregan tarjetas ni indicadores de P2/P3 en este ciclo.
  */
 export default async function Home({
   searchParams,
@@ -17,7 +20,21 @@ export default async function Home({
   const usuario = await getCurrentUser()
   const { aviso } = await searchParams
   const sinPermiso = aviso === 'sin_permiso'
-  const modulos = await getModulosPermitidos()
+
+  const paqueteP1 = PAQUETES.find((p) => p.id === 'P1')
+  const itemsP1 = paqueteP1?.habilitado
+    ? paqueteP1.items.filter((item) => item.id !== 'inicio' && item.clave !== '')
+    : []
+
+  const permisos = usuario ? await getPermisosDeRol(usuario.rol_id) : []
+  const modulos = itemsP1
+    .filter((item) => permisos.includes(item.clave))
+    .map((item) => ({
+      clave: item.clave,
+      ruta: item.ruta,
+      etiqueta: item.etiqueta,
+      descripcion: item.descripcion ?? '',
+    }))
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-6xl flex-1 flex-col gap-8 bg-slate-100/70 px-4 py-8">
@@ -29,6 +46,7 @@ export default async function Home({
 
       {usuario && (
         <header className="flex flex-col gap-2">
+          <PageHeaderBadge paquete="P1" cu="CU01" />
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
               Hola, {usuario.nombre}

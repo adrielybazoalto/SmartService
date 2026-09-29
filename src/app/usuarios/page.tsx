@@ -10,6 +10,7 @@ import {
   UsuarioEntity,
   RolEntity,
 } from "@/app/actions/usuarios";
+import { PageHeaderBadge } from "@/components/page-header-badge";
 
 export default function AdministrarUsuariosPage() {
   // Atributos Boundary (IU_AdministrarUsuarios)
@@ -184,9 +185,7 @@ export default function AdministrarUsuariosPage() {
         {/* Cabecera Principal */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-lime-700 bg-lime-100 border border-lime-200 px-2.5 py-1 rounded-md">
-              Caso de Uso 03 • Ciclo #1
-            </span>
+            <PageHeaderBadge paquete="P1" cu="CU03" titulo="ADMINISTRAR USUARIOS" />
             <h1 className="text-2xl font-bold mt-2 text-slate-900">Gestión de Usuarios</h1>
             <p className="text-sm text-slate-500">
               Administración de cuentas internas de personal y asignación de roles.

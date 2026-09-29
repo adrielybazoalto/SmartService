@@ -1,6 +1,7 @@
 import { listarBitacoraAction } from '@/app/actions/bitacora'
 import { FiltrosBitacora } from './filtros-bitacora'
 import { FechaHoraBolivia } from './fecha-hora'
+import { PageHeaderBadge } from '@/components/page-header-badge'
 
 export const metadata = {
   title: 'Bitácora de Auditoría — SmartService',
@@ -36,9 +37,12 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
 
   return (
     <main className="flex flex-col gap-6 p-8">
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-        Bitácora de Auditoría
-      </h1>
+      <div className="flex flex-col gap-1.5">
+        <PageHeaderBadge paquete="P1" cu="CU06" titulo="GESTIONAR BITÁCORA DE AUDITORÍA" />
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          Bitácora de Auditoría
+        </h1>
+      </div>
 
       <FiltrosBitacora
         valoresIniciales={{
