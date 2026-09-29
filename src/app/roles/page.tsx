@@ -29,9 +29,9 @@ export default function RolesPage() {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
 
-  const cargarConfiguracion = useCallback(async () => {
-    try {
-      const data = await fetchRolesYPermisos();
+  /** Aplica la configuración leída de la BD (solo desde callbacks asíncronos). */
+  const aplicarConfiguracion = useCallback(
+    (data: Awaited<ReturnType<typeof fetchRolesYPermisos>>) => {
       setRoles(data.roles);
       setModulos(data.modulos);
       setAsignacion(data.asignacion);
@@ -39,16 +39,38 @@ export default function RolesPage() {
       setRolSeleccionadoId((prev) =>
         data.roles.some((r) => r.id === prev) ? prev : data.roles[0]?.id ?? 1,
       );
+    },
+    [],
+  );
+
+  /** Recarga y resincroniza con la BD (usado tras guardar cambios). */
+  const cargarConfiguracion = useCallback(async () => {
+    try {
+      aplicarConfiguracion(await fetchRolesYPermisos());
     } catch {
       setMensajeError("Error al cargar los permisos desde el servidor.");
     } finally {
       setMontado(true);
     }
-  }, []);
+  }, [aplicarConfiguracion]);
 
+  // Carga inicial al montar la pantalla (setState solo en callbacks asíncronos).
   useEffect(() => {
-    cargarConfiguracion();
-  }, [cargarConfiguracion]);
+    let activo = true;
+    fetchRolesYPermisos()
+      .then((data) => {
+        if (activo) aplicarConfiguracion(data);
+      })
+      .catch(() => {
+        if (activo) setMensajeError("Error al cargar los permisos desde el servidor.");
+      })
+      .finally(() => {
+        if (activo) setMontado(true);
+      });
+    return () => {
+      activo = false;
+    };
+  }, [aplicarConfiguracion]);
 
   const rolSeleccionado = roles.find((r) => r.id === rolSeleccionadoId);
   const activosDelRol = new Set(asignacion[rolSeleccionadoId] ?? []);

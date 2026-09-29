@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   listarUsuarios,
   obtenerRolesActivos,
@@ -51,6 +51,15 @@ export default function AdministrarUsuariosPage() {
   };
 
   // Mensaje 1, 2, 5 (Diagrama): ingresarModuloUsuarios() -> obtenerListaUsuarios() -> desplegarListaUsuarios()
+  /** Aplica la lista de usuarios y roles al estado (solo desde callbacks asíncronos). */
+  const aplicarDatos = useCallback(
+    (listaU: UsuarioEntity[], listaR: RolEntity[]) => {
+      setUsuarios(listaU);
+      setRoles(listaR);
+    },
+    []
+  );
+
   const cargarDatos = async () => {
     setCargando(true);
     try {
@@ -58,18 +67,31 @@ export default function AdministrarUsuariosPage() {
         listarUsuarios(),
         obtenerRolesActivos(),
       ]);
-      setUsuarios(listaU);
-      setRoles(listaR);
-    } catch (err) {
+      aplicarDatos(listaU, listaR);
+    } catch {
       mostrarError("Error al conectar con el servidor.");
     } finally {
       setCargando(false);
     }
   };
 
+  // Carga inicial al montar la pantalla (setState solo en callbacks asíncronos).
   useEffect(() => {
-    cargarDatos();
-  }, []);
+    let activo = true;
+    Promise.all([listarUsuarios(), obtenerRolesActivos()])
+      .then(([listaU, listaR]) => {
+        if (activo) aplicarDatos(listaU, listaR);
+      })
+      .catch(() => {
+        if (activo) mostrarError("Error al conectar con el servidor.");
+      })
+      .finally(() => {
+        if (activo) setCargando(false);
+      });
+    return () => {
+      activo = false;
+    };
+  }, [aplicarDatos]);
 
   // Mensaje 6 (Diagrama): seleccionarCrearOModificar()
   const solicitarCreacionUsuario = () => {
