@@ -13,7 +13,12 @@ export const contrasenaSchema = z
   .min(8, 'La contraseña debe tener al menos 8 caracteres')
   .max(72, 'La contraseña no puede superar los 72 caracteres')
   .refine((p) => /[A-Z]/.test(p), 'Debe incluir al menos una letra mayúscula')
+  .refine((p) => /[a-z]/.test(p), 'Debe incluir al menos una letra minúscula')
   .refine((p) => /\d/.test(p), 'Debe incluir al menos un número')
+  .refine(
+    (p) => /[^A-Za-z0-9]/.test(p),
+    'Debe incluir al menos un carácter especial (ej.: !@#$%^&*)',
+  )
   .refine(
     (p) => Buffer.byteLength(p, 'utf8') <= 72,
     'La contraseña supera el límite de 72 bytes de bcrypt',

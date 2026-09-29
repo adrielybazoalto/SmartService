@@ -182,7 +182,8 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
           placeholder="Nueva contraseña"
         />
         <p className="mt-2 px-1 text-xs text-gray-500">
-          Mínimo 8 caracteres, al menos una mayúscula y un número.
+          Mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un
+          carácter especial.
         </p>
       </div>
 
