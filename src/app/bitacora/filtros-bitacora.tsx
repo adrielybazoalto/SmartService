@@ -42,10 +42,10 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-wrap items-end gap-4 rounded-md border border-zinc-200 p-4 dark:border-zinc-800"
+      className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4"
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor="fecha_inicio" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        <label htmlFor="fecha_inicio" className="text-xs font-medium text-slate-400">
           Desde
         </label>
         <input
@@ -53,12 +53,12 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           type="date"
           value={filtros.fecha_inicio}
           onChange={(e) => setFiltros({ ...filtros, fecha_inicio: e.target.value })}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="fecha_fin" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        <label htmlFor="fecha_fin" className="text-xs font-medium text-slate-400">
           Hasta
         </label>
         <input
@@ -66,12 +66,12 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           type="date"
           value={filtros.fecha_fin}
           onChange={(e) => setFiltros({ ...filtros, fecha_fin: e.target.value })}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="usuario_id" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        <label htmlFor="usuario_id" className="text-xs font-medium text-slate-400">
           ID de usuario
         </label>
         <input
@@ -81,12 +81,12 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           placeholder="Todos"
           value={filtros.usuario_id}
           onChange={(e) => setFiltros({ ...filtros, usuario_id: e.target.value })}
-          className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-28 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="accion" className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        <label htmlFor="accion" className="text-xs font-medium text-slate-400">
           Tipo de acción
         </label>
         <input
@@ -95,21 +95,21 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           placeholder="Ej: INICIO_SESION"
           value={filtros.accion}
           onChange={(e) => setFiltros({ ...filtros, accion: e.target.value })}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
       <div className="flex gap-2">
         <button
           type="submit"
-          className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900"
+          className="cursor-pointer rounded-xl bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-500"
         >
           Filtrar
         </button>
         <button
           type="button"
           onClick={handleLimpiar}
-          className="rounded-md border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300"
+          className="cursor-pointer rounded-xl border border-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
         >
           Limpiar
         </button>

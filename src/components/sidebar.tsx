@@ -4,13 +4,15 @@ import { getCurrentUser } from '@/lib/auth'
 import { getModulosPermitidos } from '@/lib/permisos'
 import { logoutAction } from '@/app/actions/auth'
 import { EnlaceSidebar } from '@/components/sidebar-enlace'
+import { BadgeRol } from '@/components/badge-rol'
 
 /**
- * LAYOUT GLOBAL (Sidebar izquierda + contenido).
+ * LAYOUT GLOBAL (Sidebar izquierda + contenido) — tema azul/oscuro.
  * Sustituye al Navbar superior: pantalla dividida en dos columnas, con la
- * barra lateral fija (sticky) mostrando ÚNICAMENTE los módulos permitidos
- * para el rol del usuario según ROL_PERMISO ⋈ PERMISO en la BD (RBAC Nivel 1).
- * Sin sesión activa se devuelve la página tal cual (login, recuperar).
+ * barra lateral fija (sticky) en slate-950 mostrando ÚNICAMENTE los módulos
+ * permitidos para el rol del usuario según ROL_PERMISO ⋈ PERMISO en la BD
+ * (RBAC Nivel 1). Sin sesión activa se devuelve la página tal cual
+ * (login, recuperar).
  */
 export async function SidebarLayout({ children }: { children: ReactNode }) {
   const usuario = await getCurrentUser()
@@ -19,9 +21,9 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
   const enlaces = await getModulosPermitidos()
 
   return (
-    <div className="flex min-h-screen bg-black text-white">
+    <div className="flex min-h-screen bg-slate-950 text-white">
       {/* ── Barra Lateral Izquierda (fija) ─────────────────────────── */}
-      <aside className="sticky top-0 flex h-screen w-64 flex-col justify-between border-r border-neutral-800 p-4">
+      <aside className="sticky top-0 flex h-screen w-64 flex-col justify-between border-r border-slate-800 bg-slate-950 p-4">
         {/* Sección superior: logo y enlaces */}
         <div className="space-y-6">
           <Link href="/" className="block px-3 py-2 text-xl font-bold tracking-wider">
@@ -41,23 +43,21 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Sección inferior: usuario, rol y cerrar sesión */}
-        <div className="space-y-3 border-t border-neutral-800 pt-4">
+        <div className="space-y-3 border-t border-slate-800 pt-4">
           <div className="flex items-center gap-3 px-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-sm font-semibold uppercase text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-semibold uppercase text-white">
               {usuario.nombre.trim().charAt(0) || '?'}
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-white">{usuario.nombre}</p>
-              <p className="truncate text-xs font-semibold uppercase tracking-wide text-emerald-400">
-                {usuario.rol?.nombre ?? 'Sin rol'}
-              </p>
+              <BadgeRol rol={usuario.rol?.nombre} className="mt-1" />
             </div>
           </div>
 
           <form action={logoutAction}>
             <button
               type="submit"
-              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-neutral-900 hover:text-white"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/60 hover:text-white"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

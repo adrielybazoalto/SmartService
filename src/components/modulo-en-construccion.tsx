@@ -11,15 +11,15 @@ export default function ModuloEnConstruccion({ ruta }: { ruta: string }) {
   if (!modulo) return null
 
   return (
-    <main className="flex min-h-full flex-1 flex-col items-center justify-center gap-4 bg-zinc-50 px-4 py-16 text-center dark:bg-black">
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+    <main className="flex min-h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-950 px-4 py-16 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-800/40 bg-blue-950/50 text-blue-400">
         <IconoModulo clave={modulo.clave} className="h-8 w-8" />
       </span>
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-100">
         {modulo.etiqueta}
       </h1>
-      <p className="max-w-md text-zinc-500 dark:text-zinc-400">{modulo.descripcion}</p>
-      <p className="text-sm text-zinc-400 dark:text-zinc-500">
+      <p className="max-w-md text-slate-400">{modulo.descripcion}</p>
+      <p className="text-sm text-slate-500">
         Este módulo está en construcción y estará disponible próximamente.
       </p>
     </main>

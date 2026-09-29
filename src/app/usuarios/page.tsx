@@ -163,34 +163,34 @@ export default function AdministrarUsuariosPage() {
   const getBadgeRol = (nombreRol?: string) => {
     switch (nombreRol?.toUpperCase()) {
       case "ADMINISTRADOR":
-        return "bg-purple-100 text-purple-700 border-purple-200";
+        return "bg-blue-950/60 text-blue-400 border-blue-800/50";
       case "ENCARGADO":
-        return "bg-blue-100 text-blue-700 border-blue-200";
+        return "bg-sky-950/60 text-sky-400 border-sky-800/50";
       case "TECNICO":
-        return "bg-emerald-100 text-emerald-700 border-emerald-200";
+        return "bg-emerald-950/60 text-emerald-400 border-emerald-800/50";
       default:
-        return "bg-slate-100 text-slate-700 border-slate-200";
+        return "bg-slate-800/60 text-slate-300 border-slate-700";
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-10 text-slate-800">
+    <div className="min-h-screen bg-slate-950 p-6 md:p-10 text-slate-200">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Cabecera Principal */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/80 p-6 rounded-2xl shadow-lg shadow-black/10 border border-slate-800">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
+            <span className="text-xs font-semibold uppercase tracking-wider text-blue-400 bg-blue-950/60 border border-blue-800/50 px-2.5 py-1 rounded-md">
               Caso de Uso 03 • Ciclo #1
             </span>
-            <h1 className="text-2xl font-bold mt-2 text-slate-900">Gestión de Usuarios</h1>
-            <p className="text-sm text-slate-500">
+            <h1 className="text-2xl font-bold mt-2 text-slate-100">Gestión de Usuarios</h1>
+            <p className="text-sm text-slate-400">
               Administración de cuentas internas de personal y asignación de roles.
             </p>
           </div>
           <button
             onClick={solicitarCreacionUsuario}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span className="text-lg leading-none">+</span> Agregar Nuevo Usuario
           </button>
@@ -198,35 +198,35 @@ export default function AdministrarUsuariosPage() {
 
         {/* Notificaciones */}
         {mensajeExito && (
-          <div className="p-4 rounded-xl text-sm font-medium border bg-emerald-50 text-emerald-900 border-emerald-200">
+          <div className="p-4 rounded-xl text-sm font-medium border border-emerald-800/40 bg-emerald-950/40 text-emerald-300">
             ✓ {mensajeExito}
           </div>
         )}
         {lblMensajeError && (
-          <div className="p-4 rounded-xl text-sm font-medium border bg-rose-50 text-rose-900 border-rose-200">
+          <div className="p-4 rounded-xl text-sm font-medium border border-rose-800/40 bg-rose-950/40 text-rose-300">
             ⚠ {lblMensajeError}
           </div>
         )}
 
         {/* Barra de Filtros */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-slate-900/80 p-4 rounded-2xl shadow-lg shadow-black/10 border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="text-xs font-semibold text-slate-500 block mb-1">Filtrar por Búsqueda</label>
+            <label className="text-xs font-semibold text-slate-400 block mb-1">Filtrar por Búsqueda</label>
             <input
               type="text"
               placeholder="Buscar un nombre o correo..."
               value={filtroTexto}
               onChange={(e) => setFiltroTexto(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-slate-500"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-500 block mb-1">Roles</label>
+            <label className="text-xs font-semibold text-slate-400 block mb-1">Roles</label>
             <select
               value={filtroRol}
               onChange={(e) => setFiltroRol(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="TODOS">Todos los roles</option>
               {roles.map((r) => (
@@ -238,11 +238,11 @@ export default function AdministrarUsuariosPage() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-500 block mb-1">Estado</label>
+            <label className="text-xs font-semibold text-slate-400 block mb-1">Estado</label>
             <select
               value={filtroEstado}
               onChange={(e) => setFiltroEstado(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="TODOS">Activo/Inactivo</option>
               <option value="ACTIVO">Activo</option>
@@ -252,11 +252,11 @@ export default function AdministrarUsuariosPage() {
         </div>
 
         {/* Tabla de Usuarios (tablaUsuarios) */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-slate-900/80 rounded-2xl shadow-lg shadow-black/10 border border-slate-800 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <tr className="bg-slate-900 border-b border-slate-800 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   <th className="p-4">Avatar / Nombre</th>
                   <th className="p-4">Correo</th>
                   <th className="p-4">Teléfono</th>
@@ -265,7 +265,7 @@ export default function AdministrarUsuariosPage() {
                   <th className="p-4 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
+              <tbody className="divide-y divide-slate-800 text-sm">
                 {cargando ? (
                   <tr>
                     <td colSpan={6} className="text-center p-8 text-slate-400">
@@ -280,15 +280,15 @@ export default function AdministrarUsuariosPage() {
                   </tr>
                 ) : (
                   usuariosFiltrados.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50/60 transition-all">
-                      <td className="p-4 font-medium text-slate-900 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs">
+                    <tr key={u.id} className="hover:bg-slate-800/40 transition-all">
+                      <td className="p-4 font-medium text-slate-100 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-slate-200 text-xs">
                           {u.nombre.charAt(0)}
                         </div>
                         {u.nombre}
                       </td>
-                      <td className="p-4 text-slate-600">{u.correo}</td>
-                      <td className="p-4 text-slate-500">{u.telefono || "—"}</td>
+                      <td className="p-4 text-slate-300">{u.correo}</td>
+                      <td className="p-4 text-slate-400">{u.telefono || "—"}</td>
                       <td className="p-4">
                         <span
                           className={`text-xs px-2.5 py-1 font-semibold rounded-lg border ${getBadgeRol(
@@ -302,8 +302,8 @@ export default function AdministrarUsuariosPage() {
                         <span
                           className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${
                             u.estado
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-rose-50 text-rose-700"
+                              ? "bg-emerald-950/60 text-emerald-300"
+                              : "bg-rose-950/60 text-rose-300"
                           }`}
                         >
                           <span
@@ -319,7 +319,7 @@ export default function AdministrarUsuariosPage() {
                           {/* Modificar */}
                           <button
                             onClick={() => solicitarModificacionUsuario(u)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all"
+                            className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg hover:bg-blue-950/50 transition-all cursor-pointer"
                             title="Editar Usuario"
                           >
                             ✏️
@@ -333,7 +333,7 @@ export default function AdministrarUsuariosPage() {
                               onChange={() => solicitarCambioEstado(u.id, u.estado)}
                               className="sr-only peer"
                             />
-                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
                           </label>
                         </div>
                       </td>
@@ -347,15 +347,15 @@ export default function AdministrarUsuariosPage() {
 
         {/* Modal: Formulario Nuevo / Modificar Usuario */}
         {modalAbierto && (
-          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="text-lg font-bold text-slate-900">
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 rounded-2xl shadow-2xl shadow-blue-950/30 border border-slate-800 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-lg font-bold text-slate-100">
                   {modoEdicion ? "Modificar Usuario" : "Nuevo Usuario"}
                 </h3>
                 <button
                   onClick={() => setModalAbierto(false)}
-                  className="text-slate-400 hover:text-slate-600 font-bold"
+                  className="text-slate-400 hover:text-slate-200 font-bold cursor-pointer"
                 >
                   ✕
                 </button>
@@ -363,60 +363,60 @@ export default function AdministrarUsuariosPage() {
 
               <form onSubmit={handleGuardarFormulario} className="space-y-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Nombre Completo *</label>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Nombre Completo *</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej. Roberto Salazar"
                     value={txtNombre}
                     onChange={(e) => setTxtNombre(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder:text-slate-500"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Correo Electrónico *</label>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Correo Electrónico *</label>
                   <input
                     type="email"
                     required
                     placeholder="usuario@empresa.com"
                     value={txtCorreo}
                     onChange={(e) => setTxtCorreo(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder:text-slate-500"
                   />
                 </div>
 
                 {!modoEdicion && (
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Contraseña *</label>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Contraseña *</label>
                     <input
                       type="password"
                       required
                       placeholder="••••••••"
                       value={txtPassword}
                       onChange={(e) => setTxtPassword(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder:text-slate-500"
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Teléfono</label>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Teléfono</label>
                   <input
                     type="text"
                     placeholder="72010005"
                     value={txtTelefono}
                     onChange={(e) => setTxtTelefono(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder:text-slate-500"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Selección de Rol *</label>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Selección de Rol *</label>
                   <select
                     value={cboRol}
                     onChange={(e) => setCboRol(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                    className="w-full px-3 py-2 text-sm border border-slate-700 bg-slate-900 text-slate-100 rounded-xl focus:ring-1 focus:ring-blue-500 focus:outline-none"
                   >
                     {roles.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -426,17 +426,17 @@ export default function AdministrarUsuariosPage() {
                   </select>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                   <button
                     type="button"
                     onClick={() => setModalAbierto(false)}
-                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                    className="px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm font-medium bg-slate-900 hover:bg-slate-800 text-white rounded-xl shadow-sm transition-all"
+                    className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
                   >
                     Guardar
                   </button>

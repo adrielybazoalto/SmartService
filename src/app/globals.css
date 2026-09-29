@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
+/* Modo oscuro por clase (`.dark`) en lugar de prefers-color-scheme:
+   la interfaz es SIEMPRE el tema azul/oscuro, independiente del SO. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  /* Fondo principal / layout: azul marino casi negro */
+  --background: #030712;   /* slate-950 */
+  --foreground: #e2e8f0;   /* slate-200 */
 }
 
 @theme inline {
@@ -12,15 +18,43 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ═══ Sistema de diseño — Tema Azul/Oscuro ═══
+   Clases de componentes reutilizables para que todas las vistas
+   (dashboard, /usuarios, /roles, /bitacora, /cotizaciones, ...) tengan
+   apariencia uniforme y coherente con la pantalla de inicio de sesión.
+   Botón primario (azul neón + glow), tarjetas, inputs, badges por rol. */
+@layer components {
+  .tarjeta {
+    @apply rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/10;
+  }
+
+  .btn-primario {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .campo-input {
+    @apply w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 shadow-inner outline-none transition-all placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+  }
+
+  .campo-select {
+    @apply w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+  }
+
+  .contenedor-icono {
+    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-800/40 bg-blue-950/50 text-blue-400;
+  }
+
+  .mensaje-exito {
+    @apply rounded-xl border border-emerald-800/40 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300;
+  }
+
+  .mensaje-error {
+    @apply rounded-xl border border-rose-800/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-300;
+  }
 }

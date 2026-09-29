@@ -13,16 +13,16 @@ const perfilInicial: PerfilActionState = { ok: false }
 const contrasenaInicial: CambiarContrasenaState = { ok: false }
 
 const inputClase =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900'
+  'w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-all placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
 const inputSoloLectura =
-  'w-full cursor-not-allowed rounded-lg border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'
-const etiqueta = 'mb-1 block text-sm font-medium'
+  'w-full cursor-not-allowed rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2 text-sm text-slate-500'
+const etiqueta = 'mb-1 block text-sm font-medium text-slate-300'
 const mensajeExito =
-  'rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+  'rounded-xl border border-emerald-800/40 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-300'
 const mensajeError =
-  'rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300'
+  'rounded-xl border border-rose-800/40 bg-rose-950/40 px-3 py-2 text-sm text-rose-300'
 const botonClase =
-  'mt-2 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-black dark:hover:bg-zinc-300'
+  'mt-2 cursor-pointer rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-500 disabled:opacity-50'
 
 export function PerfilForm({
   nombre,
@@ -58,7 +58,7 @@ export function PerfilForm({
       {/* ===== Datos personales (CU05) ===== */}
       <form
         action={formAction}
-        className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800"
+        className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
       >
         {/* Datos de solo lectura (CU05: correo, rol y estado no se editan) */}
         <fieldset className="flex flex-col gap-4">
@@ -100,7 +100,7 @@ export function PerfilForm({
           </div>
         </fieldset>
 
-        <hr className="border-zinc-200 dark:border-zinc-800" />
+        <hr className="border-slate-800" />
 
         {/* Campos editables (CU05) */}
         <div>
@@ -145,7 +145,7 @@ export function PerfilForm({
       {/* ===== Cambiar contraseña (CU05) ===== */}
       <form
         action={pwFormAction}
-        className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800"
+        className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
       >
         <h2 className="text-sm font-semibold">Cambiar contraseña</h2>
 
@@ -182,7 +182,7 @@ export function PerfilForm({
             autoComplete="new-password"
             className={inputClase}
           />
-          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-xs text-slate-400">
             Debe contener al menos 8 caracteres, mayúscula, minúscula, número y un
             carácter especial.
           </p>
@@ -215,7 +215,7 @@ export function PerfilForm({
 
       <Link
         href="/"
-        className="text-center text-sm text-zinc-500 underline-offset-4 hover:underline dark:text-zinc-400"
+        className="text-center text-sm text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
       >
         ← Volver al inicio
       </Link>
