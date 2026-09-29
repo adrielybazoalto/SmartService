@@ -13,21 +13,21 @@ const estadoSolicitud: SolicitarRecuperacionState = { ok: false }
 const estadoRestablecer: RestablecerContrasenaState = { ok: false }
 
 const inputClase =
-  'w-full rounded-2xl border border-[#1b253f] bg-[#0e1422] py-3.5 px-4 text-sm text-white shadow-inner outline-none transition-all placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+  'w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 px-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50'
 
 function Tarjeta({ children }: { children: ReactNode }) {
   return (
-    <main className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#030712] p-4 text-white">
+    <main className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#F4F5F7] p-4 text-slate-900">
       {/* Efectos de fondo */}
-      <div className="pointer-events-none absolute left-1/2 top-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/10 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-10 right-10 h-[350px] w-[350px] rounded-full bg-indigo-900/10 blur-[100px]" />
+      <div className="pointer-events-none absolute left-1/2 top-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-lime-300/20 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-10 right-10 h-[350px] w-[350px] rounded-full bg-emerald-200/30 blur-[100px]" />
 
-      <div className="relative z-10 w-full max-w-[460px] rounded-[32px] border border-[#17223b] bg-[#090d16]/90 p-8 shadow-[0_25px_60px_rgba(0,0,0,0.8)] backdrop-blur-xl sm:p-10">
+      <div className="relative z-10 w-full max-w-[460px] rounded-[32px] border border-slate-200/60 bg-white p-8 shadow-xl shadow-slate-200/60 backdrop-blur-xl sm:p-10">
         {/* Logo y título */}
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex items-center rounded-full border border-[#1b2b4d] bg-[#0e1628] px-4 py-1.5 shadow-inner">
+          <div className="mb-4 flex items-center rounded-full border border-lime-200 bg-lime-50 px-4 py-1.5 shadow-sm">
             <svg
-              className="h-4 w-4 text-blue-400"
+              className="h-4 w-4 text-lime-600"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -39,14 +39,14 @@ function Tarjeta({ children }: { children: ReactNode }) {
                 d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
               />
             </svg>
-            <span className="ml-2 text-[11px] font-bold uppercase tracking-widest text-blue-300">
+            <span className="ml-2 text-[11px] font-bold uppercase tracking-widest text-lime-800">
               SGARNET
             </span>
           </div>
-          <h1 className="mb-1 text-2xl font-bold tracking-tight text-white sm:text-[30px]">
+          <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-[30px]">
             Recuperar contraseña
           </h1>
-          <p className="text-xs text-gray-400 sm:text-sm">
+          <p className="text-xs text-slate-500 sm:text-sm">
             Restablece el acceso a tu cuenta de SmartService
           </p>
         </div>
@@ -54,10 +54,10 @@ function Tarjeta({ children }: { children: ReactNode }) {
         {children}
 
         {/* Pie */}
-        <div className="mt-8 border-t border-[#17223b]/60 pt-4 text-center">
+        <div className="mt-8 border-t border-slate-100 pt-4 text-center">
           <Link
             href="/login"
-            className="text-xs font-medium text-blue-400 transition-colors hover:text-blue-300 sm:text-sm"
+            className="text-xs font-medium text-lime-700 transition-colors hover:text-lime-800 sm:text-sm"
           >
             ← Volver a iniciar sesión
           </Link>
@@ -78,19 +78,19 @@ function FormularioEmail({ errorInicial }: { errorInicial?: string }) {
   if (state.ok && state.enlace) {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm text-emerald-300">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           Revisa tu correo: enviamos un enlace para restablecer tu contraseña a{' '}
-          <span className="font-medium text-emerald-200">{state.correo}</span>.
+          <span className="font-medium text-emerald-900">{state.correo}</span>.
         </div>
 
         {/* Simulador: no hay SMTP configurado, el enlace se muestra aquí */}
-        <div className="rounded-xl border border-[#1b253f] bg-[#0e1422] p-4 text-xs text-gray-400">
-          <p className="font-semibold text-gray-300">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+          <p className="font-semibold text-slate-700">
             Simulador de correo (sin SMTP)
           </p>
           <a
             href={state.enlace}
-            className="mt-1 block break-all text-blue-400 transition-colors hover:text-blue-300"
+            className="mt-1 block break-all text-lime-700 transition-colors hover:text-lime-800"
           >
             {state.enlace}
           </a>
@@ -106,7 +106,7 @@ function FormularioEmail({ errorInicial }: { errorInicial?: string }) {
     <form action={formAction} className="space-y-4">
       {/* Excepciones: correo no encontrado / enlace expirado */}
       {(errorInicial || state.error) && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-center text-xs text-red-400 sm:text-sm">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-center text-xs text-rose-700 sm:text-sm">
           {errorInicial ?? state.error}
         </div>
       )}
@@ -127,7 +127,7 @@ function FormularioEmail({ errorInicial }: { errorInicial?: string }) {
       <button
         type="submit"
         disabled={pendiente}
-        className="mt-2 w-full cursor-pointer rounded-2xl bg-blue-600 py-3.5 text-sm font-medium text-white shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all hover:bg-blue-500 disabled:opacity-50"
+        className="mt-2 w-full cursor-pointer rounded-2xl bg-lime-400 py-3.5 text-sm font-semibold text-slate-900 shadow-[0_4px_20px_rgba(163,230,53,0.35)] transition-all hover:bg-lime-300 disabled:opacity-50"
       >
         {pendiente ? 'Enviando…' : 'Enviar enlace de recuperación'}
       </button>
@@ -146,13 +146,13 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
   if (state.ok) {
     return (
       <div className="space-y-4 text-center">
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm text-emerald-300">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           Contraseña restablecida correctamente. Ya puedes iniciar sesión con
           tu nueva clave.
         </div>
         <Link
           href="/login"
-          className="block w-full cursor-pointer rounded-2xl bg-blue-600 py-3.5 text-sm font-medium text-white shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all hover:bg-blue-500"
+          className="block w-full cursor-pointer rounded-2xl bg-lime-400 py-3.5 text-sm font-semibold text-slate-900 shadow-[0_4px_20px_rgba(163,230,53,0.35)] transition-all hover:bg-lime-300"
         >
           Iniciar sesión
         </Link>
@@ -165,7 +165,7 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
       <input type="hidden" name="token" value={token} />
 
       {state.error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-center text-xs text-red-400 sm:text-sm">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-center text-xs text-rose-700 sm:text-sm">
           {state.error}
         </div>
       )}
@@ -181,7 +181,7 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
           className={inputClase}
           placeholder="Nueva contraseña"
         />
-        <p className="mt-2 px-1 text-xs text-gray-500">
+        <p className="mt-2 px-1 text-xs text-slate-500">
           Mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un
           carácter especial.
         </p>
@@ -203,7 +203,7 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
       <button
         type="submit"
         disabled={pendiente}
-        className="mt-2 w-full cursor-pointer rounded-2xl bg-blue-600 py-3.5 text-sm font-medium text-white shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all hover:bg-blue-500 disabled:opacity-50"
+        className="mt-2 w-full cursor-pointer rounded-2xl bg-lime-400 py-3.5 text-sm font-semibold text-slate-900 shadow-[0_4px_20px_rgba(163,230,53,0.35)] transition-all hover:bg-lime-300 disabled:opacity-50"
       >
         {pendiente ? 'Guardando…' : 'Restablecer contraseña'}
       </button>

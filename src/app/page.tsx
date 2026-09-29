@@ -20,7 +20,7 @@ export default async function Home({
   const modulos = await getModulosPermitidos()
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-6xl flex-1 flex-col gap-8 bg-slate-950 px-4 py-8">
+    <main className="mx-auto flex min-h-full w-full max-w-6xl flex-1 flex-col gap-8 bg-slate-100/70 px-4 py-8">
       {sinPermiso && (
         <div className="mensaje-error text-center">
           No tiene permisos para acceder a este módulo.
@@ -30,12 +30,12 @@ export default async function Home({
       {usuario && (
         <header className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-100">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
               Hola, {usuario.nombre}
             </h1>
             {usuario.rol?.nombre && <BadgeRol rol={usuario.rol.nombre} />}
           </div>
-          <p className="text-slate-400">
+          <p className="text-slate-500">
             Bienvenido a SmartService. Accede a los módulos disponibles para tu
             rol.
           </p>
@@ -53,10 +53,10 @@ export default async function Home({
         </section>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-          <p className="text-slate-400">
+          <p className="text-slate-500">
             No tienes módulos asignados a tu rol.
           </p>
-          <Link href="/perfil" className="text-sm font-medium text-blue-400 hover:underline hover:text-blue-300">
+          <Link href="/perfil" className="text-sm font-semibold text-lime-700 hover:underline hover:text-lime-800">
             Ir a mi perfil
           </Link>
         </div>

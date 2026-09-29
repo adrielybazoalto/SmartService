@@ -1,13 +1,13 @@
 /**
- * Badge del rol del usuario — sistema de diseño (tema azul/oscuro):
- *  ADMINISTRADOR → azul neón
- *  ENCARGADO     → celeste
- *  TECNICO       → verde/turquesa
+ * Badge del rol del usuario — sistema de diseño (tema claro "PULSE"):
+ *  ADMINISTRADOR → azul pastel
+ *  ENCARGADO     → celeste pastel
+ *  TECNICO       → verde/menta pastel
  */
 const CLASES_ROLES: Record<string, string> = {
-  ADMINISTRADOR: 'border-blue-800/50 bg-blue-950/60 text-blue-400',
-  ENCARGADO: 'border-sky-800/50 bg-sky-950/60 text-sky-400',
-  TECNICO: 'border-emerald-800/50 bg-emerald-950/60 text-emerald-400',
+  ADMINISTRADOR: 'border-blue-200 bg-blue-100 text-blue-800',
+  ENCARGADO: 'border-sky-200 bg-sky-100 text-sky-800',
+  TECNICO: 'border-emerald-200 bg-emerald-100 text-emerald-800',
 }
 
 export function BadgeRol({
@@ -19,7 +19,7 @@ export function BadgeRol({
 }) {
   const clases =
     CLASES_ROLES[(rol ?? '').trim().toUpperCase()] ??
-    'border-slate-700 bg-slate-800/60 text-slate-300'
+    'border-slate-200 bg-slate-100 text-slate-700'
 
   return (
     <span

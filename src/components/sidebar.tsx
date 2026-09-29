@@ -7,11 +7,11 @@ import { EnlaceSidebar } from '@/components/sidebar-enlace'
 import { BadgeRol } from '@/components/badge-rol'
 
 /**
- * LAYOUT GLOBAL (Sidebar izquierda + contenido) — tema azul/oscuro.
+ * LAYOUT GLOBAL (Sidebar izquierda + contenido) — tema claro "PULSE".
  * Sustituye al Navbar superior: pantalla dividida en dos columnas, con la
- * barra lateral fija (sticky) en slate-950 mostrando ÚNICAMENTE los módulos
- * permitidos para el rol del usuario según ROL_PERMISO ⋈ PERMISO en la BD
- * (RBAC Nivel 1). Sin sesión activa se devuelve la página tal cual
+ * barra lateral fija (sticky) en blanco puro mostrando ÚNICAMENTE los
+ * módulos permitidos para el rol del usuario según ROL_PERMISO ⋈ PERMISO en
+ * la BD (RBAC Nivel 1). Sin sesión activa se devuelve la página tal cual
  * (login, recuperar).
  */
 export async function SidebarLayout({ children }: { children: ReactNode }) {
@@ -21,12 +21,12 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
   const enlaces = await getModulosPermitidos()
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-white">
+    <div className="flex min-h-screen bg-[#F4F5F7] text-slate-900">
       {/* ── Barra Lateral Izquierda (fija) ─────────────────────────── */}
-      <aside className="sticky top-0 flex h-screen w-64 flex-col justify-between border-r border-slate-800 bg-slate-950 p-4">
+      <aside className="sticky top-0 flex h-screen w-64 flex-col justify-between border-r border-slate-200/80 bg-white p-4">
         {/* Sección superior: logo y enlaces */}
         <div className="space-y-6">
-          <Link href="/" className="block px-3 py-2 text-xl font-bold tracking-wider">
+          <Link href="/" className="block px-3 py-2 text-xl font-bold tracking-wider text-slate-900">
             SmartService
           </Link>
 
@@ -43,13 +43,13 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Sección inferior: usuario, rol y cerrar sesión */}
-        <div className="space-y-3 border-t border-slate-800 pt-4">
+        <div className="space-y-3 border-t border-slate-200/80 pt-4">
           <div className="flex items-center gap-3 px-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-semibold uppercase text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold uppercase text-slate-700">
               {usuario.nombre.trim().charAt(0) || '?'}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">{usuario.nombre}</p>
+              <p className="truncate text-sm font-medium text-slate-900">{usuario.nombre}</p>
               <BadgeRol rol={usuario.rol?.nombre} className="mt-1" />
             </div>
           </div>
@@ -57,7 +57,7 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
           <form action={logoutAction}>
             <button
               type="submit"
-              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/60 hover:text-white"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

@@ -13,6 +13,6 @@ export default async function PaginaLogin({
   const { next } = await searchParams
   const destino = next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
 
-  // El diseño visual (fondo oscuro, efectos, tarjeta glass) vive en LoginForm
+  // El diseño visual (tema claro PULSE, tarjeta blanca con acento menta) vive en LoginForm
   return <LoginForm destino={destino} />
 }

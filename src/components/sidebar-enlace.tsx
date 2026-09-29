@@ -7,8 +7,8 @@ import { IconoModulo } from '@/components/icono-modulo'
 /**
  * Ítem del menú del Sidebar (estilo Instagram): ícono a la izquierda +
  * etiqueta a la derecha. Detecta el módulo activo con `usePathname` y lo
- * resalta con fondo azul oscuro (bg-slate-800, texto blanco); el hover usa
- * gris/azul oscuro tenue.
+ * resalta con la píldora verde menta redondeada (texto oscuro legible);
+ * el hover usa gris claro.
  */
 export function EnlaceSidebar({
   ruta,
@@ -26,10 +26,10 @@ export function EnlaceSidebar({
     <Link
       href={ruta}
       aria-current={activo ? 'page' : undefined}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
         activo
-          ? 'bg-slate-800 text-white'
-          : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
+          ? 'bg-[#BDEB9D] font-semibold text-slate-900'
+          : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
       <IconoModulo clave={clave} className="h-5 w-5 shrink-0" />

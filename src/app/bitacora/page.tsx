@@ -36,7 +36,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
 
   return (
     <main className="flex flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold text-slate-100">
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900">
         Bitácora de Auditoría
       </h1>
 
@@ -56,25 +56,25 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
       )}
 
       {!errorMensaje && eventos.length === 0 && (
-        <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
+        <p className="rounded-xl border border-slate-200/60 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
           No se encontraron registros de bitácora para los filtros seleccionados.
         </p>
       )}
 
       {!errorMensaje && eventos.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/60">
+        <div className="overflow-x-auto rounded-xl border border-slate-200/60 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-900">
+            <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 font-medium text-slate-400">Fecha y hora</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Usuario (ID)</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Acción</th>
-                <th className="px-4 py-3 font-medium text-slate-400">Descripción</th>
+                <th className="px-4 py-3 font-semibold text-slate-500">Fecha y hora</th>
+                <th className="px-4 py-3 font-semibold text-slate-500">Usuario (ID)</th>
+                <th className="px-4 py-3 font-semibold text-slate-500">Acción</th>
+                <th className="px-4 py-3 font-semibold text-slate-500">Descripción</th>
               </tr>
             </thead>
             <tbody>
               {eventos.map((evento) => (
-                <tr key={evento.id} className="border-t border-slate-800">
+                <tr key={evento.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 whitespace-nowrap">
                     <FechaHoraBolivia fecha={evento.fecha_hora} />
                   </td>

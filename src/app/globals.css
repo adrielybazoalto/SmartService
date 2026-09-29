@@ -1,14 +1,16 @@
 @import "tailwindcss";
 
-/* Modo oscuro por clase (`.dark`) en lugar de prefers-color-scheme:
-   la interfaz es SIEMPRE el tema azul/oscuro, independiente del SO. */
+/* La interfaz es SIEMPRE clara (tema "PULSE"). La variante `dark` queda
+   definida pero inerte: ningún ancestro lleva la clase `.dark`, por lo que
+   las utilidades `dark:` residuales nunca se activan aunque el SO esté en
+   modo oscuro. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  color-scheme: dark;
-  /* Fondo principal / layout: azul marino casi negro */
-  --background: #030712;   /* slate-950 */
-  --foreground: #e2e8f0;   /* slate-200 */
+  color-scheme: light;
+  /* Fondo principal: gris claro tenue */
+  --background: #f4f5f7;
+  --foreground: #0f172a; /* slate-900 */
 }
 
 @theme inline {
@@ -24,37 +26,38 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ═══ Sistema de diseño — Tema Azul/Oscuro ═══
+/* ═══ Sistema de diseño — Tema Claro "PULSE" ═══
    Clases de componentes reutilizables para que todas las vistas
-   (dashboard, /usuarios, /roles, /bitacora, /cotizaciones, ...) tengan
-   apariencia uniforme y coherente con la pantalla de inicio de sesión.
-   Botón primario (azul neón + glow), tarjetas, inputs, badges por rol. */
+   (dashboard, /usuarios, /roles, /bitacora, /cotizaciones, ...) tengan una
+   apariencia uniforme: fondo gris claro, tarjetas blancas elevadas, acento
+   verde menta/manzana (lime) y textos slate legibles.
+   Botón primario (verde menta con texto oscuro), tarjetas, inputs, badges. */
 @layer components {
   .tarjeta {
-    @apply rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/10;
+    @apply rounded-2xl border border-slate-200/60 bg-white shadow-sm;
   }
 
   .btn-primario {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-lime-400 px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm shadow-lime-200/60 transition-colors hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .campo-input {
-    @apply w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 shadow-inner outline-none transition-all placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50;
   }
 
   .campo-select {
-    @apply w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50;
   }
 
   .contenedor-icono {
-    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-800/40 bg-blue-950/50 text-blue-400;
+    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-lime-200 bg-lime-100 text-lime-700;
   }
 
   .mensaje-exito {
-    @apply rounded-xl border border-emerald-800/40 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300;
+    @apply rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800;
   }
 
   .mensaje-error {
-    @apply rounded-xl border border-rose-800/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-300;
+    @apply rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700;
   }
 }

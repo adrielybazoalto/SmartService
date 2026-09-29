@@ -13,16 +13,16 @@ const perfilInicial: PerfilActionState = { ok: false }
 const contrasenaInicial: CambiarContrasenaState = { ok: false }
 
 const inputClase =
-  'w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 shadow-inner outline-none transition-all placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50'
 const inputSoloLectura =
-  'w-full cursor-not-allowed rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2 text-sm text-slate-500'
-const etiqueta = 'mb-1 block text-sm font-medium text-slate-300'
+  'w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500'
+const etiqueta = 'mb-1 block text-sm font-medium text-slate-700'
 const mensajeExito =
-  'rounded-xl border border-emerald-800/40 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-300'
+  'rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800'
 const mensajeError =
-  'rounded-xl border border-rose-800/40 bg-rose-950/40 px-3 py-2 text-sm text-rose-300'
+  'rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700'
 const botonClase =
-  'mt-2 cursor-pointer rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-500 disabled:opacity-50'
+  'mt-2 cursor-pointer rounded-xl bg-lime-400 px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm shadow-lime-200/60 transition-colors hover:bg-lime-300 disabled:opacity-50'
 
 export function PerfilForm({
   nombre,
@@ -58,11 +58,11 @@ export function PerfilForm({
       {/* ===== Datos personales (CU05) ===== */}
       <form
         action={formAction}
-        className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
+        className="flex flex-col gap-4 rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm"
       >
         {/* Datos de solo lectura (CU05: correo, rol y estado no se editan) */}
         <fieldset className="flex flex-col gap-4">
-          <legend className="mb-1 block text-sm font-semibold">
+          <legend className="mb-1 block text-sm font-semibold text-slate-900">
             Información de la cuenta
           </legend>
 
@@ -100,7 +100,7 @@ export function PerfilForm({
           </div>
         </fieldset>
 
-        <hr className="border-slate-800" />
+        <hr className="border-slate-200" />
 
         {/* Campos editables (CU05) */}
         <div>
@@ -145,9 +145,9 @@ export function PerfilForm({
       {/* ===== Cambiar contraseña (CU05) ===== */}
       <form
         action={pwFormAction}
-        className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
+        className="flex flex-col gap-4 rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm"
       >
-        <h2 className="text-sm font-semibold">Cambiar contraseña</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Cambiar contraseña</h2>
 
         {pwState.ok && (
           <p className={mensajeExito}>Contraseña cambiada correctamente.</p>
@@ -182,7 +182,7 @@ export function PerfilForm({
             autoComplete="new-password"
             className={inputClase}
           />
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-500">
             Debe contener al menos 8 caracteres, mayúscula, minúscula, número y un
             carácter especial.
           </p>
@@ -215,7 +215,7 @@ export function PerfilForm({
 
       <Link
         href="/"
-        className="text-center text-sm text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
+        className="text-center text-sm text-slate-500 underline-offset-4 hover:text-slate-700 hover:underline"
       >
         ← Volver al inicio
       </Link>
