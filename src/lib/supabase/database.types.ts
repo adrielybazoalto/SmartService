@@ -287,6 +287,8 @@ export type Database = {
           telefono: string | null
           estado: boolean
           version_sesion: number
+          intentos_fallidos: number
+          bloqueado_hasta: string | null
         }
         Insert: {
           id?: number
@@ -297,6 +299,8 @@ export type Database = {
           telefono?: string | null
           estado?: boolean
           version_sesion?: number
+          intentos_fallidos?: number
+          bloqueado_hasta?: string | null
         }
         Update: {
           id?: number
@@ -307,6 +311,8 @@ export type Database = {
           telefono?: string | null
           estado?: boolean
           version_sesion?: number
+          intentos_fallidos?: number
+          bloqueado_hasta?: string | null
         }
         Relationships: [
           {

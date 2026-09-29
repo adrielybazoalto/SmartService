@@ -12,9 +12,30 @@ const loginSchema = z.object({
   password: z.string().min(1, 'La contraseña es obligatoria'),
 })
 
+/** CU01 — límite de intentos fallidos antes de bloquear temporalmente. */
+const MAX_INTENTOS_FALLIDOS = 3
+/** CU01 — duración de la penalización (1 minuto). */
+const BLOQUEO_MINUTOS = 1
+
 export interface LoginActionState {
   ok: boolean
   error?: string
+}
+
+/**
+ * Actualiza los contadores de bloqueo (CU01). Si la migración aún no se aplicó
+ * en la BD (columnas ausentes), el login sigue funcionando y solo se omite el
+ * registro de intentos: nunca debe impedir autenticarse.
+ */
+async function actContadores(
+  db: ReturnType<typeof getSupabaseServiceClient>,
+  usuarioId: number,
+  campos: { intentos_fallidos?: number; bloqueado_hasta?: string | null },
+) {
+  const { error } = await db.from('usuario').update(campos).eq('id', usuarioId)
+  if (error) {
+    console.warn(`[CU01] No se pudieron actualizar contadores del usuario ${usuarioId}: ${error.message}`)
+  }
 }
 
 /** Ruta de destino válida (evita open-redirects mediante el parámetro `next`). */
@@ -26,6 +47,11 @@ function destinoSeguro(next: string | null): string {
  * Inicia sesión verificando el hash bcrypt almacenado en `usuario.contrasena`
  * y crea la cookie de sesión JWT propia (firmada con AUTH_SECRET).
  * Supabase se usa solo como base de datos.
+ *
+ * CU01 — control de intentos fallidos:
+ *   1) Bloqueo vigente → se niega antes de validar la contraseña.
+ *   2) Contraseña incorrecta → +1 intento; al llegar a 3 se bloquea 1 minuto.
+ *   3) Contraseña correcta → se reinician los contadores y se inicia sesión.
  */
 export async function loginAction(
   _prevState: LoginActionState,
@@ -48,13 +74,56 @@ export async function loginAction(
       .maybeSingle()
     if (error) throw new Error('No se pudo consultar el usuario.')
 
-    const valido = usuario
-      ? await verificarContrasena(parsed.password, usuario.contrasena)
-      : false
-
-    if (!valido || !usuario?.estado) {
+    // Cuenta inexistente: mensaje genérico (sin revelar existencia del correo).
+    if (!usuario) {
       return { ok: false, error: 'Correo o contraseña incorrectos.' }
     }
+
+    const ahora = Date.now()
+
+    // (1) Bloqueo vigente → denegar ANTES de validar la contraseña.
+    if (usuario.bloqueado_hasta) {
+      const finBloqueo = new Date(usuario.bloqueado_hasta).getTime()
+      if (Number.isFinite(finBloqueo) && finBloqueo > ahora) {
+        const segundos = Math.ceil((finBloqueo - ahora) / 1000)
+        return {
+          ok: false,
+          error: `Tu cuenta ha sido bloqueada temporalmente por demasiados intentos fallidos. Inténtalo de nuevo en ${segundos} segundos.`,
+        }
+      }
+      // Penalización vencida → ventana limpia (se reinicia el contador).
+      await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: null })
+    }
+
+    const contrasenaCorrecta = await verificarContrasena(parsed.password, usuario.contrasena)
+
+    // (2) Contraseña incorrecta → incrementar intentos / bloquear al llegar al límite.
+    if (!contrasenaCorrecta) {
+      const intentos = (usuario.intentos_fallidos ?? 0) + 1
+
+      if (intentos >= MAX_INTENTOS_FALLIDOS) {
+        const bloqueadoHasta = new Date(ahora + BLOQUEO_MINUTOS * 60_000).toISOString()
+        // Se reinicia el contador junto con el bloqueo (ventana por período).
+        await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: bloqueadoHasta })
+        return {
+          ok: false,
+          error: `Has superado el límite de ${MAX_INTENTOS_FALLIDOS} intentos fallidos. Tu cuenta estará bloqueada durante ${BLOQUEO_MINUTOS} minuto.`,
+        }
+      }
+
+      await actContadores(db, usuario.id, { intentos_fallidos: intentos })
+      return {
+        ok: false,
+        error: `Contraseña incorrecta. Te quedan ${MAX_INTENTOS_FALLIDOS - intentos} intento(s).`,
+      }
+    }
+
+    if (!usuario.estado) {
+      return { ok: false, error: 'Correo o contraseña incorrectos.' }
+    }
+
+    // (3) Contraseña correcta → reiniciar contadores e iniciar sesión.
+    await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: null })
 
     await createSession({
       uid: usuario.id,

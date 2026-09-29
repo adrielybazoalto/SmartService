@@ -114,6 +114,8 @@ CREATE TABLE USUARIO (
     telefono VARCHAR(30),
     estado BOOLEAN NOT NULL DEFAULT TRUE,
     version_sesion INTEGER NOT NULL DEFAULT 0,
+    intentos_fallidos INTEGER NOT NULL DEFAULT 0,
+    bloqueado_hasta TIMESTAMPTZ,
 
     CONSTRAINT fk_usuario_rol
         FOREIGN KEY (rol_id)
