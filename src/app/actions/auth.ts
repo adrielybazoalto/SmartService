@@ -6,16 +6,12 @@ import { z } from 'zod'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { verificarContrasena } from '@/lib/password'
 import { createSession, destroySession } from '@/lib/session'
+import { CU01 } from '@/lib/bloqueo-cu01'
 
 const loginSchema = z.object({
   email: z.string().email('Correo inválido'),
   password: z.string().min(1, 'La contraseña es obligatoria'),
 })
-
-/** CU01 — límite de intentos fallidos antes de bloquear temporalmente. */
-const MAX_INTENTOS_FALLIDOS = 3
-/** CU01 — duración de la penalización (1 minuto). */
-const BLOQUEO_MINUTOS = 1
 
 export interface LoginActionState {
   ok: boolean
@@ -48,9 +44,9 @@ function destinoSeguro(next: string | null): string {
  * y crea la cookie de sesión JWT propia (firmada con AUTH_SECRET).
  * Supabase se usa solo como base de datos.
  *
- * CU01 — control de intentos fallidos:
+ * CU01 — control de intentos fallidos (parámetros en `@/lib/bloqueo-cu01`):
  *   1) Bloqueo vigente → se niega antes de validar la contraseña.
- *   2) Contraseña incorrecta → +1 intento; al llegar a 3 se bloquea 1 minuto.
+ *   2) Contraseña incorrecta → +1 intento; al llegar al límite se bloquea.
  *   3) Contraseña correcta → se reinician los contadores y se inicia sesión.
  */
 export async function loginAction(
@@ -101,20 +97,20 @@ export async function loginAction(
     if (!contrasenaCorrecta) {
       const intentos = (usuario.intentos_fallidos ?? 0) + 1
 
-      if (intentos >= MAX_INTENTOS_FALLIDOS) {
-        const bloqueadoHasta = new Date(ahora + BLOQUEO_MINUTOS * 60_000).toISOString()
+      if (intentos >= CU01.maxIntentos) {
+        const bloqueadoHasta = new Date(ahora + CU01.minutosBloqueo * 60_000).toISOString()
         // Se reinicia el contador junto con el bloqueo (ventana por período).
         await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: bloqueadoHasta })
         return {
           ok: false,
-          error: `Has superado el límite de ${MAX_INTENTOS_FALLIDOS} intentos fallidos. Tu cuenta estará bloqueada durante ${BLOQUEO_MINUTOS} minuto.`,
+          error: `Has superado el límite de ${CU01.maxIntentos} intentos fallidos. Tu cuenta estará bloqueada durante ${CU01.minutosBloqueo} minuto${CU01.minutosBloqueo === 1 ? '' : 's'}.`,
         }
       }
 
       await actContadores(db, usuario.id, { intentos_fallidos: intentos })
       return {
         ok: false,
-        error: `Contraseña incorrecta. Te quedan ${MAX_INTENTOS_FALLIDOS - intentos} intento(s).`,
+        error: `Contraseña incorrecta. Te quedan ${CU01.maxIntentos - intentos} intento(s).`,
       }
     }
 
