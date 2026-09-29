@@ -24,7 +24,12 @@ export async function registrarBitacora(
     .insert(parsed as NuevaBitacora)
     .select()
     .single()
-  if (error) throw new Error(`No se pudo registrar en la bitácora: ${error.message}`)
+  if (error) {
+    // Trazabilidad en la terminal de Node.js (dev/prod) — si Supabase rechaza
+    // la inserción, el detalle queda visible en el log del servidor.
+    console.error('Error al registrar en bitácora:', error)
+    throw new Error(`No se pudo registrar en la bitácora: ${error.message}`)
+  }
   return data
 }
 
@@ -36,7 +41,10 @@ export async function registrarBitacora(
 export async function registrarEvento(db: Db, input: RegistrarEventoInput): Promise<Bitacora> {
   const parsed = registrarEventoSchema.parse(input)
   const { data, error } = await db.from('bitacora').insert(parsed as NuevoEventoBitacora).select().single()
-  if (error) throw new Error(`No se pudo registrar el evento en la bitácora: ${error.message}`)
+  if (error) {
+    console.error('Error al registrar en bitácora:', error)
+    throw new Error(`No se pudo registrar el evento en la bitácora: ${error.message}`)
+  }
   return data
 }
 

@@ -1,5 +1,9 @@
 "use server";
 
+import { getCurrentUser } from "@/lib/auth";
+import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { registrarBitacora } from "@/backend/bitacora";
+
 export interface RolEntity {
   id: number;
   nombre: string;
@@ -47,14 +51,27 @@ let USUARIOS_DATA: UsuarioEntity[] = [
 ];
 
 async function registrarAuditoria(accion: string, detalle: string) {
-  const nuevoLog: BitacoraEntity = {
-    id: Date.now(),
-    usuario_id: 1,
-    fecha_hora: new Date().toISOString(),
-    accion,
-    descripcion: detalle,
-  };
-  console.log("📝 [AUDITORÍA BITÁCORA CU06]:", nuevoLog);
+  // Trazabilidad en terminal (desarrollo) — respeta el formato histórico.
+  console.log("📝 [AUDITORÍA BITÁCORA CU06]:", { accion, detalle });
+
+  // PERSISTENCIA REAL en la tabla BITACORA (Supabase). El usuario_id siempre
+  // proviene de la sesión activa; si no hay sesión, se omite (nunca se inventa
+  // un id, que rompería la clave foránea usuario_id → usuario.id).
+  try {
+    const usuario = await getCurrentUser();
+    if (!usuario) {
+      console.warn("[BITÁCORA] Sin usuario en sesión; auditoría omitida:", accion);
+      return;
+    }
+    const db = getSupabaseServiceClient();
+    await registrarBitacora(db, {
+      usuario_id: usuario.id,
+      accion,
+      descripcion: detalle,
+    });
+  } catch (e) {
+    console.error("Error al registrar en bitácora:", e);
+  }
 }
 
 export async function listarUsuarios(): Promise<UsuarioEntity[]> {

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { registrarEvento } from '@/backend/bitacora'
 import {
   crearCliente,
   crearClienteSchema,
@@ -17,12 +18,23 @@ import {
  *   4) servicio del dominio       → lógica de negocio desacoplada de la UI
  */
 export async function crearClienteAction(data: CrearClienteInput) {
-  await requireUser()
+  const usuario = await requireUser()
 
   const parsed = crearClienteSchema.parse(data)
 
   const db = getSupabaseServiceClient()
   const cliente = await crearCliente(db, parsed)
+
+  // BITÁCORA (CU06): registra la creación; un fallo no interrumpe el flujo.
+  try {
+    await registrarEvento(db, {
+      usuario_id: usuario.id,
+      accion: 'CREAR_CLIENTE',
+      descripcion: `Se creó el cliente (ID ${cliente.id})`,
+    })
+  } catch (e) {
+    console.error('Error al registrar en bitácora:', e)
+  }
 
   revalidatePath('/clientes')
   return { id: cliente.id }

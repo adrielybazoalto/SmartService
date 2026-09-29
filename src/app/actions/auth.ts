@@ -7,6 +7,8 @@ import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { verificarContrasena } from '@/lib/password'
 import { createSession, destroySession } from '@/lib/session'
 import { CU01 } from '@/lib/bloqueo-cu01'
+import { getCurrentUser } from '@/lib/auth'
+import { registrarEvento } from '@/backend/bitacora'
 
 const loginSchema = z.object({
   email: z.string().email('Correo inválido'),
@@ -129,6 +131,18 @@ export async function loginAction(
       rol: usuario.rol?.nombre ?? '',
       version: usuario.version_sesion,
     })
+
+    // BITÁCORA (CU06): registra el acceso exitoso. Un fallo aquí JAMÁS
+    // bloquea el login (se loguea y se continúa).
+    try {
+      await registrarEvento(db, {
+        usuario_id: usuario.id,
+        accion: 'INICIO_SESION',
+        descripcion: `Inicio de sesión exitoso del usuario ${usuario.correo}`,
+      })
+    } catch (e) {
+      console.error('Error al registrar en bitácora:', e)
+    }
     redirigir = true
   } catch (e) {
     return {
@@ -146,6 +160,21 @@ export async function loginAction(
 
 /** Cierra la sesión eliminando la cookie. */
 export async function logoutAction() {
+  // BITÁCORA (CU06): registra el cierre cuando hay sesión activa.
+  const usuario = await getCurrentUser()
+  if (usuario) {
+    try {
+      const db = getSupabaseServiceClient()
+      await registrarEvento(db, {
+        usuario_id: usuario.id,
+        accion: 'CIERRE_SESION',
+        descripcion: `Cierre de sesión del usuario ${usuario.correo}`,
+      })
+    } catch (e) {
+      console.error('Error al registrar en bitácora:', e)
+    }
+  }
+
   await destroySession()
   revalidatePath('/', 'layout')
   redirect('/login')
