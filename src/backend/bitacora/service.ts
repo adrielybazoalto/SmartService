@@ -8,6 +8,7 @@ import {
   type RegistrarEventoInput,
 } from './schema'
 import type { Bitacora, NuevaBitacora, NuevoEventoBitacora } from './types'
+import { obtenerIpOrigen } from '@/lib/ip'
 
 /**
  * Inserta un evento de auditoría en BITACORA (CU05: ACTUALIZAR_PERFIL,
@@ -18,10 +19,10 @@ export async function registrarBitacora(
   input: RegistrarBitacoraInput,
 ): Promise<Bitacora> {
   const parsed = registrarBitacoraSchema.parse(input)
-
+  const ip_origen = await obtenerIpOrigen()
   const { data, error } = await db
     .from('bitacora')
-    .insert(parsed as NuevaBitacora)
+    .insert({ ...parsed, ...(ip_origen ? { ip_origen } : {}) } as NuevaBitacora)
     .select()
     .single()
   if (error) {
@@ -40,7 +41,8 @@ export async function registrarBitacora(
  */
 export async function registrarEvento(db: Db, input: RegistrarEventoInput): Promise<Bitacora> {
   const parsed = registrarEventoSchema.parse(input)
-  const { data, error } = await db.from('bitacora').insert(parsed as NuevoEventoBitacora).select().single()
+  const ip_origen = await obtenerIpOrigen()
+  const { data, error } = await db.from('bitacora').insert({ ...parsed, ...(ip_origen ? { ip_origen } : {}) } as NuevoEventoBitacora).select().single()
   if (error) {
     console.error('Error al registrar en bitácora:', error)
     throw new Error(`No se pudo registrar el evento en la bitácora: ${error.message}`)
@@ -57,6 +59,7 @@ export async function listarBitacora(db: Db, filtros: FiltrarBitacoraInput = {})
   if (parsed.fecha_fin) query = query.lte('fecha_hora', parsed.fecha_fin)
   if (parsed.usuario_id) query = query.eq('usuario_id', parsed.usuario_id)
   if (parsed.accion) query = query.eq('accion', parsed.accion)
+  if (parsed.ip_origen) query = query.ilike('ip_origen', `%${parsed.ip_origen}%`)
 
   const { data, error } = await query
   if (error) throw new Error(`No se pudo cargar la bitácora: ${error.message}`)

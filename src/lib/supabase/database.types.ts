@@ -462,6 +462,7 @@ export type Database = {
           fecha_hora: string
           accion: string
           descripcion: string | null
+          ip_origen: string | null
         }
         Insert: {
           id?: number
@@ -469,6 +470,7 @@ export type Database = {
           fecha_hora?: string
           accion: string
           descripcion?: string | null
+          ip_origen: string | null
         }
         Update: {
           id?: number
@@ -476,6 +478,7 @@ export type Database = {
           fecha_hora?: string
           accion?: string
           descripcion?: string | null
+          ip_origen: string | null
         }
         Relationships: [
           {
