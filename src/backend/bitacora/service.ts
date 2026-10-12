@@ -48,6 +48,23 @@ export async function registrarEvento(db: Db, input: RegistrarEventoInput): Prom
   return data
 }
 
+/**
+ * CU07 — Evento de auditoría del módulo Clientes (Gestionar Clientes y
+ * Establecimientos). Invoca `registrarEvento()` con el detalle de la acción.
+ *
+ * NOTA DE DISEÑO: por el momento NO se recibe ni se persiste la IP del
+ * solicitante; la firma queda lista para la unificación posterior del
+ * rastreo de eventos (fuente/contexto) sin cambiar a los llamadores.
+ */
+export async function guardarEventoCliente(
+  db: Db,
+  usuario_id: number,
+  accion: string,
+  descripcion: string | null = null,
+): Promise<Bitacora> {
+  return registrarEvento(db, { usuario_id, accion, descripcion })
+}
+
 /** Lista y filtra la bitácora — pasos 2 y 3 del flujo principal del CU06. */
 export async function listarBitacora(db: Db, filtros: FiltrarBitacoraInput = {}): Promise<Bitacora[]> {
   const parsed = filtrarBitacoraSchema.parse(filtros)

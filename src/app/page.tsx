@@ -7,10 +7,9 @@ import { BadgeRol } from '@/components/badge-rol'
 import { PageHeaderBadge } from '@/components/page-header-badge'
 
 /**
- * Panel principal (Ciclo 1 — alcance P1). El grid de tarjetas muestra
- * EXCLUSIVAMENTE los casos de uso del paquete P1 (CU03..CU06), leídos de
- * lib/navigation.ts y filtrados por el permiso activo del rol (RBAC en BD).
- * No se agregan tarjetas ni indicadores de P2/P3 en este ciclo.
+ * Panel principal. El grid de tarjetas muestra los casos de uso de TODOS los
+ * paquetes habilitados en lib/navigation.ts (P1: CU03..CU06, P3: CU07),
+ * filtrados por el permiso activo del rol (RBAC en BD — PERMISO ⋈ ROL_PERMISO).
  */
 export default async function Home({
   searchParams,
@@ -21,13 +20,13 @@ export default async function Home({
   const { aviso } = await searchParams
   const sinPermiso = aviso === 'sin_permiso'
 
-  const paqueteP1 = PAQUETES.find((p) => p.id === 'P1')
-  const itemsP1 = paqueteP1?.habilitado
-    ? paqueteP1.items.filter((item) => item.id !== 'inicio' && item.clave !== '')
-    : []
+  // Ítems navegables de todos los paquetes habilitados (excluye "Inicio").
+  const itemsHabilitados = PAQUETES.filter((p) => p.habilitado).flatMap((paquete) =>
+    paquete.items.filter((item) => item.id !== 'inicio' && item.clave !== ''),
+  )
 
   const permisos = usuario ? await getPermisosDeRol(usuario.rol_id) : []
-  const modulos = itemsP1
+  const modulos = itemsHabilitados
     .filter((item) => permisos.includes(item.clave))
     .map((item) => ({
       clave: item.clave,

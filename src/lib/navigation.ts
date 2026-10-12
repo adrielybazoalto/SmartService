@@ -1,12 +1,15 @@
 /**
- * CONFIGURACIÓN DE NAVEGACIÓN POR PAQUETES (Ciclo 1 — solo P1 habilitado).
+ * CONFIGURACIÓN DE NAVEGACIÓN POR PAQUETES (Ciclo 1 — P1 habilitado).
  *
  * Única fuente de verdad del alcance del sistema: el Sidebar y el Dashboard
  * se construyen a partir de este arreglo. Para habilitar un paquete en un
  * ciclo futuro solo hay que cambiar `habilitado: true` (y agregar sus items).
  *
- * Los paquetes deshabilitados (P2, P3) NO tienen items ni rutas: no debe
- * existir ninguna página accesible para ellos en este ciclo.
+ * P1: SEGURIDAD Y ACCESOS → habilitado (CU01, CU03–CU06).
+ * P2: GESTIÓN DE PERSONAL TÉCNICO → deshabilitado (sin rutas aún).
+ * P3: CLIENTES, VENTAS Y COTIZACIONES → habilitado SOLO con CU07
+ *     (Gestionar Clientes y Establecimientos); cotizaciones/ventas/caja
+ *     siguen sin rutas en este ciclo.
  */
 
 export interface ItemNav {
@@ -94,7 +97,16 @@ export const PAQUETES: PaqueteNav[] = [
   {
     id: 'P3',
     nombre: 'CLIENTES, VENTAS Y COTIZACIONES',
-    habilitado: false,
-    items: [],
+    habilitado: true,
+    items: [
+      {
+        id: 'clientes',
+        etiqueta: 'Clientes y Establecimientos (CU07)',
+        ruta: '/clientes',
+        clave: 'CLIENTES',
+        cu: 'CU07',
+        descripcion: 'Registro y consulta de clientes con sus establecimientos.',
+      },
+    ],
   },
 ]

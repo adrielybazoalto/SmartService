@@ -114,8 +114,8 @@ ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 -- ============================================================
 -- 5B. TABLA: PERMISO / ROL_PERMISO (RBAC por RUTAS - menú y protección)
 -- La interfaz lee aquí qué módulos puede ver cada rol. Matriz por defecto:
---   ADMINISTRADOR: 8/8 módulos
---   ENCARGADO:     perfil, cotizaciones, órdenes de trabajo, caja, ventas
+--   ADMINISTRADOR: 9/9 módulos
+--   ENCARGADO:     perfil, clientes, cotizaciones, órdenes de trabajo, caja, ventas
 --   TECNICO:       perfil, cotizaciones (lectura), órdenes de trabajo
 -- ============================================================
 INSERT INTO PERMISO (id, nombre, ruta, descripcion) VALUES
@@ -123,6 +123,7 @@ INSERT INTO PERMISO (id, nombre, ruta, descripcion) VALUES
 (2, 'USUARIOS', '/usuarios', 'Gestión de usuarios del sistema'),
 (3, 'ROLES', '/roles', 'Administración de roles y permisos'),
 (4, 'BITACORA', '/bitacora', 'Consulta de auditoría de eventos'),
+(9, 'CLIENTES', '/clientes', 'Gestión de clientes y establecimientos'),
 (5, 'COTIZACIONES', '/cotizaciones', 'Cotizaciones y servicios'),
 (6, 'ORDENES_TRABAJO', '/ordenes-trabajo', 'Órdenes de trabajo'),
 (7, 'CAJA', '/caja', 'Control y arqueo de caja'),
@@ -132,13 +133,14 @@ ON CONFLICT (nombre) DO NOTHING;
 -- ADMINISTRADOR: acceso total (todos los módulos)
 INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion) VALUES
 (1, 1, 'Acceso total'), (1, 2, 'Acceso total'), (1, 3, 'Acceso total'),
-(1, 4, 'Acceso total'), (1, 5, 'Acceso total'), (1, 6, 'Acceso total'),
-(1, 7, 'Acceso total'), (1, 8, 'Acceso total')
+(1, 4, 'Acceso total'), (1, 9, 'Acceso total'), (1, 5, 'Acceso total'),
+(1, 6, 'Acceso total'), (1, 7, 'Acceso total'), (1, 8, 'Acceso total')
 ON CONFLICT (rol_id, permiso_id) DO NOTHING;
 
 -- ENCARGADO: módulos operativos (NO /usuarios, /roles, /bitacora)
 INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion) VALUES
-(2, 1, 'Módulo propio'), (2, 5, 'Cotizaciones y servicios'),
+(2, 1, 'Módulo propio'), (2, 9, 'Clientes y establecimientos'),
+(2, 5, 'Cotizaciones y servicios'),
 (2, 6, 'Órdenes de trabajo'), (2, 7, 'Caja'), (2, 8, 'Ventas')
 ON CONFLICT (rol_id, permiso_id) DO NOTHING;
 

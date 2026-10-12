@@ -39,17 +39,17 @@ autorización real la aporta la **sesión JWT propia**:
 ```ts
 import { requireUser } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
-import { crearCliente, crearClienteSchema, type CrearClienteInput } from '@/backend/clientes'
+import { listarClientes } from '@/backend/clientes'
 
-export async function crearClienteAction(data: CrearClienteInput) {
+export async function listarClientesAction() {
   await requireUser()                       // 1. sesión JWT propia (cookie firmada)
-  const parsed = crearClienteSchema.parse(data) // 2. validación zod
-  const db = getSupabaseServiceClient()     // 3. service role (server-only)
-  return crearCliente(db, parsed)           // 4. servicio del dominio
+  const db = getSupabaseServiceClient()     // 2. service role (server-only)
+  return listarClientes(db)                 // 3. servicio del dominio
 }
 ```
 
-Ver ejemplo completo en `src/app/actions/clientes.ts` y `src/app/actions/auth.ts`.
+Ver el patrón completo del controlador `ControlGestionarClientes` en
+`src/app/actions/clientes.ts` (CU07) y `src/app/actions/auth.ts`.
 
 ## Reglas
 
