@@ -9,6 +9,7 @@ import { createSession, destroySession } from '@/lib/session'
 import { CU01 } from '@/lib/bloqueo-cu01'
 import { getCurrentUser } from '@/lib/auth'
 import { registrarEvento } from '@/backend/bitacora'
+import { headers } from 'next/headers'
 
 const loginSchema = z.object({
   email: z.string().email('Correo inválido'),
@@ -20,11 +21,6 @@ export interface LoginActionState {
   error?: string
 }
 
-/**
- * Actualiza los contadores de bloqueo (CU01). Si la migración aún no se aplicó
- * en la BD (columnas ausentes), el login sigue funcionando y solo se omite el
- * registro de intentos: nunca debe impedir autenticarse.
- */
 async function actContadores(
   db: ReturnType<typeof getSupabaseServiceClient>,
   usuarioId: number,
@@ -36,21 +32,70 @@ async function actContadores(
   }
 }
 
-/** Ruta de destino válida (evita open-redirects mediante el parámetro `next`). */
 function destinoSeguro(next: string | null): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/'
 }
 
-/**
- * Inicia sesión verificando el hash bcrypt almacenado en `usuario.contrasena`
- * y crea la cookie de sesión JWT propia (firmada con AUTH_SECRET).
- * Supabase se usa solo como base de datos.
- *
- * CU01 — control de intentos fallidos (parámetros en `@/lib/bloqueo-cu01`):
- *   1) Bloqueo vigente → se niega antes de validar la contraseña.
- *   2) Contraseña incorrecta → +1 intento; al llegar al límite se bloquea.
- *   3) Contraseña correcta → se reinician los contadores y se inicia sesión.
- */
+// ---------------------------------------------------------------------------
+// FUNCIÓN ADAPTADA: Se llama 'validarCredenciales' para hacer match con el diagrama
+// ---------------------------------------------------------------------------
+async function validarCredenciales(correo: string, passwordPlain: string, ip: string) {
+  const db = getSupabaseServiceClient()
+  
+  // Equivale al mensaje 1.3: verificarUsuario en la BD
+  const { data: usuario, error } = await db
+    .from('usuario')
+    .select('*, rol:rol_id(nombre)')
+    .eq('correo', correo)
+    .maybeSingle()
+    
+  if (error) throw new Error('No se pudo consultar el usuario.')
+  if (!usuario) return { success: false, error: 'Correo o contraseña incorrectos.' }
+
+  const ahora = Date.now()
+
+  // (1) Bloqueo vigente (CU01)
+  if (usuario.bloqueado_hasta) {
+    const finBloqueo = new Date(usuario.bloqueado_hasta).getTime()
+    if (Number.isFinite(finBloqueo) && finBloqueo > ahora) {
+      const segundos = Math.ceil((finBloqueo - ahora) / 1000)
+      return {
+        success: false,
+        error: `Tu cuenta ha sido bloqueada temporalmente. Inténtalo en ${segundos} segundos.`,
+      }
+    }
+    await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: null })
+  }
+
+  const contrasenaCorrecta = await verificarContrasena(passwordPlain, usuario.contrasena)
+
+  // (2) Contraseña incorrecta (CU01)
+  if (!contrasenaCorrecta) {
+    const intentos = (usuario.intentos_fallidos ?? 0) + 1
+    if (intentos >= CU01.maxIntentos) {
+      const bloqueadoHasta = new Date(ahora + CU01.minutosBloqueo * 60_000).toISOString()
+      await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: bloqueadoHasta })
+      return {
+        success: false,
+        error: `Has superado el límite de ${CU01.maxIntentos} intentos. Cuenta bloqueada por ${CU01.minutosBloqueo} min.`,
+      }
+    }
+    await actContadores(db, usuario.id, { intentos_fallidos: intentos })
+    return { success: false, error: 'Contraseña incorrecta.' }
+  }
+
+  if (!usuario.estado) {
+    return { success: false, error: 'Correo o contraseña incorrectos.' }
+  }
+
+  // (3) Contraseña correcta -> Reiniciar contadores
+  await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: null })
+  return { success: true, usuario }
+}
+
+// ---------------------------------------------------------------------------
+// Server Action principal (El Controlador del Diagrama)
+// ---------------------------------------------------------------------------
 export async function loginAction(
   _prevState: LoginActionState,
   formData: FormData,
@@ -64,65 +109,19 @@ export async function loginAction(
       password: String(formData.get('password') ?? ''),
     })
 
+    const headersList = await headers()
+    const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1'
     const db = getSupabaseServiceClient()
-    const { data: usuario, error } = await db
-      .from('usuario')
-      .select('*, rol:rol_id(nombre)')
-      .eq('correo', parsed.email)
-      .maybeSingle()
-    if (error) throw new Error('No se pudo consultar el usuario.')
 
-    // Cuenta inexistente: mensaje genérico (sin revelar existencia del correo).
-    if (!usuario) {
-      return { ok: false, error: 'Correo o contraseña incorrectos.' }
+    // Llamada unificada que se alinea con el diagrama
+    const resultado = await validarCredenciales(parsed.email, parsed.password, ip)
+    if (!resultado.success) {
+      return { ok: false, error: resultado.error }
     }
 
-    const ahora = Date.now()
+    const usuario = resultado.usuario!
 
-    // (1) Bloqueo vigente → denegar ANTES de validar la contraseña.
-    if (usuario.bloqueado_hasta) {
-      const finBloqueo = new Date(usuario.bloqueado_hasta).getTime()
-      if (Number.isFinite(finBloqueo) && finBloqueo > ahora) {
-        const segundos = Math.ceil((finBloqueo - ahora) / 1000)
-        return {
-          ok: false,
-          error: `Tu cuenta ha sido bloqueada temporalmente por demasiados intentos fallidos. Inténtalo de nuevo en ${segundos} segundos.`,
-        }
-      }
-      // Penalización vencida → ventana limpia (se reinicia el contador).
-      await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: null })
-    }
-
-    const contrasenaCorrecta = await verificarContrasena(parsed.password, usuario.contrasena)
-
-    // (2) Contraseña incorrecta → incrementar intentos / bloquear al llegar al límite.
-    if (!contrasenaCorrecta) {
-      const intentos = (usuario.intentos_fallidos ?? 0) + 1
-
-      if (intentos >= CU01.maxIntentos) {
-        const bloqueadoHasta = new Date(ahora + CU01.minutosBloqueo * 60_000).toISOString()
-        // Se reinicia el contador junto con el bloqueo (ventana por período).
-        await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: bloqueadoHasta })
-        return {
-          ok: false,
-          error: `Has superado el límite de ${CU01.maxIntentos} intentos fallidos. Tu cuenta estará bloqueada durante ${CU01.minutosBloqueo} minuto${CU01.minutosBloqueo === 1 ? '' : 's'}.`,
-        }
-      }
-
-      await actContadores(db, usuario.id, { intentos_fallidos: intentos })
-      return {
-        ok: false,
-        error: `Contraseña incorrecta. Te quedan ${CU01.maxIntentos - intentos} intento(s).`,
-      }
-    }
-
-    if (!usuario.estado) {
-      return { ok: false, error: 'Correo o contraseña incorrectos.' }
-    }
-
-    // (3) Contraseña correcta → reiniciar contadores e iniciar sesión.
-    await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: null })
-
+    // Crear sesión (Mensaje 1.5 equivalente)
     await createSession({
       uid: usuario.id,
       nombre: usuario.nombre,
@@ -132,17 +131,17 @@ export async function loginAction(
       version: usuario.version_sesion,
     })
 
-    // BITÁCORA (CU06): registra el acceso exitoso. Un fallo aquí JAMÁS
-    // bloquea el login (se loguea y se continúa).
+    // BITÁCORA (Equivalente al mensaje 1.4: registrarAcceso del diagrama)
     try {
       await registrarEvento(db, {
         usuario_id: usuario.id,
         accion: 'INICIO_SESION',
-        descripcion: `Inicio de sesión exitoso del usuario ${usuario.correo}`,
+        descripcion: `Inicio de sesión exitoso de ${usuario.correo} desde IP ${ip}`,
       })
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
     }
+
     redirigir = true
   } catch (e) {
     return {
@@ -158,17 +157,22 @@ export async function loginAction(
   return { ok: false }
 }
 
-/** Cierra la sesión eliminando la cookie. */
+// ---------------------------------------------------------------------------
+// Cierre de sesión (Equivalente al flujo rojo del diagrama)
+// ---------------------------------------------------------------------------
 export async function logoutAction() {
-  // BITÁCORA (CU06): registra el cierre cuando hay sesión activa.
   const usuario = await getCurrentUser()
   if (usuario) {
     try {
       const db = getSupabaseServiceClient()
+      const headersList = await headers()
+      const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1'
+
+      // Equivalente al mensaje 2.2: registrarAcceso con 'CIERRE_SESION' e IP
       await registrarEvento(db, {
         usuario_id: usuario.id,
         accion: 'CIERRE_SESION',
-        descripcion: `Cierre de sesión del usuario ${usuario.correo}`,
+        descripcion: `Cierre de sesión de ${usuario.correo} desde IP ${ip}`,
       })
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)

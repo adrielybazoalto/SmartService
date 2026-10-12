@@ -1,14 +1,8 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
-import {
-  abrirCaja,
-  cerrarCaja,
-  obtenerResumenArqueo,
-  type Caja,
-  type ResumenArqueo,
-} from '@/app/actions/ventas';
-
+import { abrirCaja, cerrarCaja, obtenerResumenArqueo } from '@/app/actions/ventas';
+import type { Caja, ResumenArqueo } from '@/backend/ventas';
 type Props = {
   modo: 'apertura' | 'cierre';
   onClose: () => void;
@@ -77,7 +71,7 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
       const res = await abrirCaja(contado);
       setGuardando(false);
       if (!res.ok) return setError(res.error);
-      notificar('ok', `Caja #${res.data.id} abierta con ${bs(res.data.monto_inicial)}`);
+      notificar('ok', `Caja #${res.data.caja.id} abierta con ${bs(res.data.caja.monto_inicial)}`);
       onCompletado();
       onClose();
       return;
@@ -87,11 +81,11 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
       setGuardando(false);
       return setError('Hay diferencia en el arqueo: describa el motivo en la observación');
     }
-    const res = await cerrarCaja({ monto_final_real: contado, observacion });
+    const res = await cerrarCaja({ montoReal: contado, observacion });
     setGuardando(false);
     if (!res.ok) return setError(res.error);
-    setCerrada(res.data);
-    notificar('ok', `Caja #${res.data.id} cerrada`);
+    setCerrada(res.data.caja);
+    notificar('ok', `Caja #${res.data.caja.id} cerrada`);
     onCompletado();
   };
 

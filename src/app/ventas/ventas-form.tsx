@@ -1,14 +1,14 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import {
-  registrarVenta,
-  type ClienteVenta,
-  type ProductoVenta,
-  type TipoComprobante,
-  type TipoPago,
-  type VentaRegistrada,
-} from '@/app/actions/ventas';
+import { registrarVentaAction as registrarVenta } from '@/app/actions/ventas';
+import type {
+  ClienteVenta,
+  ComprobanteVenta,
+  ProductoVenta,
+  TipoComprobante,
+  TipoPago,
+} from '@/backend/ventas';
 
 type Props = {
   productos: ProductoVenta[];
@@ -60,7 +60,7 @@ export default function VentasForm({
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ultimaVenta, setUltimaVenta] = useState<VentaRegistrada | null>(null);
+  const [ultimaVenta, setUltimaVenta] = useState<ComprobanteVenta | null>(null);
   const buscadorRef = useRef<HTMLInputElement>(null);
 
   // ---- Búsqueda de productos ----------------------------------------------
@@ -142,11 +142,11 @@ export default function VentasForm({
 
     setGuardando(true);
     const res = await registrarVenta({
-      cliente_id: clienteId,
-      tipo_pago: tipoPago,
-      tipo_comprobante: tipoComprobante,
+      clienteId,
+      tipoPago,
+      tipoComprobante,
       descuento: descuentoNum,
-      items: lineas.map((l) => ({ producto_id: l.producto.id, cantidad: l.cantidad })),
+      items: lineas.map((l) => ({ productoId: l.producto.id, cantidad: l.cantidad })),
     });
     setGuardando(false);
 
@@ -156,7 +156,7 @@ export default function VentasForm({
       return;
     }
     setUltimaVenta(res.data);
-    notificar('ok', res.mensaje ?? `Venta ${res.data.nro_comprobante} registrada`);
+    notificar('ok', res.mensaje ?? `Venta ${res.data.nroComprobante} registrada`);
     limpiar();
     onVentaRegistrada();
   };
@@ -179,7 +179,7 @@ export default function VentasForm({
         <div className="mb-5 flex flex-col gap-2 rounded-xl border border-[#8cd600]/40 bg-[#8cd600]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              Venta registrada · <span className="font-mono">{ultimaVenta.nro_comprobante}</span>
+              Venta registrada · <span className="font-mono">{ultimaVenta.nroComprobante}</span>
             </p>
             <p className="text-xs text-slate-600">
               Subtotal {bs(ultimaVenta.subtotal)} · Descuento {bs(ultimaVenta.descuento)} · Total{' '}

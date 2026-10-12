@@ -1,501 +1,293 @@
 'use server';
 
 /**
- * CU14 — Gestionar Proveedores y Catálogo de Mayoristas
- * Tablas (diccionario de datos): proveedor, producto_proveedor, producto, bitacora.
+ * CU014 — Gestionar Proveedores y Catálogo de Mayoristas · Server Actions
+ *
+ * Envuelven los servicios de '@/backend/proveedores': obtienen el contexto
+ * (usuario de la sesión, IP, cliente Supabase), registran la bitácora,
+ * revalidan '/proveedores' y devuelven siempre:
+ *   éxito → { ok: true, data, mensaje }   ·   error → { ok: false, error }
+ *
+ * Nota sobre los alias: en un archivo 'use server' Next.js solo admite
+ * exportar funciones async. Un `export const alias = otraFuncion` puede
+ * fallar en el build, así que cada alias es una función async que delega.
  */
-
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
+import { getCurrentUser } from '@/lib/auth'; // O desde '@/lib/auth' según tu estructura
+import { getSupabaseServiceClient } from '@/lib/supabase/service';
 import {
-  actualizarTolerante,
-  getSupabase,
-  getUsuarioSesion,
-  insertarTolerante,
-  registrarBitacora,
-  type UsuarioSesion,
-} from './bitacora';
+  ProveedorError,
+  actualizarCatalogoService,
+  actualizarProveedorService,
+  cambiarEstadoProveedorService,
+  eliminarItemCatalogoService,
+  guardarHistorialPreciosService,
+  guardarProveedorService,
+  listarProductosService,
+  obtenerCatalogoService,
+  obtenerListaProveedoresService,
+  obtenerProveedorPorIdService,
+  recorrerYValidarListaProductos,
+  registrarEventoProveedorService,
+  validarProveedorService,
+  verificarProductosExistentesService,
+  verificarRUCService,
+  type ActionResult,
+  type CatalogoMayorista,
+  type Db,
+  type ProductoCatalogoDTO,
+  type ProductoOpcion,
+  type Proveedor,
+  type ProveedorDTO,
+  type ResumenCatalogo,
+} from '@/backend/proveedores';
 
-// ===========================================================================
-// Tipos
-// ===========================================================================
-export type ActionResult<T = undefined> =
-  | { ok: true; data: T; mensaje?: string }
-  | { ok: false; error: string };
+// ---------------------------------------------------------------------------
+// Contexto y respuestas
+// ---------------------------------------------------------------------------
+async function contexto(): Promise<{ db: any; usuarioId: number; ip: string }> {
+  const usuario = await getCurrentUser();
+  if (!usuario) throw new ProveedorError('Sesión expirada. Vuelve a iniciar sesión.');
+  
+  const headersList = await headers();
+  const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  
+  const db = getSupabaseServiceClient();
+  return { db, usuarioId: usuario.id, ip };
+}
+const exito = <T>(data: T, mensaje: string) => ({ ok: true as const, data, mensaje });
 
-export type Proveedor = {
-  id: number;
-  razon_social: string;
-  nit: string;
-  contacto: string | null;
-  telefono: string | null;
-  correo: string | null;
-  direccion?: string | null;
-  estado?: boolean;
-  total_productos?: number;
-};
-
-export type ProveedorInput = {
-  razon_social: string;
-  nit: string;
-  contacto?: string;
-  telefono?: string;
-  correo?: string;
-  direccion?: string;
-};
-
-export type ProductoCatalogo = {
-  id: number;
-  nombre: string;
-  unidad_medida: string | null;
-  precio_compra_actual: number;
-};
-
-export type VinculoProducto = {
-  id: number;
-  proveedor_id: number;
-  producto_id: number;
-  producto_nombre: string;
-  unidad_medida: string | null;
-  precio_compra_actual: number;
-  codigo_item_proveedor: string | null;
-  precio_compra: number;
-  fecha_actualizacion?: string | null;
-};
-
-export type VinculoInput = {
-  proveedor_id: number;
-  producto_id: number;
-  codigo_item_proveedor?: string;
-  precio_compra: number;
-};
-
-export type ComparativoPrecio = {
-  proveedor_id: number;
-  razon_social: string;
-  activo: boolean;
-  codigo_item_proveedor: string | null;
-  precio_compra: number;
-  fecha_actualizacion?: string | null;
-};
-
-// ===========================================================================
-// Helpers internos
-// ===========================================================================
-const num = (v: unknown) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
-const r2 = (n: number) => Math.round(n * 100) / 100;
-const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
-const limpiar = (s?: string | null) => {
-  const t = (s ?? '').trim();
-  return t.length ? t : null;
-};
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-async function requireUsuario(): Promise<UsuarioSesion> {
-  const u = await getUsuarioSesion();
-  if (!u) throw new Error('Sesión expirada. Vuelva a iniciar sesión.');
-  return u;
+function fallo(e: unknown, porDefecto: string) {
+  if (e instanceof Error && !(e instanceof ProveedorError)) console.error('[CU014]', e);
+  const error = e instanceof Error && e.message ? e.message : porDefecto;
+  return { ok: false as const, error };
 }
 
-function mensajeError(e: any, porDefecto: string): string {
-  const msg: string = e?.message ?? '';
-  if (e?.code === '23505' || /duplicate key/i.test(msg)) {
-    if (/nit/i.test(msg)) return 'Ya existe un proveedor con ese NIT';
-    if (/codigo/i.test(msg)) return 'Ese código de ítem ya está registrado para este proveedor';
-    if (/producto/i.test(msg)) return 'Ese producto ya está vinculado a este proveedor';
-    return 'Registro duplicado';
-  }
-  return msg || porDefecto;
-}
-
-function validarProveedor(input: ProveedorInput): string | null {
-  const razon = (input.razon_social ?? '').trim();
-  const nit = (input.nit ?? '').trim();
-  if (razon.length < 3) return 'La razón social debe tener al menos 3 caracteres';
-  if (razon.length > 200) return 'La razón social no puede superar 200 caracteres';
-  if (!/^[0-9A-Za-z-]{5,50}$/.test(nit)) return 'NIT inválido (5 a 50 caracteres, solo números, letras o guiones)';
-  if (input.correo && input.correo.trim() && !EMAIL_RE.test(input.correo.trim())) return 'Correo electrónico inválido';
-  if (input.telefono && input.telefono.trim() && !/^[0-9+\s()-]{6,30}$/.test(input.telefono.trim())) return 'Teléfono inválido';
-  if ((input.contacto ?? '').length > 150) return 'El contacto no puede superar 150 caracteres';
-  if ((input.direccion ?? '').length > 255) return 'La dirección no puede superar 255 caracteres';
-  return null;
-}
-
-async function nitDuplicado(nit: string, excluirId?: number): Promise<boolean> {
-  let q = getSupabase().from('proveedor').select('id').ilike('nit', nit.trim()).limit(1);
-  if (excluirId) q = q.neq('id', excluirId);
-  const { data } = await q;
-  return !!data && data.length > 0;
-}
-
-function mapProveedor(row: any): Proveedor {
-  return {
-    id: row.id,
-    razon_social: row.razon_social,
-    nit: row.nit,
-    contacto: row.contacto ?? null,
-    telefono: row.telefono ?? null,
-    correo: row.correo ?? null,
-    direccion: row.direccion ?? null,
-    estado: row.estado === undefined || row.estado === null ? true : Boolean(row.estado),
-    total_productos: Array.isArray(row.producto_proveedor) ? row.producto_proveedor.length : undefined,
-  };
-}
-
-function mapVinculo(row: any): VinculoProducto {
-  return {
-    id: row.id,
-    proveedor_id: row.proveedor_id,
-    producto_id: row.producto_id,
-    producto_nombre: row.producto?.nombre ?? `Producto #${row.producto_id}`,
-    unidad_medida: row.producto?.unidad_medida ?? null,
-    precio_compra_actual: num(row.producto?.precio_compra_actual),
-    codigo_item_proveedor: row.codigo_item_proveedor ?? null,
-    precio_compra: num(row.precio_compra ?? row.precio_pactado),
-    fecha_actualizacion: row.fecha_actualizacion ?? null,
-  };
-}
+const idValido = (id: unknown) => Number.isInteger(Number(id)) && Number(id) > 0;
 
 // ===========================================================================
-// Proveedores
+// 1. Búsqueda y consulta: buscarProveedor → consultarProveedor → obtenerListaProveedores
 // ===========================================================================
-
-/** Lista proveedores con buscador por razón social, NIT o contacto */
-export async function listarProveedores(opciones?: {
-  busqueda?: string;
-  incluirInactivos?: boolean;
-}): Promise<ActionResult<Proveedor[]>> {
+export async function obtenerProveedoresAction(
+  criterio = '',
+  incluirInactivos = false
+): Promise<ActionResult<Proveedor[]>> {
   try {
-    await requireUsuario();
-    // select('*') para tolerar columnas aún no migradas (direccion, estado)
-    const { data, error } = await getSupabase()
-      .from('proveedor')
-      .select('*, producto_proveedor(id)')
-      .order('razon_social');
-    if (error) return fail(error.message);
-
-    const b = (opciones?.busqueda ?? '').trim().toLowerCase();
-    const lista = ((data ?? []) as any[])
-      .map(mapProveedor)
-      .filter((p) => opciones?.incluirInactivos || p.estado !== false)
-      .filter(
-        (p) =>
-          !b ||
-          p.razon_social.toLowerCase().includes(b) ||
-          p.nit.toLowerCase().includes(b) ||
-          (p.contacto ?? '').toLowerCase().includes(b)
-      );
-    return { ok: true, data: lista };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudieron cargar los proveedores'));
+    const { db } = await contexto();
+    const lista = await obtenerListaProveedoresService(db, criterio, { incluirInactivos });
+    return exito(lista, lista.length ? `${lista.length} proveedor(es) encontrado(s)` : 'Sin resultados');
+  } catch (e) {
+    return fallo(e, 'No se pudieron obtener los proveedores');
   }
 }
 
-/** CU14 pasos 1-3: registrar proveedor validando NIT único */
-export async function crearProveedor(input: ProveedorInput): Promise<ActionResult<Proveedor>> {
+/** Productos internos para armar el catálogo */
+export async function obtenerProductosAction(): Promise<ActionResult<ProductoOpcion[]>> {
   try {
-    const usuario = await requireUsuario();
-    const invalido = validarProveedor(input);
-    if (invalido) return fail(invalido);
-    if (await nitDuplicado(input.nit)) return fail('Ya existe un proveedor con ese NIT');
+    const { db } = await contexto();
+    const productos = await listarProductosService(db);
+    return exito(productos, `${productos.length} producto(s) disponibles`);
+  } catch (e) {
+    return fallo(e, 'No se pudieron obtener los productos');
+  }
+}
 
-    const { data, error } = await insertarTolerante('proveedor', {
-      razon_social: input.razon_social.trim(),
-      nit: input.nit.trim(),
-      contacto: limpiar(input.contacto),
-      telefono: limpiar(input.telefono),
-      correo: limpiar(input.correo)?.toLowerCase() ?? null,
-      direccion: limpiar(input.direccion),
-      estado: true,
-    });
-    if (error || !data) return fail(mensajeError(error, 'No se pudo registrar el proveedor'));
+/** Validación anticipada del NIT (verificarRUCExistente) para el formulario */
+export async function verificarRUCAction(
+  nitRuc: string,
+  excluirId?: number
+): Promise<ActionResult<{ existe: boolean }>> {
+  try {
+    const { db } = await contexto();
+    const existe = await verificarRUCService(db, nitRuc, excluirId);
+    return exito({ existe }, existe ? 'El NIT ya está registrado' : 'NIT disponible');
+  } catch (e) {
+    return fallo(e, 'No se pudo verificar el NIT');
+  }
+}
 
-    await registrarBitacora({
-      usuario_id: usuario.id,
-      accion: 'CREAR_PROVEEDOR',
-      descripcion: `Proveedor "${input.razon_social.trim()}" (NIT ${input.nit.trim()}) registrado`,
-    });
+// ===========================================================================
+// 2. Registro y validación: registrarDatosProveedor → solicitarValidacionProveedor
+//    → verificarRUCExistente → guardarProveedor → registrarEventoProveedor
+// ===========================================================================
+export async function registrarProveedorAction(proveedorDTO: ProveedorDTO): Promise<ActionResult<Proveedor>> {
+  try {
+    const { db, usuarioId, ip } = await contexto();
+    const datos = await validarProveedorService(db, proveedorDTO);
+    const proveedor = await guardarProveedorService(db, datos);
+    await registrarEventoProveedorService(
+      db,
+      usuarioId,
+      'CREAR_PROVEEDOR',
+      ip,
+      `Proveedor #${proveedor.id} "${proveedor.razon_social}" (NIT ${proveedor.nit}) registrado`
+    );
     revalidatePath('/proveedores');
-    return { ok: true, data: mapProveedor(data), mensaje: 'Proveedor registrado correctamente' };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo registrar el proveedor'));
+    return exito(proveedor, 'Proveedor registrado correctamente');
+  } catch (e) {
+    return fallo(e, 'No se pudo registrar el proveedor');
   }
 }
 
 /** Subflujo: modificar proveedor */
-export async function actualizarProveedor(id: number, input: ProveedorInput): Promise<ActionResult<Proveedor>> {
-  try {
-    const usuario = await requireUsuario();
-    const invalido = validarProveedor(input);
-    if (invalido) return fail(invalido);
-    if (await nitDuplicado(input.nit, id)) return fail('Ya existe otro proveedor con ese NIT');
-
-    const { data, error } = await actualizarTolerante(
-      'proveedor',
-      {
-        razon_social: input.razon_social.trim(),
-        nit: input.nit.trim(),
-        contacto: limpiar(input.contacto),
-        telefono: limpiar(input.telefono),
-        correo: limpiar(input.correo)?.toLowerCase() ?? null,
-        direccion: limpiar(input.direccion),
-      },
-      { columna: 'id', valor: id }
-    );
-    if (error) return fail(mensajeError(error, 'No se pudo actualizar el proveedor'));
-    if (!data) return fail('El proveedor no existe');
-
-    await registrarBitacora({
-      usuario_id: usuario.id,
-      accion: 'ACTUALIZAR_PROVEEDOR',
-      descripcion: `Proveedor #${id} "${input.razon_social.trim()}" actualizado`,
-    });
-    revalidatePath('/proveedores');
-    return { ok: true, data: mapProveedor(data), mensaje: 'Proveedor actualizado' };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo actualizar el proveedor'));
-  }
-}
-
-/** Subflujo: desactivar / reactivar proveedor (baja lógica, conserva historial) */
-export async function cambiarEstadoProveedor(id: number, activo: boolean): Promise<ActionResult<Proveedor>> {
-  try {
-    const usuario = await requireUsuario();
-    const { data, error, omitidas } = await actualizarTolerante('proveedor', { estado: activo }, { columna: 'id', valor: id });
-    if (omitidas.includes('estado')) {
-      return fail('La columna proveedor.estado aún no existe en la base de datos. Aplique la migración de CU14.');
-    }
-    if (error) return fail(mensajeError(error, 'No se pudo cambiar el estado'));
-    if (!data) return fail('El proveedor no existe');
-
-    await registrarBitacora({
-      usuario_id: usuario.id,
-      accion: activo ? 'ACTIVAR_PROVEEDOR' : 'DESACTIVAR_PROVEEDOR',
-      descripcion: `Proveedor #${id} "${(data as any).razon_social}" ${activo ? 'reactivado' : 'desactivado'}`,
-    });
-    revalidatePath('/proveedores');
-    return { ok: true, data: mapProveedor(data), mensaje: activo ? 'Proveedor reactivado' : 'Proveedor desactivado' };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo cambiar el estado'));
-  }
-}
-
-// ===========================================================================
-// Catálogo de mayoristas (producto_proveedor)
-// ===========================================================================
-
-/** Productos del catálogo (CU16) disponibles para vincular */
-export async function listarProductosCatalogo(): Promise<ActionResult<ProductoCatalogo[]>> {
-  try {
-    await requireUsuario();
-    const { data, error } = await getSupabase()
-      .from('producto')
-      .select('id, nombre, unidad_medida, precio_compra_actual')
-      .order('nombre');
-    if (error) return fail(error.message);
-    return {
-      ok: true,
-      data: ((data ?? []) as any[]).map((p: any) => ({
-        id: p.id,
-        nombre: p.nombre,
-        unidad_medida: p.unidad_medida ?? null,
-        precio_compra_actual: num(p.precio_compra_actual),
-      })),
-    };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo cargar el catálogo de productos'));
-  }
-}
-
-/** Pestaña "Productos que provee" */
-export async function obtenerCatalogoProveedor(proveedorId: number): Promise<ActionResult<VinculoProducto[]>> {
-  try {
-    await requireUsuario();
-    const { data, error } = await getSupabase()
-      .from('producto_proveedor')
-      .select('*, producto:producto_id(nombre, unidad_medida, precio_compra_actual)')
-      .eq('proveedor_id', proveedorId)
-      .order('id');
-    if (error) return fail(error.message);
-    const lista = ((data ?? []) as any[]).map(mapVinculo).sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
-    return { ok: true, data: lista };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo cargar el catálogo del proveedor'));
-  }
-}
-
-async function validarVinculo(
-  proveedorId: number,
-  productoId: number,
-  codigo: string | null,
-  precio: number,
-  excluirId?: number
-): Promise<string | null> {
-  if (!Number.isFinite(precio) || precio < 0) return 'El precio de compra no puede ser negativo';
-  if (precio > 9_999_999_999) return 'Precio fuera de rango';
-  if (codigo && codigo.length > 100) return 'El código de ítem no puede superar 100 caracteres';
-
-  const db = getSupabase();
-  let qProd = db.from('producto_proveedor').select('id').eq('proveedor_id', proveedorId).eq('producto_id', productoId);
-  if (excluirId) qProd = qProd.neq('id', excluirId);
-  const { data: dupProd } = await qProd.limit(1);
-  if (dupProd && dupProd.length) return 'Ese producto ya está vinculado a este proveedor';
-
-  if (codigo) {
-    let qCod = db.from('producto_proveedor').select('id').eq('proveedor_id', proveedorId).ilike('codigo_item_proveedor', codigo);
-    if (excluirId) qCod = qCod.neq('id', excluirId);
-    const { data: dupCod } = await qCod.limit(1);
-    if (dupCod && dupCod.length) return 'Ese código de ítem ya está registrado para este proveedor';
-  }
-  return null;
-}
-
-/** CU14 pasos 4-5: vincular producto con código de ítem y precio pactado */
-export async function vincularProducto(input: VinculoInput): Promise<ActionResult<VinculoProducto>> {
-  try {
-    const usuario = await requireUsuario();
-    const db = getSupabase();
-    const precio = r2(Number(input.precio_compra));
-    const codigo = limpiar(input.codigo_item_proveedor);
-
-    const [{ data: prov }, { data: prod }] = await Promise.all([
-      db.from('proveedor').select('*').eq('id', input.proveedor_id).maybeSingle(),
-      db.from('producto').select('id, nombre').eq('id', input.producto_id).maybeSingle(),
-    ]);
-    if (!prov) return fail('El proveedor no existe');
-    if ((prov as any).estado === false) return fail('No se pueden vincular productos a un proveedor desactivado');
-    if (!prod) return fail('El producto no existe en el catálogo');
-
-    const invalido = await validarVinculo(input.proveedor_id, input.producto_id, codigo, precio);
-    if (invalido) return fail(invalido);
-
-    const { data, error } = await insertarTolerante(
-      'producto_proveedor',
-      {
-        proveedor_id: input.proveedor_id,
-        producto_id: input.producto_id,
-        codigo_item_proveedor: codigo,
-        precio_compra: precio,
-        fecha_actualizacion: new Date().toISOString(),
-      },
-      '*, producto:producto_id(nombre, unidad_medida, precio_compra_actual)'
-    );
-    if (error || !data) return fail(mensajeError(error, 'No se pudo vincular el producto'));
-
-    await registrarBitacora({
-      usuario_id: usuario.id,
-      accion: 'VINCULAR_PRODUCTO_PROVEEDOR',
-      descripcion: `"${(prod as any).nombre}" vinculado a "${(prov as any).razon_social}" — código ${codigo ?? 's/c'}, precio Bs ${precio.toFixed(2)}`,
-    });
-    revalidatePath('/proveedores');
-    return { ok: true, data: mapVinculo(data), mensaje: 'Producto vinculado al proveedor' };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo vincular el producto'));
-  }
-}
-
-/** Subflujo: modificar precio pactado / código de ítem */
-export async function actualizarVinculo(
+export async function actualizarProveedorAction(
   id: number,
-  cambios: { codigo_item_proveedor?: string; precio_compra: number }
-): Promise<ActionResult<VinculoProducto>> {
+  proveedorDTO: ProveedorDTO
+): Promise<ActionResult<Proveedor>> {
   try {
-    const usuario = await requireUsuario();
-    const db = getSupabase();
-    const { data: actual } = await db
-      .from('producto_proveedor')
-      .select('*, producto:producto_id(nombre), proveedor:proveedor_id(razon_social)')
-      .eq('id', id)
-      .maybeSingle();
-    if (!actual) return fail('El vínculo no existe');
-    const a = actual as any;
-
-    const precio = r2(Number(cambios.precio_compra));
-    const codigo = limpiar(cambios.codigo_item_proveedor);
-    const invalido = await validarVinculo(a.proveedor_id, a.producto_id, codigo, precio, id);
-    if (invalido) return fail(invalido);
-
-    const { data, error } = await actualizarTolerante(
-      'producto_proveedor',
-      { codigo_item_proveedor: codigo, precio_compra: precio, fecha_actualizacion: new Date().toISOString() },
-      { columna: 'id', valor: id },
-      '*, producto:producto_id(nombre, unidad_medida, precio_compra_actual)'
+    if (!idValido(id)) return fallo(null, 'Proveedor inválido');
+    const { db, usuarioId, ip } = await contexto();
+    const datos = await validarProveedorService(db, proveedorDTO, id);
+    const proveedor = await actualizarProveedorService(db, id, datos);
+    await registrarEventoProveedorService(
+      db,
+      usuarioId,
+      'ACTUALIZAR_PROVEEDOR',
+      ip,
+      `Proveedor #${id} "${proveedor.razon_social}" actualizado`
     );
-    if (error || !data) return fail(mensajeError(error, 'No se pudo actualizar el vínculo'));
-
-    const precioAnterior = num(a.precio_compra ?? a.precio_pactado);
-    if (precioAnterior !== precio) {
-      await registrarBitacora({
-        usuario_id: usuario.id,
-        accion: 'ACTUALIZAR_PRECIO_PROVEEDOR',
-        descripcion: `Precio de "${a.producto?.nombre}" con "${a.proveedor?.razon_social}": Bs ${precioAnterior.toFixed(2)} → Bs ${precio.toFixed(2)}`,
-      });
-    }
-    if ((a.codigo_item_proveedor ?? null) !== codigo) {
-      await registrarBitacora({
-        usuario_id: usuario.id,
-        accion: 'ACTUALIZAR_CODIGO_PROVEEDOR',
-        descripcion: `Código de "${a.producto?.nombre}" con "${a.proveedor?.razon_social}": ${a.codigo_item_proveedor ?? 's/c'} → ${codigo ?? 's/c'}`,
-      });
-    }
     revalidatePath('/proveedores');
-    return { ok: true, data: mapVinculo(data), mensaje: 'Precio pactado actualizado' };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo actualizar el vínculo'));
+    return exito(proveedor, 'Proveedor actualizado');
+  } catch (e) {
+    return fallo(e, 'No se pudo actualizar el proveedor');
+  }
+}
+
+/** Subflujo: desactivar / reactivar proveedor */
+export async function cambiarEstadoProveedorAction(id: number, activo: boolean): Promise<ActionResult<Proveedor>> {
+  try {
+    if (!idValido(id)) return fallo(null, 'Proveedor inválido');
+    const { db, usuarioId, ip } = await contexto();
+    const proveedor = await cambiarEstadoProveedorService(db, id, activo);
+    await registrarEventoProveedorService(
+      db,
+      usuarioId,
+      activo ? 'ACTIVAR_PROVEEDOR' : 'DESACTIVAR_PROVEEDOR',
+      ip,
+      `Proveedor #${id} "${proveedor.razon_social}" ${activo ? 'reactivado' : 'desactivado'}`
+    );
+    revalidatePath('/proveedores');
+    return exito(proveedor, activo ? 'Proveedor reactivado' : 'Proveedor desactivado');
+  } catch (e) {
+    return fallo(e, 'No se pudo cambiar el estado del proveedor');
+  }
+}
+
+// ===========================================================================
+// 3. Catálogo de mayoristas: seleccionarProveedorYCatalogo → procesarActualizacionCatalogo
+//    → recorrerYValidarListaProductos → verificarProductosExistentes
+//    → actualizarPreciosYStockMayorista → guardarHistorialPrecios → registrarEventoProveedor
+// ===========================================================================
+export async function obtenerCatalogoAction(proveedorId: number): Promise<ActionResult<CatalogoMayorista[]>> {
+  try {
+    if (!idValido(proveedorId)) return fallo(null, 'Proveedor inválido');
+    const { db } = await contexto();
+    const catalogo = await obtenerCatalogoService(db, proveedorId);
+    return exito(catalogo, `${catalogo.length} producto(s) en el catálogo`);
+  } catch (e) {
+    return fallo(e, 'No se pudo obtener el catálogo');
+  }
+}
+
+export async function procesarActualizacionCatalogoAction(
+  proveedorId: number,
+  listaDTO: ProductoCatalogoDTO[]
+): Promise<ActionResult<ResumenCatalogo>> {
+  try {
+    if (!idValido(proveedorId)) return fallo(null, 'Proveedor inválido');
+    const { db, usuarioId, ip } = await contexto();
+
+    const proveedor = await obtenerProveedorPorIdService(db, proveedorId);
+    if (!proveedor) return fallo(null, 'El proveedor no existe');
+    if (!proveedor.estado) return fallo(null, 'El proveedor está desactivado: reactívelo para actualizar su catálogo');
+
+    // 3.2 recorrerYValidarListaProductos
+    const items = recorrerYValidarListaProductos(listaDTO);
+    // 3.3 verificarProductosExistentes
+    const nombres = await verificarProductosExistentesService(db, items);
+    // 3.4 actualizarPreciosYStockMayorista
+    const resultado = await actualizarCatalogoService(db, proveedorId, items, nombres);
+    // 3.5 guardarHistorialPrecios
+    await guardarHistorialPreciosService(db, {
+      usuarioId,
+      ip,
+      proveedorId,
+      proveedorNombre: proveedor.razon_social,
+      precios: resultado.cambiosPrecio,
+    });
+    // 2.4 registrarEventoProveedor
+    if (resultado.insertados + resultado.actualizados > 0) {
+      await registrarEventoProveedorService(
+        db,
+        usuarioId,
+        'ACTUALIZAR_CATALOGO_PROVEEDOR',
+        ip,
+        `Catálogo de "${proveedor.razon_social}": ${resultado.insertados} nuevo(s), ` +
+          `${resultado.actualizados} actualizado(s), ${resultado.sinCambios} sin cambios`
+      );
+    }
+
+    // 4. confirmarResultadoCatalogo → mostrarResumenCatalogo
+    const catalogo = await obtenerCatalogoService(db, proveedorId);
+    revalidatePath('/proveedores');
+    const resumen: ResumenCatalogo = {
+      proveedorId,
+      proveedorNombre: proveedor.razon_social,
+      ...resultado,
+      catalogo,
+    };
+    const mensaje =
+      resultado.insertados + resultado.actualizados === 0
+        ? 'No había cambios que guardar en el catálogo'
+        : `Catálogo actualizado: ${resultado.insertados} nuevo(s), ${resultado.actualizados} actualizado(s)`;
+    return exito(resumen, mensaje);
+  } catch (e) {
+    return fallo(e, 'No se pudo actualizar el catálogo');
   }
 }
 
 /** Quitar un producto del catálogo del proveedor */
-export async function desvincularProducto(id: number): Promise<ActionResult> {
+export async function eliminarItemCatalogoAction(catalogoId: number): Promise<ActionResult<CatalogoMayorista>> {
   try {
-    const usuario = await requireUsuario();
-    const db = getSupabase();
-    const { data: actual } = await db
-      .from('producto_proveedor')
-      .select('*, producto:producto_id(nombre), proveedor:proveedor_id(razon_social)')
-      .eq('id', id)
-      .maybeSingle();
-    if (!actual) return fail('El vínculo no existe');
-
-    const { error } = await db.from('producto_proveedor').delete().eq('id', id);
-    if (error) return fail(mensajeError(error, 'No se pudo quitar el producto'));
-
-    const a = actual as any;
-    await registrarBitacora({
-      usuario_id: usuario.id,
-      accion: 'DESVINCULAR_PRODUCTO_PROVEEDOR',
-      descripcion: `"${a.producto?.nombre}" retirado del catálogo de "${a.proveedor?.razon_social}"`,
-    });
+    if (!idValido(catalogoId)) return fallo(null, 'Registro inválido');
+    const { db, usuarioId, ip } = await contexto();
+    const item = await eliminarItemCatalogoService(db, catalogoId);
+    await registrarEventoProveedorService(
+      db,
+      usuarioId,
+      'QUITAR_PRODUCTO_PROVEEDOR',
+      ip,
+      `"${item.producto_nombre}" retirado del catálogo del proveedor #${item.proveedor_id}`
+    );
     revalidatePath('/proveedores');
-    return { ok: true, data: undefined, mensaje: 'Producto retirado del catálogo' };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo quitar el producto'));
+    return exito(item, `"${item.producto_nombre}" retirado del catálogo`);
+  } catch (e) {
+    return fallo(e, 'No se pudo quitar el producto del catálogo');
   }
 }
 
-/** Subflujo: comparar precios de un producto entre todos sus proveedores */
-export async function compararPrecios(productoId: number): Promise<ActionResult<ComparativoPrecio[]>> {
-  try {
-    await requireUsuario();
-    const { data, error } = await getSupabase()
-      .from('producto_proveedor')
-      .select('*, proveedor:proveedor_id(*)')
-      .eq('producto_id', productoId);
-    if (error) return fail(error.message);
-    const lista: ComparativoPrecio[] = ((data ?? []) as any[])
-      .map((r: any) => ({
-        proveedor_id: r.proveedor_id,
-        razon_social: r.proveedor?.razon_social ?? `Proveedor #${r.proveedor_id}`,
-        activo: r.proveedor?.estado !== false,
-        codigo_item_proveedor: r.codigo_item_proveedor ?? null,
-        precio_compra: num(r.precio_compra ?? r.precio_pactado),
-        fecha_actualizacion: r.fecha_actualizacion ?? null,
-      }))
-      .sort((a, b) => a.precio_compra - b.precio_compra);
-    return { ok: true, data: lista };
-  } catch (e: any) {
-    return fail(mensajeError(e, 'No se pudo comparar precios'));
-  }
+// ===========================================================================
+// Alias con los nombres del diagrama de comunicación
+// ===========================================================================
+export async function registrarDatosProveedor(proveedorDTO: ProveedorDTO): Promise<ActionResult<Proveedor>> {
+  return registrarProveedorAction(proveedorDTO);
+}
+
+export async function procesarActualizacionCatalogo(
+  proveedorId: number,
+  listaDTO: ProductoCatalogoDTO[]
+): Promise<ActionResult<ResumenCatalogo>> {
+  return procesarActualizacionCatalogoAction(proveedorId, listaDTO);
+}
+
+export async function obtenerListaProveedores(
+  criterio = '',
+  incluirInactivos = false
+): Promise<ActionResult<Proveedor[]>> {
+  return obtenerProveedoresAction(criterio, incluirInactivos);
+}
+
+export async function buscarProveedor(criterio = ''): Promise<ActionResult<Proveedor[]>> {
+  return obtenerProveedoresAction(criterio, false);
 }

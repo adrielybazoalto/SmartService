@@ -1,14 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  anularVenta,
-  listarTurnosCerrados,
-  obtenerDatosVentas,
-  type Caja,
-  type DatosVentas,
-  type VentaResumen,
-} from '@/app/actions/ventas';
+import { anularVenta, listarTurnosCerrados, obtenerDatosVentas } from '@/app/actions/ventas';
+import type { Caja, DatosVentas, VentaResumen } from '@/backend/ventas';
 import VentasForm from './ventas-form';
 import ArqueoModal from './arqueo-modal';
 
@@ -86,7 +80,7 @@ export default function VentasPage() {
     const res = await anularVenta(porAnular.id);
     setAnulando(false);
     if (res.ok) {
-      notificar('ok', `${res.data.nro_comprobante ?? 'Venta'} anulada. Stock devuelto al inventario.`);
+      notificar('ok', `${res.data.nroComprobante ?? 'Venta'} anulada. Stock devuelto al inventario.`);
       setPorAnular(null);
       cargar();
     } else {
@@ -227,11 +221,11 @@ export default function VentasPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-slate-900">Ventas del turno</h2>
                   <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                    {datos.ventas.length}
+                    {datos?.ventas?.length??0}
                   </span>
                 </div>
 
-                {datos.ventas.length === 0 ? (
+                {(datos?.ventas?.length ?? 0) === 0 ? (
                   <p className="rounded-xl bg-[#f8fafc] p-6 text-center text-sm text-slate-500">
                     {caja ? 'Aún no hay ventas en este turno.' : 'Abra la caja para comenzar.'}
                   </p>
@@ -309,7 +303,7 @@ export default function VentasPage() {
                           {turnos.map((t) => (
                             <tr key={t.id} className="border-b border-gray-50 last:border-0">
                               <td className="py-3 pr-4 font-mono font-semibold text-slate-900">#{t.id}</td>
-                              <td className="py-3 pr-4 text-slate-700">{t.usuario_nombre ?? `Usuario ${t.usuario_id}`}</td>
+                              <td className="py-3 pr-4 text-slate-700">Usuario #{t.usuario_id}</td>
                               <td className="py-3 pr-4 text-slate-500">{fecha(t.fecha_apertura)}</td>
                               <td className="py-3 pr-4 text-slate-500">{fecha(t.fecha_cierre)}</td>
                               <td className="py-3 pr-4 text-right text-slate-700">{bs(t.monto_final_sistema ?? 0)}</td>
@@ -331,7 +325,7 @@ export default function VentasPage() {
                             <Diferencia valor={t.monto_diferencia ?? 0} />
                           </div>
                           <p className="text-xs text-slate-500">
-                            {t.usuario_nombre ?? `Usuario ${t.usuario_id}`} · {fecha(t.fecha_cierre)}
+                            Usuario #{t.usuario_id} · {fecha(t.fecha_cierre)}
                           </p>
                           <p className="mt-1 text-xs text-slate-600">
                             Esperado {bs(t.monto_final_sistema ?? 0)} · Contado {bs(t.monto_final_real ?? 0)}
