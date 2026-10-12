@@ -19,10 +19,10 @@ export async function registrarBitacora(
   input: RegistrarBitacoraInput,
 ): Promise<Bitacora> {
   const parsed = registrarBitacoraSchema.parse(input)
-  const ip_origen = await obtenerIpOrigen()
+  const ip = await obtenerIpOrigen()
   const { data, error } = await db
     .from('bitacora')
-    .insert({ ...parsed, ...(ip_origen ? { ip_origen } : {}) } as NuevaBitacora)
+    .insert({ ...parsed, ...(ip ? { ip } : {}) } as NuevaBitacora)
     .select()
     .single()
   if (error) {
@@ -41,8 +41,8 @@ export async function registrarBitacora(
  */
 export async function registrarEvento(db: Db, input: RegistrarEventoInput): Promise<Bitacora> {
   const parsed = registrarEventoSchema.parse(input)
-  const ip_origen = await obtenerIpOrigen()
-  const { data, error } = await db.from('bitacora').insert({ ...parsed, ...(ip_origen ? { ip_origen } : {}) } as NuevoEventoBitacora).select().single()
+  const ip = await obtenerIpOrigen()
+  const { data, error } = await db.from('bitacora').insert({ ...parsed, ...(ip ? { ip } : {}) } as NuevoEventoBitacora).select().single()
   if (error) {
     console.error('Error al registrar en bitácora:', error)
     throw new Error(`No se pudo registrar el evento en la bitácora: ${error.message}`)
@@ -59,7 +59,7 @@ export async function listarBitacora(db: Db, filtros: FiltrarBitacoraInput = {})
   if (parsed.fecha_fin) query = query.lte('fecha_hora', parsed.fecha_fin)
   if (parsed.usuario_id) query = query.eq('usuario_id', parsed.usuario_id)
   if (parsed.accion) query = query.eq('accion', parsed.accion)
-  if (parsed.ip_origen) query = query.ilike('ip_origen', `%${parsed.ip_origen}%`)
+  if (parsed.ip) query = query.ilike('ip', `%${parsed.ip}%`)
 
   const { data, error } = await query
   if (error) throw new Error(`No se pudo cargar la bitácora: ${error.message}`)

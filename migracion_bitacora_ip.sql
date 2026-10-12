@@ -3,8 +3,8 @@
 -- triggers existentes. Es seguro ejecutarla más de una vez.
 
 ALTER TABLE public.bitacora
-  ADD COLUMN IF NOT EXISTS ip_origen VARCHAR(45);
+  ADD COLUMN IF NOT EXISTS ip VARCHAR(45);
 
-CREATE INDEX IF NOT EXISTS idx_bitacora_ip_origen
-  ON public.bitacora (ip_origen);
+CREATE INDEX IF NOT EXISTS idx_bitacora_ip
+  ON public.bitacora (ip);
   

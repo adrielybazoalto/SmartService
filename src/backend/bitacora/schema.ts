@@ -23,7 +23,7 @@ export const filtrarBitacoraSchema = z.object({
   fecha_fin: z.string().datetime().nullable().optional(),
   usuario_id: z.number().int().positive().nullable().optional(),
   accion: z.string().max(100).nullable().optional(),
-  ip_origen: z.string().regex(/^[0-9a-fA-F:.]{1,45}$/, 'Dirección IP inválida').nullable().optional(),
+  ip: z.string().regex(/^[0-9a-fA-F:.]{1,45}$/, 'Dirección IP inválida').nullable().optional(),
 })
 
 export type RegistrarBitacoraInput = z.infer<typeof registrarBitacoraSchema>

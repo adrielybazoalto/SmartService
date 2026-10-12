@@ -13,7 +13,7 @@ interface PageProps {
     fecha_fin?: string
     usuario_id?: string
     accion?: string
-    ip_origen?: string
+    ip?: string
   }>
 }
 
@@ -25,7 +25,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
     fecha_fin: params.fecha_fin || undefined,
     usuario_id: params.usuario_id ? Number(params.usuario_id) : undefined,
     accion: params.accion || undefined,
-    ip_origen: params.ip_origen || undefined,
+    ip: params.ip || undefined,
   }
 
   let eventos: Awaited<ReturnType<typeof listarBitacoraAction>> = []
@@ -52,7 +52,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
           fecha_fin: params.fecha_fin ?? '',
           usuario_id: params.usuario_id ?? '',
           accion: params.accion ?? '',
-          ip_origen: params.ip_origen ?? '',
+          ip: params.ip ?? '',
         }}
       />
 
@@ -88,7 +88,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
                   </td>
                   <td className="px-4 py-3">{evento.usuario_id}</td>
                   <td className="px-4 py-3">{evento.accion}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{evento.ip_origen ?? 'No disponible'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{evento.ip ?? 'No disponible'}</td>
                   <td className="px-4 py-3">{evento.descripcion}</td>
                 </tr>
               ))}

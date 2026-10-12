@@ -145,7 +145,7 @@ CREATE TABLE BITACORA (
     fecha_hora TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     accion VARCHAR(100) NOT NULL,
     descripcion TEXT,
-    ip_origen VARCHAR(45),
+    ip VARCHAR(45),
 
     CONSTRAINT fk_bitacora_usuario
         FOREIGN KEY (usuario_id)
