@@ -324,12 +324,13 @@ CREATE TABLE IMAGEN_PRODUCTO (
 
 CREATE TABLE SERVICIO (
     id SERIAL PRIMARY KEY,
-    nombre VARCHAR(150) NOT NULL,
+    nombre VARCHAR(150) NOT NULL UNIQUE,
     descripcion TEXT,
-    precio_hora_base NUMERIC(12,2) NOT NULL DEFAULT 0,
+    precio_hora_base NUMERIC(12,2) NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
 
-    CONSTRAINT chk_precio_hora
-        CHECK (precio_hora_base >= 0)
+    CONSTRAINT servicio_nombre_key UNIQUE (nombre),
+    CONSTRAINT chk_precio_hora CHECK (precio_hora_base > 0)
 );
 
 -- ============================================================

@@ -158,19 +158,27 @@ export type Database = {
         }
         Relationships: []
       }
-      servicio: {
-        Row: { id: number; nombre: string; descripcion: string | null; precio_hora_base: string }
+            servicio: {
+        Row: {
+          id: number
+          nombre: string
+          descripcion: string | null
+          precio_hora_base: string
+          activo: boolean
+        }
         Insert: {
           id?: number
           nombre: string
           descripcion?: string | null
           precio_hora_base: string
+          activo?: boolean
         }
         Update: {
           id?: number
           nombre?: string
           descripcion?: string | null
           precio_hora_base?: string
+          activo?: boolean
         }
         Relationships: []
       }
