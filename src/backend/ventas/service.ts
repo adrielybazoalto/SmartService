@@ -1,31 +1,29 @@
 /**
  * CU09 — Gestionar Ventas y Arqueo de Caja · Servicio (control "Gestión Ventas y Caja")
  *
- * Cada función recibe `db: Db` como primer parámetro, sin estado global, así
- * se puede usar desde Server Actions, Route Handlers o pruebas.
+ * Cada función recibe `db: Db` como primer parámetro (sin estado global).
  *
- * Métodos del diagrama de secuencia / clases:
- *   2.2 verificarCajaAbierta(usuarioId)
- *   1.3 procesarAperturaOArqueo(cajaDTO)
- *   1.5 calcularDiferenciaArqueo(montoSistema, montoReal)
- *   2.1 registrarVentaDirecta(datosVentaDTO)
- *   2.3 calcularTotalesYDescuentos(items, descuento)
- *   2.4 crearVenta(cajaId, clienteId, total, comprobante)
- *   2.5 crearDetalles(ventaId, productoId, cantidad, precio)
- *   2.6 registrarSalidaKardex(productoId, cantidad, 'SALIDA')
- *   2.7 descontarStock(productoId, cantidad)
- *   1.6 guardarEventoCaja(usuarioId, accion, ip)
+ * Las operaciones que modifican dinero o stock se ejecutan en PostgreSQL,
+ * cada una en UNA transacción (migración 20261012_cu09_ventas_caja.sql):
+ *   fn_registrar_venta  → venta + detalle + stock + SALIDA en kárdex (rollback ante cualquier error)
+ *   fn_anular_venta     → ANULADA + devolución de stock + ENTRADA en kárdex
+ *   fn_cerrar_caja      → efectivo esperado + diferencia + cierre, con la caja bloqueada
  *
- * Tablas: caja, venta, detalle_venta, movimiento_kardex, bitacora, producto
- * (y lectura de cliente, porque venta.cliente_id es obligatorio).
+ * La bitácora se escribe con la función común del CU06 (`registrarEvento`),
+ * que captura la IP de origen: este módulo no obtiene ni envía la IP.
+ *
+ * Métodos del diagrama:
+ *   verificarCajaAbierta · procesarAperturaOArqueo · calcularDiferenciaArqueo
+ *   registrarVentaDirecta · calcularTotalesYDescuentos · guardarEventoCaja
+ *   generarNotaVentaPdf (paso 8)
+ *   (crearVenta, crearDetalles, descontarStock y registrarSalidaKardex se
+ *   ejecutan dentro de fn_registrar_venta para garantizar la atomicidad)
  */
-import { ZodError, type ZodTypeAny, type z } from 'zod';
-import {
-  aperturaCajaSchema,
-  anularVentaSchema,
-  cierreCajaSchema,
-  registrarVentaSchema,
-} from './schema';
+import { ZodError, type z } from 'zod';
+import { registrarEvento } from '@/backend/bitacora';
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+
+import { anularVentaSchema, aperturaCajaSchema, cierreCajaSchema, registrarVentaSchema } from './schema';
 import {
   TIPOS_PAGO,
   type AccionCaja,
@@ -35,20 +33,18 @@ import {
   type ComprobanteVenta,
   type DatosVentaDTO,
   type Db,
-  type DetalleVenta,
-  type LineaVenta,
-  type MovimientoKardex,
+  type NotaVenta,
   type ProductoVenta,
   type ResultadoCaja,
   type ResumenArqueo,
+  type ServicioVenta,
   type TipoPago,
   type TotalesVenta,
-  type Venta,
   type VentaResumen,
 } from './types';
 
 // ===========================================================================
-// Errores de negocio (mensajes listos para mostrar en la IU)
+// Errores de negocio (mensajes exactos del CU09, listos para la IU)
 // ===========================================================================
 export class VentaError extends Error {
   constructor(message: string) {
@@ -62,10 +58,8 @@ export const MENSAJES = {
   CAJA_DUPLICADA: 'El usuario ya tiene una caja abierta',
   SIN_CAJA_CIERRE: 'No tiene una caja abierta para cerrar',
   DESCUENTO: 'El descuento no puede ser mayor al subtotal',
-  OBS_DIFERENCIA: 'Hay diferencia en el arqueo: registre una observación que la justifique',
-  ANULADA: 'La venta ya está anulada',
-  TURNO_CERRADO: 'No se puede anular una venta de un turno cerrado',
-  OTRO_USUARIO: 'Solo el titular del turno puede anular sus ventas',
+  SIN_MIGRACION:
+    'Falta instalar las funciones de ventas en la base de datos (ejecute la migración 20261012_cu09_ventas_caja.sql)',
 } as const;
 
 export const CLIENTE_MOSTRADOR = 'Cliente de mostrador';
@@ -73,9 +67,6 @@ export const CLIENTE_MOSTRADOR = 'Cliente de mostrador';
 // ===========================================================================
 // Utilidades internas
 // ===========================================================================
-type TablaCU09 = 'caja' | 'venta' | 'detalle_venta' | 'movimiento_kardex' | 'bitacora' | 'producto';
-type Fila = Record<string, unknown>;
-
 const num = (v: unknown): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -87,7 +78,7 @@ export const calcularPrecioVenta = (p: { precio_compra_actual: unknown; margen_g
   r2(num(p.precio_compra_actual) * (1 + num(p.margen_ganancia) / 100));
 
 /** Valida con Zod y convierte el primer error en VentaError */
-function validar<S extends ZodTypeAny>(schema: S, data: unknown): z.output<S> {
+function validar<S extends z.ZodType>(schema: S, data: unknown): z.output<S> {
   try {
     return schema.parse(data);
   } catch (e) {
@@ -96,66 +87,31 @@ function validar<S extends ZodTypeAny>(schema: S, data: unknown): z.output<S> {
   }
 }
 
-/** Traduce errores de PostgreSQL/PostgREST a mensajes de negocio */
-function errorBD(error: any, porDefecto: string): VentaError {
-  const msg: string = error?.message ?? '';
-  if (/ux_caja_usuario_abierta/.test(msg)) return new VentaError(MENSAJES.CAJA_DUPLICADA);
-  if (/ux_venta_nro_comprobante/.test(msg)) return new VentaError('Conflicto de correlativo, intente nuevamente');
-  return new VentaError(msg || porDefecto);
-}
-
-/**
- * Columna aún no migrada: PostgREST responde PGRST204
- * ("Could not find the 'ip' column of 'bitacora' in the schema cache").
- */
-function columnaFaltante(error: any): string | null {
-  if (!error) return null;
-  const msg = String(error.message ?? '');
-  if (error.code === 'PGRST204' || /column .* (does not exist|of .* in the schema cache)/i.test(msg)) {
-    const m = msg.match(/'([^']+)' column/) ?? msg.match(/column "?([\w.]+)"? (of|does)/i);
-    if (m) return m[1].split('.').pop() ?? null;
-  }
-  return null;
-}
-
-/** INSERT tolerante: si una columna nueva todavía no existe, la omite y reintenta */
-async function insertar<T>(db: Db, tabla: TablaCU09, fila: Fila, select = '*'): Promise<T> {
-  const payload: Fila = { ...fila };
-  for (let i = 0; i < 6; i++) {
-    const { data, error } = await db.from(tabla).insert(payload as any).select(select).single();
-    const col = columnaFaltante(error);
-    if (col && col in payload) {
-      delete payload[col];
-      continue;
-    }
-    if (error || !data) throw errorBD(error, `No se pudo registrar en ${tabla}`);
-    return data as T;
-  }
-  throw new VentaError(`No se pudo registrar en ${tabla}`);
-}
-
-/** UPDATE tolerante con filtros de igualdad */
-async function actualizar<T>(db: Db, tabla: TablaCU09, cambios: Fila, filtros: Fila): Promise<T | null> {
-  const payload: Fila = { ...cambios };
-  for (let i = 0; i < 6; i++) {
-    let q = db.from(tabla).update(payload as any);
-    for (const [col, val] of Object.entries(filtros)) q = q.eq(col, val as any);
-    const { data, error } = await q.select('*').maybeSingle();
-    const col = columnaFaltante(error);
-    if (col && col in payload) {
-      delete payload[col];
-      continue;
-    }
-    if (error) throw errorBD(error, `No se pudo actualizar ${tabla}`);
-    return (data as T) ?? null;
-  }
-  throw new VentaError(`No se pudo actualizar ${tabla}`);
-}
-
-/** La función SQL transaccional aún no está instalada */
+/** La función SQL no está instalada (PostgREST PGRST202 / Postgres 42883) */
 const rpcNoExiste = (error: any) =>
   !!error &&
   (error.code === 'PGRST202' || error.code === '42883' || /Could not find the function/i.test(error.message ?? ''));
+
+/**
+ * Traduce errores de PostgreSQL/PostgREST a VentaError.
+ * Los RAISE EXCEPTION de las funciones (P0001) ya traen el mensaje de negocio.
+ */
+function errorBD(error: any, porDefecto: string): VentaError {
+  if (rpcNoExiste(error)) {
+    // En la terminal del servidor queda el nombre exacto de la función que no se encontró
+    console.error('[CU09] Función SQL no encontrada (¿se ejecutó la migración?):', error?.message ?? error);
+    return new VentaError(MENSAJES.SIN_MIGRACION);
+  }
+  const msg: string = error?.message ?? '';
+  if (/ux_caja_usuario_abierta/.test(msg)) return new VentaError(MENSAJES.CAJA_DUPLICADA);
+  if (/ux_venta_nro_comprobante/.test(msg)) return new VentaError('Conflicto de correlativo, intente nuevamente');
+  if (error?.code === 'P0001' && msg) return new VentaError(msg);
+  console.error('[CU09] Error de base de datos:', error);
+  return new VentaError(porDefecto);
+}
+
+/** Nombre visible del cliente: razón social (empresas) o nombre (personas) */
+const nombreCliente = (c: any): string => c?.razon_social || c?.nombre || '—';
 
 function mapCaja(row: any): Caja {
   return {
@@ -173,10 +129,32 @@ function mapCaja(row: any): Caja {
 }
 
 // ===========================================================================
+// BITÁCORA (función común del CU06)
+// ===========================================================================
+
+/**
+ * guardarEventoCaja(usuarioId, accion) → registrarEvento del CU06.
+ * La IP de origen la captura esa función común. Nunca lanza: un fallo de
+ * auditoría no debe deshacer una venta ya confirmada.
+ */
+export async function guardarEventoCaja(
+  db: Db,
+  usuarioId: number,
+  accion: AccionCaja,
+  descripcion: string
+): Promise<void> {
+  try {
+    await registrarEvento(db as any, { usuario_id: usuarioId, accion, descripcion });
+  } catch (e) {
+    console.error('[CU09] No se pudo registrar en la bitácora:', (e as Error)?.message ?? e);
+  }
+}
+
+// ===========================================================================
 // CAJA
 // ===========================================================================
 
-/** 2.2 verificarCajaAbierta(usuarioId) — devuelve el turno abierto o null */
+/** verificarCajaAbierta(usuarioId) — devuelve el turno abierto o null */
 export async function verificarCajaAbierta(db: Db, usuarioId: number): Promise<Caja | null> {
   const { data, error } = await db
     .from('caja')
@@ -190,7 +168,7 @@ export async function verificarCajaAbierta(db: Db, usuarioId: number): Promise<C
   return data ? mapCaja(data) : null;
 }
 
-/** 1.5 calcularDiferenciaArqueo(montoSistema, montoReal) → + sobrante / − faltante */
+/** calcularDiferenciaArqueo(montoSistema, montoReal) → + sobrante / − faltante */
 export function calcularDiferenciaArqueo(montoSistema: number, montoReal: number): number {
   return r2(num(montoReal) - num(montoSistema));
 }
@@ -199,7 +177,7 @@ export function calcularDiferenciaArqueo(montoSistema: number, montoReal: number
 export async function listarVentasCaja(db: Db, cajaId: number): Promise<VentaResumen[]> {
   const { data, error } = await db
     .from('venta')
-    .select('*, cliente:cliente_id(razon_social), detalle_venta(id)')
+    .select('*, cliente:cliente_id(*), detalle_venta(id)')
     .eq('caja_id', cajaId)
     .order('id', { ascending: false });
   if (error) throw errorBD(error, 'No se pudieron cargar las ventas');
@@ -207,7 +185,7 @@ export async function listarVentasCaja(db: Db, cajaId: number): Promise<VentaRes
     id: v.id,
     nro_comprobante: v.nro_comprobante ?? null,
     fecha_emision: v.fecha_emision,
-    cliente_nombre: v.cliente?.razon_social ?? '—',
+    cliente_nombre: nombreCliente(v.cliente),
     tipo_pago: (TIPOS_PAGO as readonly string[]).includes(v.tipo_pago) ? v.tipo_pago : 'EFECTIVO',
     tipo_comprobante: v.tipo_comprobante ?? null,
     subtotal: num(v.subtotal),
@@ -219,8 +197,8 @@ export async function listarVentasCaja(db: Db, cajaId: number): Promise<VentaRes
 }
 
 /**
- * Totales del turno por método de pago. Solo el efectivo entra al arqueo
- * físico: efectivo esperado = fondo inicial + ventas en EFECTIVO no anuladas.
+ * Totales del turno por método de pago (misma regla que fn_cerrar_caja):
+ * efectivo esperado = fondo inicial + ventas EMITIDAS en EFECTIVO.
  */
 export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
   const totales: Record<TipoPago, number> = { EFECTIVO: 0, QR: 0, TARJETA: 0, TRANSFERENCIA: 0 };
@@ -244,7 +222,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
   };
 }
 
-/** 1.4 mostrarResumenArqueo — resumen del turno abierto del usuario */
+/** mostrarResumenArqueo — resumen del turno abierto del usuario */
 export async function obtenerResumenCaja(db: Db, usuarioId: number): Promise<ResumenArqueo | null> {
   const caja = await verificarCajaAbierta(db, usuarioId);
   if (!caja) return null;
@@ -252,11 +230,12 @@ export async function obtenerResumenCaja(db: Db, usuarioId: number): Promise<Res
 }
 
 /**
- * 1.3 procesarAperturaOArqueo(cajaDTO)
- *  - APERTURA: valida el fondo inicial, verifica que no haya otro turno
- *    abierto, crea la caja y registra APERTURA_CAJA.
- *  - ARQUEO: calcula el efectivo esperado (monto sistema), la diferencia con
- *    el conteo físico (monto real), cierra la caja y registra ARQUEO_CAJA.
+ * procesarAperturaOArqueo(cajaDTO)
+ *  - APERTURA: fondo inicial válido, sin otro turno abierto (también lo
+ *    garantiza el índice ux_caja_usuario_abierta), crea la caja y registra
+ *    APERTURA_CAJA.
+ *  - ARQUEO: fn_cerrar_caja calcula el efectivo esperado, la diferencia con
+ *    el conteo físico y cierra la caja en una transacción; registra ARQUEO_CAJA.
  */
 export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise<ResultadoCaja> {
   if (cajaDTO.tipo === 'APERTURA') {
@@ -264,69 +243,54 @@ export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise
 
     if (await verificarCajaAbierta(db, cajaDTO.usuarioId)) throw new VentaError(MENSAJES.CAJA_DUPLICADA);
 
-    const caja = mapCaja(
-      await insertar<any>(db, 'caja', {
-        usuario_id: cajaDTO.usuarioId,
-        monto_inicial: montoInicial,
-        estado: 'ABIERTA',
-      })
-    );
+    const { data, error } = await db
+      .from('caja')
+      .insert({ usuario_id: cajaDTO.usuarioId, monto_inicial: montoInicial, estado: 'ABIERTA' } as any)
+      .select('*')
+      .single();
+    if (error || !data) throw errorBD(error, 'No se pudo abrir la caja');
+    const caja = mapCaja(data);
 
     await guardarEventoCaja(
       db,
       cajaDTO.usuarioId,
       'APERTURA_CAJA',
-      cajaDTO.ip,
       `Apertura de caja #${caja.id} con fondo inicial Bs ${montoInicial.toFixed(2)}`
     );
     return { caja };
   }
 
   // ---- ARQUEO Y CIERRE ------------------------------------------------------
-  const { montoReal, observacion } = validar(cierreCajaSchema, cajaDTO);
+  const { montoReal, observacion, cajaId } = validar(cierreCajaSchema, cajaDTO);
 
-  const caja = await verificarCajaAbierta(db, cajaDTO.usuarioId);
-  if (!caja) throw new VentaError(MENSAJES.SIN_CAJA_CIERRE);
+  const { data: rpc, error: rpcError } = await db.rpc('fn_cerrar_caja', {
+    p_usuario_id: cajaDTO.usuarioId,
+    p_monto_real: montoReal,
+    p_observacion: observacion ?? null,
+    p_caja_id: cajaId ?? null,
+  } as any);
+  if (rpcError || !rpc) throw errorBD(rpcError, 'No se pudo cerrar la caja');
+  const r = rpc as any;
 
+  const { data: fila, error: filaError } = await db.from('caja').select('*').eq('id', r.caja_id).single();
+  if (filaError || !fila) throw errorBD(filaError, 'No se pudo leer la caja cerrada');
+  const caja = mapCaja(fila);
   const resumen = resumirCaja(caja, await listarVentasCaja(db, caja.id));
-  const montoSistema = resumen.efectivo_esperado;
-  const diferencia = calcularDiferenciaArqueo(montoSistema, montoReal);
-  if (diferencia !== 0 && (observacion ?? '').length < 5) throw new VentaError(MENSAJES.OBS_DIFERENCIA);
-
-  const fila = await actualizar<any>(
-    db,
-    'caja',
-    {
-      fecha_cierre: new Date().toISOString(),
-      monto_final_sistema: montoSistema,
-      monto_final_real: montoReal,
-      monto_diferencia: diferencia,
-      observacion: observacion ?? null,
-      estado: 'CERRADA',
-    },
-    // Solo cierra si sigue ABIERTA y es del mismo usuario
-    { id: caja.id, usuario_id: cajaDTO.usuarioId, estado: 'ABIERTA' }
-  );
-  if (!fila) throw new VentaError('La caja ya fue cerrada');
+  const esperado = num(r.efectivo_esperado);
+  const diferencia = num(r.diferencia);
 
   const tipoDif = diferencia === 0 ? 'cuadrada' : diferencia > 0 ? 'sobrante' : 'faltante';
   await guardarEventoCaja(
     db,
     cajaDTO.usuarioId,
     'ARQUEO_CAJA',
-    cajaDTO.ip,
-    `Cierre de caja #${caja.id}: esperado Bs ${montoSistema.toFixed(2)}, contado Bs ${montoReal.toFixed(2)}, ` +
+    `Cierre de caja #${caja.id}: esperado Bs ${esperado.toFixed(2)}, contado Bs ${montoReal.toFixed(2)}, ` +
       `diferencia Bs ${diferencia.toFixed(2)} (${tipoDif}). Ventas: ${resumen.cantidad_ventas}, ` +
       `total Bs ${resumen.total_vendido.toFixed(2)}` +
       (observacion ? `. Obs: ${observacion}` : '')
   );
 
-  return {
-    // monto_diferencia/observacion se devuelven aunque la columna aún no exista
-    caja: { ...mapCaja(fila), monto_diferencia: diferencia, observacion: observacion ?? null },
-    resumen,
-    diferencia,
-  };
+  return { caja: { ...caja, monto_diferencia: diferencia }, resumen, diferencia };
 }
 
 /** Subflujo "Consultar turnos": turnos cerrados con su diferencia */
@@ -348,12 +312,33 @@ export async function listarTurnosCerrados(db: Db, limite = 20): Promise<Caja[]>
 }
 
 // ===========================================================================
-// VENTA
+// CATÁLOGOS PARA LA VENTA (solo lectura)
 // ===========================================================================
 
-/** Catálogo con precio de venta y stock (paso 4 del CU) */
+/**
+ * Imagen principal de cada producto (IMAGEN_PRODUCTO), solo para mostrarla.
+ * Si la tabla no existe o falla, la venta funciona igual, sin imágenes.
+ */
+async function imagenesPrincipales(db: Db): Promise<Map<number, string>> {
+  const mapa = new Map<number, string>();
+  const { data, error } = await db
+    .from('imagen_producto')
+    .select('producto_id, url_imagen, es_principal, orden')
+    .order('es_principal', { ascending: false })
+    .order('orden', { ascending: true });
+  if (error) return mapa;
+  for (const img of (data ?? []) as any[]) {
+    if (img.url_imagen && !mapa.has(img.producto_id)) mapa.set(img.producto_id, img.url_imagen);
+  }
+  return mapa;
+}
+
+/** Productos con stock disponible y precio de venta (paso 4) */
 export async function listarProductosVenta(db: Db): Promise<ProductoVenta[]> {
-  const { data, error } = await db.from('producto').select('*').order('nombre');
+  const [{ data, error }, imagenes] = await Promise.all([
+    db.from('producto').select('*').order('nombre'),
+    imagenesPrincipales(db),
+  ]);
   if (error) throw errorBD(error, 'No se pudieron cargar los productos');
   return ((data ?? []) as any[]).map((p) => ({
     id: p.id,
@@ -362,32 +347,61 @@ export async function listarProductosVenta(db: Db): Promise<ProductoVenta[]> {
     stock_disponible: num(p.stock_disponible),
     stock_minimo: num(p.stock_minimo),
     precio_venta: calcularPrecioVenta(p),
+    imagen_url: imagenes.get(p.id) ?? null,
   }));
+}
+
+/** Servicios activos (CU17) que se pueden vender en mostrador, cobrados por hora */
+export async function listarServiciosVenta(db: Db): Promise<ServicioVenta[]> {
+  const { data, error } = await db.from('servicio').select('*').order('nombre');
+  if (error) throw errorBD(error, 'No se pudieron cargar los servicios');
+  return ((data ?? []) as any[])
+    .filter((s) => s.activo !== false)
+    .map((s) => ({
+      id: s.id,
+      nombre: s.nombre,
+      descripcion: s.descripcion ?? null,
+      precio_hora: r2(num(s.precio_hora_base)),
+    }));
 }
 
 /** Clientes para la venta (solo lectura; venta.cliente_id es obligatorio) */
 export async function listarClientesVenta(db: Db, limite = 500): Promise<ClienteVenta[]> {
-  const { data, error } = await db
-    .from('cliente')
-    .select('id, razon_social, documento_identidad')
-    .order('razon_social')
-    .limit(limite);
+  const { data, error } = await db.from('cliente').select('*').limit(limite);
   if (error) throw errorBD(error, 'No se pudieron cargar los clientes');
-  return (data ?? []) as ClienteVenta[];
+  return ((data ?? []) as any[])
+    .map((c) => ({
+      id: c.id,
+      razon_social: nombreCliente(c),
+      nombre: c.nombre ?? null,
+      documento_identidad: c.documento_identidad ?? null,
+    }))
+    .sort((a, b) => a.razon_social.localeCompare(b.razon_social));
 }
 
 /** Cliente genérico "Cliente de mostrador" (lo crea la migración) */
 export async function buscarClienteMostrador(db: Db): Promise<number | null> {
-  const { data } = await db
-    .from('cliente')
-    .select('id')
-    .ilike('razon_social', CLIENTE_MOSTRADOR)
-    .limit(1)
-    .maybeSingle();
-  return (data as any)?.id ?? null;
+  for (const columna of ['razon_social', 'nombre']) {
+    const { data, error } = await db
+      .from('cliente')
+      .select('id')
+      .ilike(columna, CLIENTE_MOSTRADOR)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) return (data as any).id;
+  }
+  return null;
 }
 
-/** 2.3 calcularTotalesYDescuentos(items, descuento) */
+// ===========================================================================
+// VENTA
+// ===========================================================================
+
+/**
+ * calcularTotalesYDescuentos(items, descuento)
+ * Vista previa del cálculo. El cálculo que vale es el de fn_registrar_venta,
+ * con los precios vigentes leídos dentro de la transacción.
+ */
 export function calcularTotalesYDescuentos(
   items: { precioUnitario: number; cantidad: number }[],
   descuento = 0
@@ -399,361 +413,311 @@ export function calcularTotalesYDescuentos(
   return { subtotal, descuento: desc, total: r2(subtotal - desc) };
 }
 
-/** Correlativo NV-AAAA-00001 */
-export async function generarNroComprobante(db: Db, anio = new Date().getFullYear()): Promise<string> {
-  const { data } = await db
-    .from('venta')
-    .select('nro_comprobante')
-    .like('nro_comprobante', `NV-${anio}-%`)
-    .order('nro_comprobante', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const seq = Number(String((data as any)?.nro_comprobante ?? '').split('-')[2] ?? 0) + 1;
-  return `NV-${anio}-${String(seq).padStart(5, '0')}`;
-}
-
-/** 2.4 crearVenta(cajaId, clienteId, total, comprobante) */
-export async function crearVenta(
-  db: Db,
-  datos: {
-    cajaId: number;
-    clienteId: number;
-    usuarioId: number;
-    totales: TotalesVenta;
-    tipoPago: TipoPago;
-    tipoComprobante: string;
-    nroComprobante: string;
-  }
-): Promise<Venta> {
-  return insertar<Venta>(db, 'venta', {
-    caja_id: datos.cajaId,
-    cliente_id: datos.clienteId,
-    usuario_id: datos.usuarioId,
-    tipo_comprobante: datos.tipoComprobante,
-    nro_comprobante: datos.nroComprobante,
-    subtotal: datos.totales.subtotal,
-    descuento: datos.totales.descuento,
-    total: datos.totales.total,
-    estado: 'EMITIDA',
-    tipo_pago: datos.tipoPago,
-  });
-}
-
-/** 2.5 crearDetalles(ventaId, productoId, cantidad, precio) */
-export async function crearDetalles(
-  db: Db,
-  ventaId: number,
-  lineas: { productoId: number; cantidad: number; precioUnitario: number }[]
-): Promise<DetalleVenta[]> {
-  const { data, error } = await db
-    .from('detalle_venta')
-    .insert(
-      lineas.map((l) => ({
-        venta_id: ventaId,
-        producto_id: l.productoId,
-        cantidad: l.cantidad,
-        precio_unitario: l.precioUnitario,
-        subtotal: r2(l.precioUnitario * l.cantidad),
-      })) as any
-    )
-    .select('*');
-  if (error) throw errorBD(error, 'No se pudo registrar el detalle de la venta');
-  return (data ?? []) as DetalleVenta[];
-}
-
 /**
- * 2.7 descontarStock(productoId, cantidad)
- * Control optimista: UPDATE ... WHERE stock_disponible = <valor leído>, con
- * reintentos, para no pisar otra venta concurrente.
- */
-export async function descontarStock(
-  db: Db,
-  productoId: number,
-  cantidad: number
-): Promise<{ stockAnterior: number; stockNuevo: number }> {
-  for (let intento = 0; intento < 3; intento++) {
-    const { data: p, error } = await db
-      .from('producto')
-      .select('nombre, stock_disponible')
-      .eq('id', productoId)
-      .maybeSingle();
-    if (error) throw errorBD(error, 'No se pudo leer el stock');
-    if (!p) throw new VentaError(`Producto ${productoId} no existe`);
-    const stockAnterior = num((p as any).stock_disponible);
-    if (stockAnterior < cantidad) {
-      throw new VentaError(
-        `Stock insuficiente para "${(p as any).nombre}": disponible ${stockAnterior}, solicitado ${cantidad}`
-      );
-    }
-    const stockNuevo = stockAnterior - cantidad;
-    const { data: upd } = await db
-      .from('producto')
-      .update({ stock_disponible: stockNuevo } as any)
-      .eq('id', productoId)
-      .eq('stock_disponible', stockAnterior)
-      .select('id');
-    if (upd && upd.length) return { stockAnterior, stockNuevo };
-  }
-  throw new VentaError('El stock cambió durante la venta. Intente nuevamente.');
-}
-
-/** 2.6 registrarSalidaKardex(productoId, cantidad, 'SALIDA') */
-export async function registrarSalidaKardex(
-  db: Db,
-  mov: { productoId: number; usuarioId: number; cantidad: number; stockAnterior: number; nroComprobante: string }
-): Promise<MovimientoKardex> {
-  return insertar<MovimientoKardex>(db, 'movimiento_kardex', {
-    producto_id: mov.productoId,
-    usuario_id: mov.usuarioId,
-    tipo_movimiento: 'SALIDA',
-    cantidad: mov.cantidad,
-    stock_anterior: mov.stockAnterior,
-    origen_movimiento: 'VENTA',
-    observacion: `Venta ${mov.nroComprobante}`,
-  });
-}
-
-/**
- * 2.1 registrarVentaDirecta(datosVentaDTO)
- *
- * Camino principal: función PostgreSQL `fn_registrar_venta` (migración
- * 20261010_cu09_cu14.sql), que ejecuta los pasos 2.2-2.7 en UNA transacción:
- * si un producto no tiene stock se revierte la venta completa.
- *
- * Respaldo (si la función aún no existe): los mismos métodos del diagrama
- * ejecutados en orden, con compensación manual ante cualquier fallo.
+ * registrarVentaDirecta(datosVentaDTO)
+ * Valida la entrada y ejecuta fn_registrar_venta: cabecera, detalle,
+ * descuento de stock y SALIDA en kárdex en una sola transacción. Si algo
+ * falla (sin caja, stock insuficiente, descuento > subtotal…) PostgreSQL
+ * revierte todo y no queda nada a medias. Luego registra REGISTRO_VENTA.
  */
 export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO): Promise<ComprobanteVenta> {
   const datos = validar(registrarVentaSchema, datosVentaDTO);
-  const { usuarioId, ip } = datosVentaDTO;
-
-  // Agrupa líneas repetidas del mismo producto
-  const agrupado = new Map<number, number>();
-  for (const it of datos.items) agrupado.set(it.productoId, (agrupado.get(it.productoId) ?? 0) + it.cantidad);
-  const items = [...agrupado.entries()].map(([productoId, cantidad]) => ({ productoId, cantidad }));
+  const { usuarioId } = datosVentaDTO;
 
   const clienteId = datos.clienteId ?? (await buscarClienteMostrador(db));
-  if (!clienteId) throw new VentaError(`No existe el cliente "${CLIENTE_MOSTRADOR}". Ejecute la migración.`);
+  if (!clienteId) throw new VentaError(`No existe el cliente "${CLIENTE_MOSTRADOR}". Ejecute la migración del CU09.`);
 
-  // ---- Camino transaccional ------------------------------------------------
-  const { data: rpc, error: rpcError } = await db.rpc('fn_registrar_venta', {
+  const { data: rpc, error } = await db.rpc('fn_registrar_venta', {
     p_usuario_id: usuarioId,
     p_cliente_id: clienteId,
     p_tipo_pago: datos.tipoPago,
     p_tipo_comprobante: datos.tipoComprobante,
     p_descuento: datos.descuento,
-    p_items: items.map((i) => ({ producto_id: i.productoId, cantidad: i.cantidad })),
-    p_ip: ip,
+    p_items: datos.items.map((i) =>
+      i.productoId != null ? { producto_id: i.productoId, cantidad: i.cantidad } : { servicio_id: i.servicioId, cantidad: i.cantidad }
+    ),
   } as any);
+  if (error || !rpc) throw errorBD(error, 'No se pudo registrar la venta');
 
-  if (!rpcError && rpc) {
-    const r = rpc as any;
-    return {
-      ventaId: r.id,
-      nroComprobante: r.nro_comprobante,
-      subtotal: num(r.subtotal),
-      descuento: num(r.descuento),
-      total: num(r.total),
-      tipoPago: datos.tipoPago,
-      tipoComprobante: datos.tipoComprobante,
-    };
-  }
-  if (rpcError && !rpcNoExiste(rpcError)) throw errorBD(rpcError, 'No se pudo registrar la venta');
-
-  // ---- Respaldo paso a paso -------------------------------------------------
-  // 2.2 verificarCajaAbierta
-  const caja = await verificarCajaAbierta(db, usuarioId);
-  if (!caja) throw new VentaError(MENSAJES.SIN_CAJA);
-
-  // Valorizar líneas con precios del servidor
-  const { data: prods, error: pErr } = await db
-    .from('producto')
-    .select('*')
-    .in('id', items.map((i) => i.productoId));
-  if (pErr) throw errorBD(pErr, 'No se pudieron leer los productos');
-  const porId = new Map<number, any>(((prods ?? []) as any[]).map((p) => [p.id, p]));
-
-  const lineas: LineaVenta[] = items.map((it) => {
-    const p = porId.get(it.productoId);
-    if (!p) throw new VentaError(`Producto ${it.productoId} no existe`);
-    const stock = num(p.stock_disponible);
-    if (stock < it.cantidad) {
-      throw new VentaError(`Stock insuficiente para "${p.nombre}": disponible ${stock}, solicitado ${it.cantidad}`);
-    }
-    const precioUnitario = calcularPrecioVenta(p);
-    return {
-      productoId: it.productoId,
-      nombre: p.nombre,
-      cantidad: it.cantidad,
-      precioUnitario,
-      subtotal: r2(precioUnitario * it.cantidad),
-      stockAnterior: stock,
-    };
-  });
-
-  // 2.3 calcularTotalesYDescuentos
-  const totales = calcularTotalesYDescuentos(lineas, datos.descuento);
-  const nroComprobante = await generarNroComprobante(db);
-
-  // 2.4 crearVenta
-  const venta = await crearVenta(db, {
-    cajaId: caja.id,
-    clienteId,
-    usuarioId,
-    totales,
-    tipoPago: datos.tipoPago,
-    tipoComprobante: datos.tipoComprobante,
-    nroComprobante,
-  });
-
-  const stocksAplicados: { productoId: number; stockAnterior: number }[] = [];
-  const kardexCreados: number[] = [];
-  const compensar = async () => {
-    if (kardexCreados.length) await db.from('movimiento_kardex').delete().in('id', kardexCreados);
-    for (const s of stocksAplicados) {
-      await db.from('producto').update({ stock_disponible: s.stockAnterior } as any).eq('id', s.productoId);
-    }
-    await db.from('detalle_venta').delete().eq('venta_id', venta.id);
-    await db.from('venta').delete().eq('id', venta.id);
-  };
-
-  try {
-    // 2.5 crearDetalles
-    await crearDetalles(db, venta.id, lineas);
-
-    for (const l of lineas) {
-      // 2.7 descontarStock
-      const { stockAnterior } = await descontarStock(db, l.productoId, l.cantidad);
-      stocksAplicados.push({ productoId: l.productoId, stockAnterior });
-
-      // 2.6 registrarSalidaKardex
-      const mov = await registrarSalidaKardex(db, {
-        productoId: l.productoId,
-        usuarioId,
-        cantidad: l.cantidad,
-        stockAnterior,
-        nroComprobante,
-      });
-      kardexCreados.push(mov.id);
-    }
-  } catch (e) {
-    await compensar();
-    throw e instanceof VentaError ? e : errorBD(e, 'No se pudo registrar la venta');
-  }
-
-  // 1.6 guardarEventoCaja
-  await guardarEventoCaja(
-    db,
-    usuarioId,
-    'REGISTRO_VENTA',
-    ip,
-    `Venta ${nroComprobante} por Bs ${totales.total.toFixed(2)} (${datos.tipoPago})`
-  );
-
-  // 2.8 retornarComprobante(ventaId, nroComprobante)
-  return {
-    ventaId: venta.id,
-    nroComprobante,
-    ...totales,
+  const r = rpc as any;
+  const comprobante: ComprobanteVenta = {
+    ventaId: r.id,
+    nroComprobante: r.nro_comprobante,
+    subtotal: num(r.subtotal),
+    descuento: num(r.descuento),
+    total: num(r.total),
     tipoPago: datos.tipoPago,
     tipoComprobante: datos.tipoComprobante,
   };
+
+  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', await describirVenta(db, comprobante));
+  return comprobante;
 }
 
 /**
- * Subflujo "Anular venta": solo ventas del turno abierto del mismo usuario.
- * Devuelve el stock con una ENTRADA en el kárdex.
+ * Texto de la bitácora para una venta: número, cliente, qué se vendió y total.
+ * Ej.: "Venta NV-2026-00003 · Cliente: Juan Pérez · Cámara IP 4MP x2, Instalación CCTV x1.5 h ·
+ *       Subtotal Bs 810.00, descuento Bs 10.00, total Bs 800.00 · Pago: EFECTIVO"
+ * El detalle completo queda en DETALLE_VENTA y MOVIMIENTO_KARDEX.
+ */
+async function describirVenta(db: Db, c: ComprobanteVenta): Promise<string> {
+  const base =
+    `Subtotal Bs ${c.subtotal.toFixed(2)}, descuento Bs ${c.descuento.toFixed(2)}, total Bs ${c.total.toFixed(2)}` +
+    ` · Pago: ${c.tipoPago}`;
+  try {
+    const nota = await obtenerNotaVenta(db, c.ventaId);
+    if (!nota) return `Venta ${c.nroComprobante} · ${base}`;
+    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+    let items = nota.items
+      .map((i) => `${i.descripcion} x${fmt(i.cantidad)}${i.tipo === 'SERVICIO' ? ' h' : ''}`)
+      .join(', ');
+    if (items.length > 400) items = `${items.slice(0, 397)}...`;
+    return `Venta ${c.nroComprobante} · Cliente: ${nota.cliente.nombre} · ${items} · ${base}`;
+  } catch {
+    return `Venta ${c.nroComprobante} · ${base}`;
+  }
+}
+
+/**
+ * Subflujo "Anular venta": solo ventas del turno ABIERTO y del mismo usuario.
+ * fn_anular_venta devuelve el stock con una ENTRADA en el kárdex.
  */
 export async function anularVenta(
   db: Db,
-  params: { usuarioId: number; ventaId: number; ip: string }
+  params: { usuarioId: number; ventaId: number }
 ): Promise<{ ventaId: number; nroComprobante: string | null }> {
   const { ventaId } = validar(anularVentaSchema, params);
-
-  const { data: rpc, error: rpcError } = await db.rpc('fn_anular_venta', {
+  const { data: rpc, error } = await db.rpc('fn_anular_venta', {
     p_usuario_id: params.usuarioId,
     p_venta_id: ventaId,
-    p_ip: params.ip,
   } as any);
-  if (!rpcError && rpc) return { ventaId, nroComprobante: (rpc as any).nro_comprobante ?? null };
-  if (rpcError && !rpcNoExiste(rpcError)) throw errorBD(rpcError, 'No se pudo anular la venta');
+  if (error || !rpc) throw errorBD(error, 'No se pudo anular la venta');
+  const nro: string | null = (rpc as any).nro_comprobante ?? null;
 
-  // ---- Respaldo sin función SQL ----------------------------------------------
+  await guardarEventoCaja(db, params.usuarioId, 'ANULAR_VENTA', `Venta ${nro ?? ventaId} anulada; stock devuelto`);
+  return { ventaId, nroComprobante: nro };
+}
+
+/** Datos de la nota de venta (paso 8: PDF) */
+export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVenta | null> {
   const { data, error } = await db
     .from('venta')
-    .select('*, caja:caja_id(id, estado, usuario_id), detalle_venta(producto_id, cantidad)')
+    .select(
+      '*, cliente:cliente_id(*), usuario:usuario_id(nombre), ' +
+        'detalle_venta(*, producto:producto_id(nombre, unidad_medida), servicio:servicio_id(nombre))'
+    )
     .eq('id', ventaId)
     .maybeSingle();
   if (error) throw errorBD(error, 'No se pudo leer la venta');
-  if (!data) throw new VentaError('La venta no existe');
+  if (!data) return null;
   const v = data as any;
-  if (v.estado === 'ANULADA') throw new VentaError(MENSAJES.ANULADA);
-  if (v.caja?.estado !== 'ABIERTA') throw new VentaError(MENSAJES.TURNO_CERRADO);
-  if (v.caja?.usuario_id !== params.usuarioId) throw new VentaError(MENSAJES.OTRO_USUARIO);
-
-  // Marca condicional: evita doble anulación concurrente
-  const marcada = await actualizar<Venta>(db, 'venta', { estado: 'ANULADA' }, { id: ventaId, estado: 'EMITIDA' });
-  if (!marcada) throw new VentaError(MENSAJES.ANULADA);
-
-  for (const d of (v.detalle_venta ?? []) as any[]) {
-    if (!d.producto_id) continue;
-    for (let intento = 0; intento < 3; intento++) {
-      const { data: p } = await db.from('producto').select('stock_disponible').eq('id', d.producto_id).single();
-      const anterior = num((p as any)?.stock_disponible);
-      const { data: upd } = await db
-        .from('producto')
-        .update({ stock_disponible: anterior + num(d.cantidad) } as any)
-        .eq('id', d.producto_id)
-        .eq('stock_disponible', anterior)
-        .select('id');
-      if (upd && upd.length) {
-        await insertar(db, 'movimiento_kardex', {
-          producto_id: d.producto_id,
-          usuario_id: params.usuarioId,
-          tipo_movimiento: 'ENTRADA',
-          cantidad: num(d.cantidad),
-          stock_anterior: anterior,
-          origen_movimiento: 'ANULACION_VENTA',
-          observacion: `Anulación ${v.nro_comprobante ?? ventaId}`,
-        });
-        break;
-      }
-    }
-  }
-
-  await guardarEventoCaja(db, params.usuarioId, 'ANULAR_VENTA', params.ip, `Venta ${v.nro_comprobante ?? ventaId} anulada`);
-  return { ventaId, nroComprobante: v.nro_comprobante ?? null };
+  return {
+    id: v.id,
+    nro_comprobante: v.nro_comprobante ?? `#${v.id}`,
+    tipo_comprobante: v.tipo_comprobante ?? null,
+    fecha_emision: v.fecha_emision,
+    estado: v.estado ?? 'EMITIDA',
+    tipo_pago: (TIPOS_PAGO as readonly string[]).includes(v.tipo_pago) ? v.tipo_pago : 'EFECTIVO',
+    caja_id: v.caja_id,
+    usuario_id: v.usuario_id,
+    cajero: v.usuario?.nombre ?? `Usuario #${v.usuario_id}`,
+    cliente: { nombre: nombreCliente(v.cliente), documento: v.cliente?.documento_identidad ?? null },
+    items: ((v.detalle_venta ?? []) as any[])
+      .sort((a, b) => a.id - b.id)
+      .map((d) => ({
+        tipo: d.producto_id != null ? ('PRODUCTO' as const) : ('SERVICIO' as const),
+        descripcion: d.producto?.nombre ?? d.servicio?.nombre ?? '—',
+        unidad: d.producto_id != null ? (d.producto?.unidad_medida ?? 'UND') : 'HORA',
+        cantidad: num(d.cantidad),
+        precio_unitario: num(d.precio_unitario),
+        subtotal: num(d.subtotal),
+      })),
+    subtotal: num(v.subtotal),
+    descuento: num(v.descuento),
+    total: num(v.total),
+  };
 }
 
 // ===========================================================================
-// BITÁCORA
+// NOTA DE VENTA EN PDF (paso 8) — requiere: npm i pdf-lib
 // ===========================================================================
 
-/**
- * 1.6 guardarEventoCaja(usuarioId, accion, ip)
- * Nunca lanza: un fallo de auditoría no debe deshacer la operación de caja.
- * Si la columna `ip` aún no existe, se guarda el evento sin ella.
- */
-export async function guardarEventoCaja(
-  db: Db,
-  usuarioId: number,
-  accion: AccionCaja,
-  ip: string,
-  descripcion?: string
-): Promise<void> {
-  try {
-    await insertar(
-      db,
-      'bitacora',
-      {
-        usuario_id: usuarioId,
-        accion,
-        descripcion: descripcion ?? accion,
-        ip,
-      },
-      'id'
-    );
-  } catch (e) {
-    console.error('[CU09] No se pudo registrar en la bitácora:', (e as Error).message);
+/** Datos del emisor que aparecen en la cabecera: ajústalos a tu empresa */
+export const EMPRESA = {
+  nombre: 'SmartService',
+  detalle: 'Sistemas de seguridad electrónica',
+  contacto: '',
+};
+
+const VERDE = rgb(0x8c / 255, 0xd6 / 255, 0);
+const OSCURO = rgb(0.06, 0.09, 0.16);
+const GRIS = rgb(0.39, 0.45, 0.55);
+const LINEA = rgb(0.89, 0.91, 0.94);
+
+const ETIQUETA_PAGO: Record<string, string> = {
+  EFECTIVO: 'Efectivo',
+  QR: 'QR',
+  TARJETA: 'Tarjeta',
+  TRANSFERENCIA: 'Transferencia',
+};
+const ETIQUETA_COMPROBANTE: Record<string, string> = {
+  NOTA_VENTA: 'Nota de venta',
+  RECIBO: 'Recibo',
+  FACTURA: 'Factura',
+};
+
+const bsPdf = (n: number) =>
+  `Bs ${Number(n || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const cant = (n: number) =>
+  Number.isInteger(n) ? String(n) : n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Las fuentes estándar usan WinAnsi: se reemplazan caracteres fuera de ese juego */
+const texto = (s: string) =>
+  String(s ?? '')
+    .replace(/[−–]/g, '-')
+    .replace(/[→]/g, '->')
+    .replace(/[^\x20-\x7E -ÿ—•€]/g, '?');
+
+/** Fecha TIMESTAMP (sin zona, guardada en UTC) → hora de Bolivia */
+const fechaBolivia = (iso: string) => {
+  const d = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
+  return d.toLocaleString('es-BO', { timeZone: 'America/La_Paz', dateStyle: 'short', timeStyle: 'short' });
+};
+
+/** Corta un texto en líneas que entren en `ancho` */
+function partir(t: string, fuente: PDFFont, tam: number, ancho: number): string[] {
+  const palabras = texto(t).split(/\s+/);
+  const lineas: string[] = [];
+  let actual = '';
+  for (const p of palabras) {
+    const prueba = actual ? `${actual} ${p}` : p;
+    if (fuente.widthOfTextAtSize(prueba, tam) <= ancho) actual = prueba;
+    else {
+      if (actual) lineas.push(actual);
+      actual = p;
+    }
   }
+  if (actual) lineas.push(actual);
+  return lineas.length ? lineas : [''];
+}
+
+export async function generarNotaVentaPdf(nota: NotaVenta): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`${nota.nro_comprobante} - Nota de venta`);
+  pdf.setAuthor(EMPRESA.nombre);
+  const normal = await pdf.embedFont(StandardFonts.Helvetica);
+  const negrita = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+  const ANCHO = 595.28; // A4
+  const ALTO = 841.89;
+  const M = 40;
+  const anulada = nota.estado === 'ANULADA';
+
+  // Columnas de la tabla: Cant. | Unidad | Descripción | P. unit. | Subtotal
+  const col = { cant: M, unidad: M + 50, desc: M + 110, punit: ANCHO - M - 170, sub: ANCHO - M };
+  const anchoDesc = col.punit - col.desc - 60;
+
+  let page: PDFPage = pdf.addPage([ANCHO, ALTO]);
+  let y = ALTO - M;
+
+  const escribir = (t: string, x: number, yy: number, o: { f?: PDFFont; s?: number; c?: any; der?: boolean } = {}) => {
+    const f = o.f ?? normal;
+    const s = o.s ?? 10;
+    const limpio = texto(t);
+    const xx = o.der ? x - f.widthOfTextAtSize(limpio, s) : x;
+    page.drawText(limpio, { x: xx, y: yy, size: s, font: f, color: o.c ?? OSCURO });
+  };
+
+  const sello = () => {
+    if (!anulada) return;
+    page.drawText('ANULADA', {
+      x: 150, y: 330, size: 90, font: negrita, color: rgb(0.86, 0.15, 0.15), opacity: 0.18, rotate: degrees(35),
+    });
+  };
+
+  const encabezadoTabla = () => {
+    page.drawRectangle({ x: M, y: y - 6, width: ANCHO - 2 * M, height: 22, color: rgb(0.97, 0.98, 0.99) });
+    escribir('CANT.', col.cant + 4, y, { f: negrita, s: 8, c: GRIS });
+    escribir('UNIDAD', col.unidad, y, { f: negrita, s: 8, c: GRIS });
+    escribir('DESCRIPCIÓN', col.desc, y, { f: negrita, s: 8, c: GRIS });
+    escribir('P. UNIT.', col.punit + 60, y, { f: negrita, s: 8, c: GRIS, der: true });
+    escribir('SUBTOTAL', col.sub - 4, y, { f: negrita, s: 8, c: GRIS, der: true });
+    y -= 24;
+  };
+
+  // ---------------- Cabecera ----------------
+  page.drawRectangle({ x: 0, y: ALTO - 8, width: ANCHO, height: 8, color: VERDE });
+  escribir(EMPRESA.nombre, M, y - 10, { f: negrita, s: 20 });
+  escribir(EMPRESA.detalle, M, y - 26, { s: 9, c: GRIS });
+  if (EMPRESA.contacto) escribir(EMPRESA.contacto, M, y - 38, { s: 9, c: GRIS });
+
+  const titulo = (ETIQUETA_COMPROBANTE[nota.tipo_comprobante ?? ''] ?? 'Nota de venta').toUpperCase();
+  escribir(titulo, ANCHO - M, y - 8, { f: negrita, s: 12, c: GRIS, der: true });
+  escribir(nota.nro_comprobante, ANCHO - M, y - 28, { f: negrita, s: 18, der: true });
+  escribir(fechaBolivia(nota.fecha_emision), ANCHO - M, y - 44, { s: 9, c: GRIS, der: true });
+  y -= 70;
+
+  // ---------------- Datos ----------------
+  page.drawLine({ start: { x: M, y }, end: { x: ANCHO - M, y }, thickness: 1, color: LINEA });
+  y -= 20;
+  const fila = (etq: string, val: string, x: number) => {
+    escribir(etq, x, y, { s: 8, c: GRIS });
+    escribir(val, x, y - 13, { f: negrita, s: 10 });
+  };
+  fila('CLIENTE', nota.cliente.nombre, M);
+  fila('DOCUMENTO', nota.cliente.documento ?? 'S/N', M + 260);
+  fila('MÉTODO DE PAGO', ETIQUETA_PAGO[nota.tipo_pago] ?? nota.tipo_pago, M + 400);
+  y -= 36;
+  fila('ATENDIDO POR', nota.cajero, M);
+  fila('CAJA', `#${nota.caja_id}`, M + 260);
+  fila('ESTADO', anulada ? 'ANULADA' : 'EMITIDA', M + 400);
+  y -= 40;
+
+  // ---------------- Detalle ----------------
+  sello();
+  encabezadoTabla();
+  for (const it of nota.items) {
+    const lineas = partir(`${it.descripcion}${it.tipo === 'SERVICIO' ? ' (servicio)' : ''}`, normal, 9.5, anchoDesc);
+    const alto = 13 * lineas.length + 14;
+    if (y - alto < M + 140) {
+      page = pdf.addPage([ANCHO, ALTO]);
+      y = ALTO - M;
+      sello();
+      encabezadoTabla();
+    }
+    escribir(cant(it.cantidad), col.cant + 4, y, { s: 9.5 });
+    escribir(it.unidad, col.unidad, y, { s: 9.5, c: GRIS });
+    lineas.forEach((l, i) => escribir(l, col.desc, y - 13 * i, { s: 9.5 }));
+    escribir(bsPdf(it.precio_unitario), col.punit + 60, y, { s: 9.5, der: true });
+    escribir(bsPdf(it.subtotal), col.sub - 4, y, { f: negrita, s: 9.5, der: true });
+    // separador 7 pt debajo de la última línea de la fila
+    const base = y - 13 * (lineas.length - 1) - 7;
+    page.drawLine({ start: { x: M, y: base }, end: { x: ANCHO - M, y: base }, thickness: 0.5, color: LINEA });
+    y = base - 14;
+  }
+
+  // ---------------- Totales ----------------
+  y -= 6;
+  const total = (etq: string, val: string) => {
+    escribir(etq, ANCHO - M - 150, y, { s: 9.5, c: GRIS });
+    escribir(val, ANCHO - M - 4, y, { s: 9.5, der: true });
+    y -= 16;
+  };
+  total('Subtotal', bsPdf(nota.subtotal));
+  total('Descuento', nota.descuento > 0 ? `- ${bsPdf(nota.descuento)}` : bsPdf(0));
+  y -= 10;
+  page.drawRectangle({ x: ANCHO - M - 160, y: y - 9, width: 160, height: 28, color: VERDE });
+  escribir('TOTAL', ANCHO - M - 150, y, { f: negrita, s: 11 });
+  escribir(bsPdf(nota.total), ANCHO - M - 4, y, { f: negrita, s: 13, der: true });
+
+  // ---------------- Pie ----------------
+  escribir('Gracias por su compra.', M, M + 20, { s: 9, c: GRIS });
+  escribir(
+    'Documento generado por SmartService. No válido como factura fiscal salvo que se indique lo contrario.',
+    M,
+    M + 6,
+    { s: 7.5, c: GRIS }
+  );
+
+  return pdf.save();
 }

@@ -17,7 +17,7 @@
  *   guardarHistorialPrecios(id, precios)       → guardarHistorialPreciosService
  *   registrarEventoProveedor(usuarioId, accion, ip) → registrarEventoProveedorService
  */
-import { ZodError, type ZodTypeAny, type z } from 'zod';
+import { ZodError, type z } from 'zod';
 import { listaCatalogoSchema, proveedorSchema } from './schema';
 import type {
   AccionProveedor,
@@ -52,7 +52,7 @@ const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-function validar<S extends ZodTypeAny>(schema: S, data: unknown, prefijo = ''): z.output<S> {
+function validar<S extends z.ZodType>(schema: S, data: unknown, prefijo = ''): z.output<S> {
   try {
     return schema.parse(data);
   } catch (e) {

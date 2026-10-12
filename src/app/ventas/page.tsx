@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { anularVenta, listarTurnosCerrados, obtenerDatosVentas } from '@/app/actions/ventas';
 import type { Caja, DatosVentas, VentaResumen } from '@/backend/ventas';
-import VentasForm from './ventas-form';
+import VentasForm, { abrirNotaVentaPdf } from './ventas-form';
 import ArqueoModal from './arqueo-modal';
 
 // ---------------------------------------------------------------------------
@@ -120,13 +120,16 @@ export default function VentasPage() {
                 </span>
               )
             )}
-            <button
-              type="button"
-              onClick={() => setVerTurnos((v) => !v)}
-              className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-              {verTurnos ? 'Ocultar turnos' : 'Turnos cerrados'}
-            </button>
+            {/* Subflujo "Consultar turnos": solo Administrador */}
+            {datos?.usuario.esAdmin && (
+              <button
+                type="button"
+                onClick={() => setVerTurnos((v) => !v)}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                {verTurnos ? 'Ocultar turnos' : 'Turnos cerrados'}
+              </button>
+            )}
             {caja ? (
               <button
                 type="button"
@@ -208,6 +211,7 @@ export default function VentasPage() {
               <div className="xl:col-span-2">
                 <VentasForm
                   productos={datos.productos}
+                  servicios={datos.servicios ?? []}
                   clientes={datos.clientes}
                   clienteMostradorId={datos.cliente_mostrador_id}
                   cajaAbierta={!!caja}
@@ -258,16 +262,28 @@ export default function VentasPage() {
                                 {ETIQUETA_PAGO[v.tipo_pago] ?? v.tipo_pago}
                               </span>
                             </div>
-                            {anulada ? (
-                              <span className="rounded-md bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">ANULADA</span>
-                            ) : (
+                            <div className="flex items-center gap-1">
                               <button
-                                onClick={() => setPorAnular(v)}
-                                className="rounded-lg px-2 py-1 font-medium text-red-600 transition hover:bg-red-50"
+                                type="button"
+                                onClick={async () => {
+                                  const error = await abrirNotaVentaPdf(v.id);
+                                  if (error) notificar('error', error);
+                                }}
+                                className="rounded-lg px-2 py-1 font-medium text-slate-600 transition hover:bg-slate-100"
                               >
-                                Anular
+                                PDF
                               </button>
-                            )}
+                              {anulada ? (
+                                <span className="rounded-md bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">ANULADA</span>
+                              ) : (
+                                <button
+                                  onClick={() => setPorAnular(v)}
+                                  className="rounded-lg px-2 py-1 font-medium text-red-600 transition hover:bg-red-50"
+                                >
+                                  Anular
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </li>
                       );

@@ -1,214 +1,301 @@
-'use server'
+'use server';
 
+/**
+ * CU09 — Gestionar Ventas y Arqueo de Caja · Server Actions
+ *
+ * Reglas de esta capa:
+ *  - El usuario SIEMPRE sale de la sesión del servidor (getCurrentUser, CU01),
+ *    nunca de un parámetro: una Server Action es un endpoint público.
+ *  - La IP NO se obtiene aquí: la captura la función común de bitácora (CU06).
+ *  - En un archivo 'use server' solo se exportan funciones async.
+ *  - Respuesta uniforme: { ok: true, data, mensaje } | { ok: false, error }.
+ */
 import { revalidatePath } from 'next/cache';
-import { headers } from 'next/headers';
+import { getCurrentUser } from '@/lib/auth';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
-import { 
+import {
   VentaError,
   anularVenta as anularVentaService,
+  buscarClienteMostrador,
+  listarClientesVenta as listarClientesService,
+  listarProductosVenta as listarProductosService,
+  listarServiciosVenta as listarServiciosService,
+  listarTurnosCerrados as listarTurnosService,
+  listarVentasCaja,
+  obtenerResumenCaja as obtenerResumenCajaService,
+  generarNotaVentaPdf,
+  obtenerNotaVenta,
   procesarAperturaOArqueo,
   registrarVentaDirecta,
-  obtenerResumenCaja as obtenerResumenCajaService,
-  listarProductosVenta as listarProductosService,
-  listarClientesVenta as listarClientesService,
-  listarTurnosCerrados as listarTurnosService,
-  type Db,
+  resumirCaja,
+  verificarCajaAbierta,
   type Caja,
-  type ResumenArqueo
+  type ClienteVenta,
+  type ComprobanteVenta,
+  type DatosVentas,
+  type Db,
+  type ProductoVenta,
+  type RegistrarVentaInput,
+  type ResultadoCaja,
+  type ResumenArqueo,
+  type ServicioVenta,
 } from '@/backend/ventas';
 
-// Helper para obtener la IP del cliente de forma segura
-async function getClientIpLocal(): Promise<string> {
-  const h = await headers();
-  const forwarded = h.get('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  return h.get('x-real-ip') ?? '0.0.0.0';
+// ===========================================================================
+// Tipos y contexto
+// ===========================================================================
+type RespuestaAccion<T> = { ok: true; data: T; mensaje: string } | { ok: false; error: string };
+
+type Contexto = { db: Db; usuarioId: number; nombre: string; esAdmin: boolean };
+
+/**
+ * Usuario de la sesión creada por loginAction (CU01):
+ * createSession({ uid, nombre, correo, rol_id, rol, version }).
+ * Se lee de forma defensiva (id o uid; rol como texto u objeto).
+ */
+async function contexto(): Promise<Contexto> {
+  const u = (await getCurrentUser()) as any;
+  const id = Number(u?.id ?? u?.uid);
+  if (!u || !Number.isInteger(id) || id <= 0) throw new VentaError('Sesión expirada. Vuelva a iniciar sesión.');
+  const rol: string = typeof u.rol === 'string' ? u.rol : (u.rol?.nombre ?? u.rol_nombre ?? '');
+  return {
+    db: getSupabaseServiceClient() as unknown as Db,
+    usuarioId: id,
+    nombre: u.nombre ?? u.correo ?? `Usuario #${id}`,
+    esAdmin: /admin/i.test(rol),
+  };
 }
 
-// Contexto base para las peticiones de ventas y caja
-async function contexto(usuarioId = 1) {
-  const db = getSupabaseServiceClient() as Db;
-  const ip = await getClientIpLocal();
-  return { db, usuarioId, ip };
-}
+const exito = <T>(data: T, mensaje: string) => ({ ok: true as const, data, mensaje });
 
-function manejarError(e: unknown, porDefecto: string) {
+function falla(e: unknown, porDefecto: string) {
   if (e instanceof VentaError) return { ok: false as const, error: e.message };
-  console.error('[CU09 Action Error]', e);
-  return { ok: false as const, error: (e as Error)?.message || porDefecto };
+  console.error('[CU09]', e);
+  return { ok: false as const, error: porDefecto };
 }
 
+const numeroValido = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
 // ===========================================================================
-// Acciones principales (Conectadas al Backend de Ventas)
+// Carga de la pantalla
 // ===========================================================================
 
-export async function registrarVentaAction(input: any, usuarioId = 1) {
+/** Todo lo que necesita page.tsx */
+export async function obtenerDatosVentas(): Promise<RespuestaAccion<DatosVentas>> {
   try {
-    const { db, ip } = await contexto(usuarioId);
-    const resultado = await registrarVentaDirecta(db, { ...input, usuarioId, ip });
-    revalidatePath('/ventas');
-    return { 
-      ok: true as const, 
-      data: resultado, 
-      mensaje: '¡Venta registrada exitosamente!' 
-    };
+    const { db, usuarioId, nombre, esAdmin } = await contexto();
+    const [caja, productos, servicios, clientes, clienteMostradorId] = await Promise.all([
+      verificarCajaAbierta(db, usuarioId),
+      listarProductosService(db),
+      listarServiciosService(db),
+      listarClientesService(db),
+      buscarClienteMostrador(db),
+    ]);
+    const ventas = caja ? await listarVentasCaja(db, caja.id) : [];
+    return exito(
+      {
+        usuario: { id: usuarioId, nombre, esAdmin },
+        caja,
+        resumen: caja ? resumirCaja(caja, ventas) : null,
+        ventas,
+        productos,
+        servicios,
+        clientes,
+        cliente_mostrador_id: clienteMostradorId,
+      },
+      caja ? `Caja #${caja.id} abierta` : 'Sin caja abierta'
+    );
   } catch (e) {
-    return manejarError(e, 'No se pudo registrar la venta');
+    return falla(e, 'Error al obtener datos de ventas');
   }
 }
 
-// Creamos un alias directo por si algún componente importa la función sin el sufijo 'Action'
-export const registrarVenta = registrarVentaAction;
-
-export async function procesarCajaAction(cajaDTO: any, usuarioId = 1) {
-  try {
-    const { db, ip } = await contexto(usuarioId);
-    const resultado = await procesarAperturaOArqueo(db, { ...cajaDTO, usuarioId, ip });
-    revalidatePath('/ventas');
-    return { ok: true as const, data: resultado };
-  } catch (e) {
-    return manejarError(e, 'No se pudo procesar la caja');
-  }
-}
-
-export async function anularVentaAction(ventaId: number, usuarioId = 1) {
-  try {
-    const { db, ip } = await contexto(usuarioId);
-    const resultado = await anularVentaService(db, { usuarioId, ventaId, ip });
-    revalidatePath('/ventas');
-    return { ok: true as const, data: resultado };
-  } catch (e) {
-    return manejarError(e, 'No se pudo anular la venta');
-  }
-}
-
-// ===========================================================================
-// Adaptadores exactos con Tipado Estricto para arqueo-modal.tsx
-// ===========================================================================
-
-type RespuestaAccion<T> = 
-  | { ok: true; data: T }
-  | { ok: false; error: string };
-
-export async function abrirCaja(montoInicial: number | { monto_inicial: number }): Promise<RespuestaAccion<{ caja: Caja }>> {
-  try {
-    const { db, usuarioId, ip } = await contexto();
-    const monto = typeof montoInicial === 'object' ? montoInicial.monto_inicial : montoInicial;
-    
-    const dto: any = {
-      tipo: 'APERTURA',
-      montoInicial: monto,
-      usuarioId,
-      ip,
-    };
-
-    const resultado = await procesarAperturaOArqueo(db, dto);
-    
-    revalidatePath('/ventas');
-    return { ok: true, data: { caja: resultado as unknown as Caja } };
-  } catch (e: any) {
-    return { ok: false, error: e.message || 'Error al abrir caja' };
-  }
-}
-
-export async function cerrarCaja(params: { montoReal?: number; monto_final_real?: number; observacion?: string }): Promise<RespuestaAccion<{ caja: Caja }>> {
-  try {
-    const { db, usuarioId, ip } = await contexto();
-    const monto = params.montoReal ?? params.monto_final_real ?? 0;
-    
-    const dto: any = {
-      tipo: 'ARQUEO',
-      montoReal: monto,
-      observacion: params.observacion,
-      usuarioId,
-      ip,
-    };
-
-    const resultado = await procesarAperturaOArqueo(db, dto);
-    
-    revalidatePath('/ventas');
-    return { ok: true, data: { caja: resultado as unknown as Caja } };
-  } catch (e: any) {
-    return { ok: false, error: e.message || 'Error al cerrar caja' };
-  }
-}
-
-export async function obtenerResumenArqueo(): Promise<RespuestaAccion<ResumenArqueo>> {
-  try {
-    const { db, usuarioId } = await contexto();
-    const resumen = await obtenerResumenCajaService(db, usuarioId) as ResumenArqueo;
-    return { ok: true, data: resumen };
-  } catch (e: any) {
-    return { ok: false, error: e.message || 'No se pudo obtener el resumen' };
-  }
-}
-// ===========================================================================
-// Adaptadores avanzados con estructura { ok, data } para page.tsx
-// ===========================================================================
-
-export async function anularVenta(ventaId: number) {
-  try {
-    const { db, usuarioId, ip } = await contexto();
-    const resultado = await anularVentaService(db, { usuarioId, ventaId, ip });
-    revalidatePath('/ventas');
-    return { ok: true as const, data: resultado };
-  } catch (e: any) {
-    return { ok: false as const, error: e.message || 'No se pudo anular la venta' };
-  }
-}
-
-export async function listarTurnosCerrados(limite = 20) {
-  try {
-    const { db, usuarioId } = await contexto();
-    const turnos = await listarTurnosService(db, usuarioId);
-    return { ok: true as const, data: turnos };
-  } catch (e: any) {
-    return { ok: false as const, error: e.message || 'Error al listar turnos cerrados' };
-  }
-}
-
-export async function listarProductosVenta() {
+export async function listarProductosVenta(): Promise<RespuestaAccion<ProductoVenta[]>> {
   try {
     const { db } = await contexto();
     const productos = await listarProductosService(db);
-    return { ok: true as const, data: productos };
-  } catch (e: any) {
-    return { ok: false as const, error: e.message || 'Error al listar productos' };
+    return exito(productos, `${productos.length} producto(s)`);
+  } catch (e) {
+    return falla(e, 'Error al listar productos');
   }
 }
 
-export async function listarClientesVenta() {
+export async function listarServiciosVenta(): Promise<RespuestaAccion<ServicioVenta[]>> {
+  try {
+    const { db } = await contexto();
+    const servicios = await listarServiciosService(db);
+    return exito(servicios, `${servicios.length} servicio(s)`);
+  } catch (e) {
+    return falla(e, 'Error al listar servicios');
+  }
+}
+
+export async function listarClientesVenta(): Promise<RespuestaAccion<ClienteVenta[]>> {
   try {
     const { db } = await contexto();
     const clientes = await listarClientesService(db);
-    return { ok: true as const, data: clientes };
-  } catch (e: any) {
-    return { ok: false as const, error: e.message || 'Error al listar clientes' };
+    return exito(clientes, `${clientes.length} cliente(s)`);
+  } catch (e) {
+    return falla(e, 'Error al listar clientes');
   }
 }
 
-export async function obtenerDatosVentas() {
+// ===========================================================================
+// Caja: apertura, resumen y arqueo/cierre
+// ===========================================================================
+
+/** Pasos 1-2: apertura con fondo inicial (registra APERTURA_CAJA) */
+export async function abrirCaja(
+  montoInicial: number | { monto_inicial: number }
+): Promise<RespuestaAccion<ResultadoCaja>> {
+  try {
+    const monto = typeof montoInicial === 'object' ? montoInicial?.monto_inicial : montoInicial;
+    if (!numeroValido(monto)) return { ok: false, error: 'Ingrese un fondo inicial válido' };
+
+    const { db, usuarioId } = await contexto();
+    const resultado = await procesarAperturaOArqueo(db, { tipo: 'APERTURA', usuarioId, montoInicial: monto });
+    revalidatePath('/ventas');
+    return exito(resultado, `Caja #${resultado.caja.id} abierta`);
+  } catch (e) {
+    return falla(e, 'Error al abrir caja');
+  }
+}
+
+/** Resumen previo al conteo físico (efectivo esperado) */
+export async function obtenerResumenArqueo(): Promise<RespuestaAccion<ResumenArqueo>> {
   try {
     const { db, usuarioId } = await contexto();
-    const [productos, clientes, resumenCaja] = await Promise.all([
-      listarProductosService(db),
-      listarClientesService(db),
-      obtenerResumenCajaService(db, usuarioId).catch(() => null)
-    ]);
-    
-    return {
-      ok: true as const,
-      data: {
-        productos,
-        clientes,
-        caja: resumenCaja,
-        resumen: resumenCaja
-      } as any 
-    };
-  } catch (e: any) {
-    return { ok: false as const, error: e.message || 'Error al obtener datos de ventas' };
+    const resumen = await obtenerResumenCajaService(db, usuarioId);
+    if (!resumen) return { ok: false, error: 'No tiene una caja abierta' };
+    return exito(resumen, 'Resumen del turno');
+  } catch (e) {
+    return falla(e, 'No se pudo obtener el resumen');
+  }
+}
+
+/** Pasos 9-10: arqueo y cierre (si se indica cajaId de otro usuario, se rechaza) */
+export async function cerrarCaja(params: {
+  montoReal?: number;
+  monto_final_real?: number;
+  observacion?: string;
+  cajaId?: number;
+}): Promise<RespuestaAccion<ResultadoCaja>> {
+  try {
+    const monto = params?.montoReal ?? params?.monto_final_real;
+    if (!numeroValido(monto)) return { ok: false, error: 'Ingrese el efectivo contado' };
+
+    const { db, usuarioId } = await contexto();
+    const resultado = await procesarAperturaOArqueo(db, {
+      tipo: 'ARQUEO',
+      usuarioId,
+      montoReal: monto,
+      observacion: params.observacion,
+      cajaId: params.cajaId,
+    });
+    revalidatePath('/ventas');
+    const d = resultado.diferencia ?? 0;
+    const texto = d === 0 ? 'caja cuadrada' : d > 0 ? `sobrante Bs ${d.toFixed(2)}` : `faltante Bs ${Math.abs(d).toFixed(2)}`;
+    return exito(resultado, `Caja #${resultado.caja.id} cerrada: ${texto}`);
+  } catch (e) {
+    return falla(e, 'Error al cerrar caja');
+  }
+}
+
+/** Entrada genérica (apertura o arqueo) — sin usuarioId: lo pone la sesión */
+export async function procesarCajaAction(
+  cajaDTO:
+    | { tipo: 'APERTURA'; montoInicial: number }
+    | { tipo: 'ARQUEO'; montoReal: number; observacion?: string; cajaId?: number }
+): Promise<RespuestaAccion<ResultadoCaja>> {
+  if (cajaDTO?.tipo === 'APERTURA') return abrirCaja(cajaDTO.montoInicial);
+  if (cajaDTO?.tipo === 'ARQUEO') return cerrarCaja(cajaDTO);
+  return { ok: false, error: 'Operación de caja inválida' };
+}
+
+// ===========================================================================
+// Ventas
+// ===========================================================================
+
+/** Pasos 3-7: venta atómica de productos y/o servicios */
+export async function registrarVentaAction(input: RegistrarVentaInput): Promise<RespuestaAccion<ComprobanteVenta>> {
+  try {
+    const { db, usuarioId } = await contexto();
+    // usuarioId va al final: el navegador no puede sobrescribirlo
+    const comprobante = await registrarVentaDirecta(db, { ...(input as any), usuarioId });
+    revalidatePath('/ventas');
+    return exito(comprobante, `Venta ${comprobante.nroComprobante} registrada`);
+  } catch (e) {
+    return falla(e, 'No se pudo registrar la venta');
+  }
+}
+
+export async function registrarVenta(input: RegistrarVentaInput): Promise<RespuestaAccion<ComprobanteVenta>> {
+  return registrarVentaAction(input);
+}
+
+/** Subflujo: anulación (solo turno abierto y del mismo usuario) */
+export async function anularVentaAction(
+  ventaId: number
+): Promise<RespuestaAccion<{ ventaId: number; nroComprobante: string | null }>> {
+  try {
+    if (!Number.isInteger(ventaId) || ventaId <= 0) return { ok: false, error: 'Venta inválida' };
+    const { db, usuarioId } = await contexto();
+    const resultado = await anularVentaService(db, { usuarioId, ventaId });
+    revalidatePath('/ventas');
+    return exito(resultado, `${resultado.nroComprobante ?? 'Venta'} anulada; stock devuelto al inventario`);
+  } catch (e) {
+    return falla(e, 'No se pudo anular la venta');
+  }
+}
+
+export async function anularVenta(
+  ventaId: number
+): Promise<RespuestaAccion<{ ventaId: number; nroComprobante: string | null }>> {
+  return anularVentaAction(ventaId);
+}
+
+// ===========================================================================
+// Subflujo: consulta de turnos cerrados (Administrador)
+// ===========================================================================
+export async function listarTurnosCerrados(limite = 20): Promise<RespuestaAccion<Caja[]>> {
+  try {
+    const { db, esAdmin } = await contexto();
+    if (!esAdmin) return { ok: false, error: 'Solo el Administrador puede consultar los turnos cerrados' };
+    const tope = Number.isInteger(limite) ? Math.min(Math.max(limite, 1), 100) : 20;
+    const turnos = await listarTurnosService(db, tope);
+    return exito(turnos, `${turnos.length} turno(s) cerrado(s)`);
+  } catch (e) {
+    return falla(e, 'Error al listar turnos cerrados');
+  }
+}
+
+// ===========================================================================
+// Paso 8: nota de venta en PDF
+// ===========================================================================
+
+/**
+ * Devuelve el PDF de la nota de venta en base64 (las Server Actions no
+ * pueden devolver binarios). El navegador lo convierte en archivo con
+ * abrirNotaVentaPdf() de ventas-form.tsx.
+ * Solo la puede obtener quien registró la venta o un Administrador.
+ */
+export async function descargarNotaVenta(
+  ventaId: number
+): Promise<RespuestaAccion<{ nombreArchivo: string; base64: string }>> {
+  try {
+    if (!Number.isInteger(ventaId) || ventaId <= 0) return { ok: false, error: 'Venta inválida' };
+    const { db, usuarioId, esAdmin } = await contexto();
+    const nota = await obtenerNotaVenta(db, ventaId);
+    if (!nota) return { ok: false, error: 'La venta no existe' };
+    if (nota.usuario_id !== usuarioId && !esAdmin) {
+      return { ok: false, error: 'No tiene permiso para ver esta nota de venta' };
+    }
+    const bytes = await generarNotaVentaPdf(nota);
+    return exito(
+      { nombreArchivo: `${nota.nro_comprobante}.pdf`, base64: Buffer.from(bytes).toString('base64') },
+      `Nota ${nota.nro_comprobante} generada`
+    );
+  } catch (e) {
+    return falla(e, 'No se pudo generar la nota de venta');
   }
 }
