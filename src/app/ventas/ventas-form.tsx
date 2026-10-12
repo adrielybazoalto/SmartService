@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { descargarNotaVenta, registrarVenta } from '@/app/actions/ventas';
 import type {
   ClienteVenta,
@@ -79,7 +79,6 @@ const PAGOS: { valor: TipoPago; etiqueta: string }[] = [
 const COMPROBANTES: { valor: TipoComprobante; etiqueta: string }[] = [
   { valor: 'NOTA_VENTA', etiqueta: 'Nota de venta' },
   { valor: 'RECIBO', etiqueta: 'Recibo' },
-  
 ];
 
 const inputCls =
@@ -98,7 +97,14 @@ export default function VentasForm({
   const [filtroTipo, setFiltroTipo] = useState<'TODOS' | 'PRODUCTO' | 'SERVICIO'>('TODOS');
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [lineas, setLineas] = useState<Linea[]>([]);
-  const [clienteId, setClienteId] = useState<number | null>(clienteMostradorId);
+  // Cliente por defecto: "Cliente de mostrador"; si no existe, el primero de la lista.
+  // Así el cliente que se ve seleccionado es siempre el que se envía.
+  const clientePorDefecto = clienteMostradorId ?? clientes[0]?.id ?? null;
+  const [clienteId, setClienteId] = useState<number | null>(clientePorDefecto);
+  // Si la lista de clientes llega después de montar el formulario
+  useEffect(() => {
+    if (clienteId === null && clientePorDefecto !== null) setClienteId(clientePorDefecto);
+  }, [clienteId, clientePorDefecto]);
   const [busquedaCliente, setBusquedaCliente] = useState('');
   const [tipoPago, setTipoPago] = useState<TipoPago>('EFECTIVO');
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('NOTA_VENTA');
@@ -197,7 +203,7 @@ export default function VentasForm({
     setLineas([]);
     setDescuento('');
     setEfectivoRecibido('');
-    setClienteId(clienteMostradorId);
+    setClienteId(clientePorDefecto);
     setBusquedaCliente('');
     setTipoPago('EFECTIVO');
     setTipoComprobante('NOTA_VENTA');
@@ -209,6 +215,7 @@ export default function VentasForm({
     setError(null);
     if (!cajaAbierta) return setError('Debe abrir un turno de caja antes de vender');
     if (lineas.length === 0) return setError('Agregue al menos un producto o servicio');
+    if (!clienteId) return setError('Seleccione un cliente');
     if (descuentoInvalido) return setError('El descuento no puede ser mayor al subtotal');
     if (hayExcesoStock) return setError('Hay productos con cantidad mayor al stock disponible');
     if (cambio !== null && cambio < 0) return setError('El efectivo recibido es menor al total');
@@ -478,6 +485,7 @@ export default function VentasForm({
               onChange={(e) => setClienteId(e.target.value ? Number(e.target.value) : null)}
               className={inputCls}
             >
+              {clienteId === null && <option value="">Seleccione un cliente</option>}
               {clienteMostradorId && <option value={clienteMostradorId}>Cliente de mostrador</option>}
               {clientesFiltrados
                 .filter((c) => c.id !== clienteMostradorId)
@@ -488,6 +496,13 @@ export default function VentasForm({
                   </option>
                 ))}
             </select>
+            {clientes.length === 0 ? (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                No se cargó ningún cliente de la base de datos. Ejecute diagnostico_cu09.sql.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-400">{clientes.length} cliente(s) registrados</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Tipo de comprobante</label>

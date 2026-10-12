@@ -1,26 +1,17 @@
 /**
- * CU014 — Gestionar Proveedores y Catálogo de Mayoristas
- * 1° types.ts · Interfaces, DTOs y tipos estrictos
+ * CU14 — Gestionar Proveedores y Catálogo de Mayoristas · Tipos
  *
- * Correspondencia diagrama → base de datos (diccionario de datos, Tablas 14 y 15):
- *   BD Proveedor          → tabla `proveedor`            (nit_ruc → `nit`)
- *   BD Producto           → tabla `producto`
- *   BD CatalogoMayorista  → tabla `producto_proveedor`
- *        precio_mayorista → columna `precio_compra`
- *        stock_disponible → columna `stock_disponible` (migración 20261011_cu14_stock_mayorista.sql)
- *   BD Bitacora           → tabla `bitacora`
+ * Tablas: proveedor, producto_proveedor, producto, bitacora (columna `ip`).
+ * Alcance: sin facturación ni impuestos.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-/** Cliente de Supabase que reciben los servicios */
+/** Cliente de Supabase (service_role) que reciben todas las funciones del servicio */
 export type Db = SupabaseClient<any, 'public', any>;
 
-/** Respuesta estándar de las Server Actions */
-export type ActionResult<T> =
-  | { ok: true; data: T; mensaje: string }
-  | { ok: false; error: string };
-
-/** Entidad Proveedor (tabla proveedor) */
+// ---------------------------------------------------------------------------
+// Modelos de lectura
+// ---------------------------------------------------------------------------
 export interface Proveedor {
   id: number;
   razon_social: string;
@@ -30,69 +21,58 @@ export interface Proveedor {
   correo: string | null;
   direccion: string | null;
   estado: boolean;
-  /** Cantidad de productos en su catálogo (solo lectura) */
   total_productos: number;
 }
 
-/** Entidad CatalogoMayorista (tabla producto_proveedor) con datos del producto */
-export interface CatalogoMayorista {
-  id: number;
+/** Ítem del catálogo del mayorista (tabla producto_proveedor + datos del producto) */
+export interface ItemCatalogo {
   proveedor_id: number;
   producto_id: number;
   producto_nombre: string;
   unidad_medida: string | null;
-  /** precio_compra_actual del producto, como referencia */
-  precio_compra_actual: number;
+  /** precio_compra_actual del inventario, como referencia */
+  precio_inventario: number;
   codigo_item_proveedor: string | null;
-  /** precio_mayorista del diagrama → columna precio_compra */
-  precio_mayorista: number;
-  /** stock_disponible del mayorista */
-  stock_disponible: number;
+  precio_compra: number;
   fecha_actualizacion: string | null;
 }
 
-/** Producto del catálogo interno disponible para vincular */
-export interface ProductoOpcion {
+/** Producto del inventario general que se puede vincular al catálogo */
+export interface ProductoInventario {
   id: number;
   nombre: string;
   unidad_medida: string | null;
   precio_compra_actual: number;
 }
 
-/** Línea del historial de precios (guardarHistorialPrecios) */
-export interface CambioPrecio {
-  productoId: number;
-  productoNombre: string;
-  precioAnterior: number | null;
-  precioNuevo: number;
+/** Oferta de un proveedor para un producto (subflujo "Comparar precios") */
+export interface OfertaProveedor {
+  proveedor_id: number;
+  razon_social: string;
+  nit: string;
+  activo: boolean;
+  codigo_item_proveedor: string | null;
+  precio_compra: number;
+  fecha_actualizacion: string | null;
+  /** Cuánto más caro que la mejor oferta activa (0 = la más barata) */
+  diferencia: number;
+  es_mejor: boolean;
 }
 
-/** confirmarResultadoCatalogo() / mostrarResumenCatalogo() */
-export interface ResumenCatalogo {
-  proveedorId: number;
-  proveedorNombre: string;
-  insertados: number;
-  actualizados: number;
-  sinCambios: number;
-  cambiosPrecio: CambioPrecio[];
-  catalogo: CatalogoMayorista[];
+/** Comparativo de precios de compra de un producto entre proveedores */
+export interface ComparativoPrecios {
+  producto_id: number;
+  producto_nombre: string;
+  unidad_medida: string | null;
+  /** precio_compra_actual del inventario, como referencia */
+  precio_inventario: number;
+  ofertas: OfertaProveedor[];
+  mejor_precio: number | null;
 }
 
-/** Acciones que registra el CU014 en la bitácora */
-export type AccionProveedor =
-  | 'CREAR_PROVEEDOR'
-  | 'ACTUALIZAR_PROVEEDOR'
-  | 'ACTIVAR_PROVEEDOR'
-  | 'DESACTIVAR_PROVEEDOR'
-  | 'ACTUALIZAR_CATALOGO_PROVEEDOR'
-  | 'ACTUALIZAR_PRECIO_PROVEEDOR'
-  | 'QUITAR_PRODUCTO_PROVEEDOR';
-
-// ===========================================================================
-// DTOs (entrada desde la IU y datos ya validados)
-// ===========================================================================
-
-/** proveedorDTO: lo que envía el formulario (registrarDatosProveedor) */
+// ---------------------------------------------------------------------------
+// DTOs (datos que envían los formularios)
+// ---------------------------------------------------------------------------
 export interface ProveedorDTO {
   razon_social: string;
   nit: string;
@@ -102,28 +82,51 @@ export interface ProveedorDTO {
   direccion?: string | null;
 }
 
-/** datosProveedor: proveedorDTO normalizado por el esquema (guardarProveedor) */
-export interface DatosProveedor {
+export interface ItemCatalogoDTO {
+  productoId: number;
+  codigoItemProveedor?: string | null;
+  precioCompra: number | string;
+}
+
+/** Datos del proveedor ya validados y normalizados */
+export type ProveedorValidado = {
   razon_social: string;
   nit: string;
   contacto: string | null;
   telefono: string | null;
   correo: string | null;
   direccion: string | null;
-}
+};
 
-/** Ítem de listaDTO (seleccionarProveedorYCatalogo). Acepta números o texto numérico. */
-export interface ProductoCatalogoDTO {
-  productoId: number | string;
-  codigoItemProveedor?: string | null;
-  precioMayorista: number | string;
-  stockDisponible?: number | string;
-}
-
-/** Ítem validado por recorrerYValidarListaProductos */
-export interface ProductoCatalogoValido {
+/** Ítem de catálogo ya validado */
+export type ItemCatalogoValidado = {
   productoId: number;
-  codigoItemProveedor: string | null;
-  precioMayorista: number;
-  stockDisponible: number;
+  codigo: string | null;
+  precio: number;
+};
+
+// ---------------------------------------------------------------------------
+// Bitácora y errores
+// ---------------------------------------------------------------------------
+export type AccionProveedor =
+  | 'CREAR_PROVEEDOR'
+  | 'ACTUALIZAR_PROVEEDOR'
+  | 'ACTIVAR_PROVEEDOR'
+  | 'DESACTIVAR_PROVEEDOR'
+  | 'VINCULAR_PRODUCTO_PROVEEDOR'
+  | 'ACTUALIZAR_PRECIO_PROVEEDOR'
+  | 'QUITAR_PRODUCTO_PROVEEDOR';
+
+/** Quién ejecuta la operación (se guarda en bitacora.usuario_id y bitacora.ip) */
+export interface Auditoria {
+  usuarioId: number;
+  ip: string | null;
+}
+
+/** Error de negocio: su mensaje se muestra tal cual en la pantalla */
+export class ProveedorError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProveedorError';
+  }
 }

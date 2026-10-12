@@ -1,110 +1,90 @@
 /**
- * CU014 — 3° service.ts · Servicios de negocio y consultas a Supabase
+ * CU14 — Gestionar Proveedores y Catálogo de Mayoristas · Servicio (control)
  *
- * Cada servicio recibe `db: Db` como primer parámetro (sin estado global).
- * Las columnas que agregan las migraciones (direccion, estado, precio_compra,
- * fecha_actualizacion, stock_disponible, ip) se escriben de forma tolerante:
- * si todavía no existen en Supabase se omiten en lugar de romper la operación.
+ * Lógica de negocio del CU14. Cada función recibe `db` (cliente de Supabase
+ * con service_role) como primer parámetro.
+ * Tablas: proveedor, producto_proveedor, producto, bitacora (columna `ip`).
  *
- * Métodos del diagrama de comunicación:
- *   obtenerListaProveedores(criterio)          → obtenerListaProveedoresService
- *   verificarRUCExistente(nitRuc)              → verificarRUCService
- *   solicitarValidacionProveedor(proveedorDTO) → validarProveedorService
- *   guardarProveedor(datosProveedor)           → guardarProveedorService
- *   recorrerYValidarListaProductos(listaDTO)   → recorrerYValidarListaProductos
- *   verificarProductosExistentes(listaDTO)     → verificarProductosExistentesService
- *   actualizarPreciosYStockMayorista(id, items)→ actualizarCatalogoService
- *   guardarHistorialPrecios(id, precios)       → guardarHistorialPreciosService
- *   registrarEventoProveedor(usuarioId, accion, ip) → registrarEventoProveedorService
+ * Alcance: registrar / modificar / activar-desactivar proveedores (NIT único
+ * con letras, números y guiones) y administrar su catálogo: productos del
+ * inventario con su código de ítem y precio de compra. Sin facturación.
+ *
+ * El catálogo se identifica por (proveedor_id, producto_id), que es la clave
+ * del DDL; así funciona tenga o no la tabla una columna `id`.
  */
-import { ZodError, type z } from 'zod';
-import { listaCatalogoSchema, proveedorSchema } from './schema';
-import type {
-  AccionProveedor,
-  CambioPrecio,
-  CatalogoMayorista,
-  DatosProveedor,
-  Db,
-  ProductoCatalogoDTO,
-  ProductoCatalogoValido,
-  ProductoOpcion,
-  Proveedor,
-  ProveedorDTO,
-  ResumenCatalogo,
+import { validarItemCatalogo, validarProveedor } from './schema';
+import {
+  ProveedorError,
+  type AccionProveedor,
+  type ComparativoPrecios,
+  type OfertaProveedor,
+  type Auditoria,
+  type Db,
+  type ItemCatalogo,
+  type ItemCatalogoDTO,
+  type ProductoInventario,
+  type Proveedor,
+  type ProveedorDTO,
 } from './types';
-
-/** Error de negocio: su mensaje se muestra tal cual en la interfaz */
-export class ProveedorError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ProveedorError';
-  }
-}
-
-// ===========================================================================
-// UTILIDADES INTERNAS
-// ===========================================================================
-type Tabla = 'proveedor' | 'producto' | 'producto_proveedor' | 'bitacora';
-type Fila = Record<string, unknown>;
 
 const num = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
 
-function validar<S extends z.ZodType>(schema: S, data: unknown, prefijo = ''): z.output<S> {
-  try {
-    return schema.parse(data);
-  } catch (e) {
-    if (e instanceof ZodError) {
-      const issue = e.issues[0];
-      const fila = typeof issue?.path[0] === 'number' ? `Fila ${Number(issue.path[0]) + 1}: ` : '';
-      throw new ProveedorError(`${prefijo}${fila}${issue?.message ?? 'Datos inválidos'}`);
-    }
-    throw e;
-  }
-}
+// ===========================================================================
+// Utilidades de base de datos
+// ===========================================================================
 
+/** Traduce errores de PostgreSQL a mensajes de negocio */
 function errorBD(error: any, porDefecto: string): ProveedorError {
-  const msg: string = error?.message ?? '';
+  const msg: string = `${error?.message ?? ''} ${error?.details ?? ''}`;
   if (error?.code === '23505' || /duplicate key/i.test(msg)) {
     if (/nit/i.test(msg)) return new ProveedorError('Ya existe un proveedor con ese NIT');
-    if (/codigo/i.test(msg)) return new ProveedorError('Código de ítem repetido para este proveedor');
-    if (/producto/i.test(msg)) return new ProveedorError('Ese producto ya está en el catálogo del proveedor');
-    return new ProveedorError('Registro duplicado');
+    if (/codigo/i.test(msg)) return new ProveedorError('Ese código de ítem ya está registrado para este proveedor');
+    return new ProveedorError('Ese producto ya está en el catálogo de este proveedor');
   }
-  return new ProveedorError(msg || porDefecto);
+  if (error?.code === '23514' || /check constraint/i.test(msg)) {
+    if (/nit/i.test(msg)) return new ProveedorError('NIT inválido: use solo letras, números y guiones, sin espacios');
+    if (/precio/i.test(msg)) return new ProveedorError('El precio de compra no puede ser negativo');
+  }
+  console.error('[CU14] Error de base de datos:', error);
+  return new ProveedorError(porDefecto);
 }
 
-/** Columna pendiente de migración (PostgREST PGRST204) */
+/** Columna aún no creada en Supabase (falta ejecutar el script SQL) */
 function columnaFaltante(error: any): string | null {
   if (!error) return null;
   const msg = String(error.message ?? '');
-  if (error.code === 'PGRST204' || /column .* (does not exist|of .* in the schema cache)/i.test(msg)) {
+  if (error.code === 'PGRST204' || error.code === '42703' || /column .* (does not exist|of .* in the schema cache)/i.test(msg)) {
     const m = msg.match(/'([^']+)' column/) ?? msg.match(/column "?([\w.]+)"? (of|does)/i);
     if (m) return m[1].split('.').pop() ?? null;
   }
   return null;
 }
 
-/** Ejecuta una escritura quitando columnas que aún no existen y reintentando */
-async function escribirTolerante<T>(
-  operacion: (payload: Fila[]) => PromiseLike<{ data: unknown; error: any }>,
-  filas: Fila[],
+/**
+ * Ejecuta una escritura y, si falta alguna columna nueva (direccion, estado,
+ * fecha_actualizacion), la omite y reintenta. Devuelve las columnas omitidas.
+ */
+async function escribir(
+  operacion: (fila: Record<string, unknown>) => PromiseLike<{ data: unknown; error: any }>,
+  fila: Record<string, unknown>,
   porDefecto: string
-): Promise<{ data: T; omitidas: string[] }> {
-  let payload = filas.map((f) => ({ ...f }));
+): Promise<{ data: any; omitidas: string[] }> {
+  let payload = { ...fila };
   const omitidas: string[] = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 6; i++) {
     const { data, error } = await operacion(payload);
     const col = columnaFaltante(error);
-    if (col && payload.some((f) => col in f)) {
-      payload = payload.map(({ [col]: _omitida, ...resto }) => resto);
+    if (col && col in payload) {
+      const { [col]: _quitada, ...resto } = payload;
+      payload = resto;
       omitidas.push(col);
       continue;
     }
     if (error) throw errorBD(error, porDefecto);
-    return { data: data as T, omitidas };
+    return { data, omitidas };
   }
   throw new ProveedorError(porDefecto);
 }
@@ -113,7 +93,7 @@ function mapProveedor(row: any): Proveedor {
   return {
     id: row.id,
     razon_social: row.razon_social,
-    nit: row.nit,
+    nit: row.nit ?? '',
     contacto: row.contacto ?? null,
     telefono: row.telefono ?? null,
     correo: row.correo ?? null,
@@ -123,41 +103,69 @@ function mapProveedor(row: any): Proveedor {
   };
 }
 
-function mapCatalogo(row: any): CatalogoMayorista {
+function mapItem(row: any): ItemCatalogo {
   return {
-    id: row.id,
     proveedor_id: row.proveedor_id,
     producto_id: row.producto_id,
     producto_nombre: row.producto?.nombre ?? `Producto #${row.producto_id}`,
     unidad_medida: row.producto?.unidad_medida ?? null,
-    precio_compra_actual: num(row.producto?.precio_compra_actual),
+    precio_inventario: num(row.producto?.precio_compra_actual),
     codigo_item_proveedor: row.codigo_item_proveedor ?? null,
-    precio_mayorista: num(row.precio_compra),
-    stock_disponible: num(row.stock_disponible),
+    precio_compra: num(row.precio_compra),
     fecha_actualizacion: row.fecha_actualizacion ?? null,
   };
 }
 
+const SELECT_PROVEEDOR = '*, producto_proveedor(producto_id)';
 const SELECT_CATALOGO = '*, producto:producto_id(nombre, unidad_medida, precio_compra_actual)';
+const bs = (n: number) => `Bs ${n.toFixed(2)}`;
 
 // ===========================================================================
-// SERVICIOS — PROVEEDOR
+// Bitácora (columna oficial: ip)
 // ===========================================================================
 
-/** obtenerListaProveedores(criterio): razón social, NIT o contacto */
-export async function obtenerListaProveedoresService(
+/**
+ * registrarEventoProveedor(usuarioId, accion, ip)
+ * Escribe en BITACORA usando la columna oficial `ip`.
+ * Nunca lanza: un fallo de auditoría no debe deshacer la operación ya hecha,
+ * pero queda registrado en la consola del servidor.
+ */
+export async function registrarEventoProveedor(
+  db: Db,
+  auditoria: Auditoria,
+  accion: AccionProveedor,
+  descripcion: string
+): Promise<void> {
+  const { error } = await db.from('bitacora').insert({
+    usuario_id: auditoria.usuarioId,
+    accion,
+    descripcion,
+    ip: auditoria.ip,
+  } as any);
+  if (error) {
+    console.error(
+      `[CU14] No se pudo registrar ${accion} en la bitácora: ${error.message}` +
+        (columnaFaltante(error) === 'ip' ? ' (falta la columna bitacora.ip: ejecute el script SQL del CU14)' : '')
+    );
+  }
+}
+
+// ===========================================================================
+// PROVEEDORES
+// ===========================================================================
+
+/** obtenerListaProveedores(criterio): busca por razón social, NIT o contacto */
+export async function obtenerListaProveedores(
   db: Db,
   criterio = '',
-  opciones: { incluirInactivos?: boolean } = {}
+  incluirInactivos = false
 ): Promise<Proveedor[]> {
-  // select('*') tolera columnas aún no migradas (direccion, estado)
-  const { data, error } = await db.from('proveedor').select('*, producto_proveedor(id)').order('razon_social');
+  const { data, error } = await db.from('proveedor').select(SELECT_PROVEEDOR).order('razon_social');
   if (error) throw errorBD(error, 'No se pudieron obtener los proveedores');
-
   const c = criterio.trim().toLowerCase();
   return ((data ?? []) as any[])
     .map(mapProveedor)
-    .filter((p) => opciones.incluirInactivos || p.estado)
+    .filter((p) => incluirInactivos || p.estado)
     .filter(
       (p) =>
         !c ||
@@ -167,71 +175,104 @@ export async function obtenerListaProveedoresService(
     );
 }
 
-export async function obtenerProveedorPorIdService(db: Db, id: number): Promise<Proveedor | null> {
-  const { data, error } = await db.from('proveedor').select('*, producto_proveedor(id)').eq('id', id).maybeSingle();
+export async function obtenerProveedor(db: Db, id: number): Promise<Proveedor | null> {
+  const { data, error } = await db.from('proveedor').select(SELECT_PROVEEDOR).eq('id', id).maybeSingle();
   if (error) throw errorBD(error, 'No se pudo obtener el proveedor');
   return data ? mapProveedor(data) : null;
 }
 
-/** verificarRUCExistente(nitRuc) → true si otro proveedor ya usa el NIT */
-export async function verificarRUCService(db: Db, nitRuc: string, excluirId?: number): Promise<boolean> {
-  let q = db.from('proveedor').select('id').ilike('nit', nitRuc.trim()).limit(1);
+/** verificarNitExistente(nit): NIT único sin distinguir mayúsculas/minúsculas */
+export async function verificarNitExistente(db: Db, nit: string, excluirId?: number): Promise<boolean> {
+  let q = db.from('proveedor').select('id').ilike('nit', nit.trim().replace(/[%_\\]/g, '\\$&')).limit(1);
   if (excluirId) q = q.neq('id', excluirId);
   const { data, error } = await q;
   if (error) throw errorBD(error, 'No se pudo verificar el NIT');
   return !!data && data.length > 0;
 }
 
-/** solicitarValidacionProveedor(proveedorDTO): formato + NIT único */
-export async function validarProveedorService(db: Db, dto: ProveedorDTO, excluirId?: number): Promise<DatosProveedor> {
-  const datos = validar(proveedorSchema, dto);
-  if (await verificarRUCService(db, datos.nit, excluirId)) {
-    throw new ProveedorError(excluirId ? 'Ya existe otro proveedor con ese NIT' : 'Ya existe un proveedor con ese NIT');
-  }
-  return datos;
-}
+/** registrarProveedor(proveedorDTO): valida, comprueba NIT único, guarda y audita */
+export async function registrarProveedor(db: Db, dto: ProveedorDTO, auditoria: Auditoria): Promise<Proveedor> {
+  const datos = validarProveedor(dto);
+  if (await verificarNitExistente(db, datos.nit)) throw new ProveedorError('Ya existe un proveedor con ese NIT');
 
-/** guardarProveedor(datosProveedor): alta */
-export async function guardarProveedorService(db: Db, datos: DatosProveedor): Promise<Proveedor> {
-  const { data } = await escribirTolerante<any>(
-    (p) => db.from('proveedor').insert(p[0] as any).select('*').single(),
-    [{ ...datos, estado: true }],
+  const { data } = await escribir(
+    (fila) => db.from('proveedor').insert(fila as any).select(SELECT_PROVEEDOR).single(),
+    { ...datos, estado: true },
     'No se pudo registrar el proveedor'
   );
-  return mapProveedor(data);
+  const proveedor = mapProveedor(data);
+  await registrarEventoProveedor(
+    db,
+    auditoria,
+    'CREAR_PROVEEDOR',
+    `Proveedor #${proveedor.id} "${proveedor.razon_social}" (NIT ${proveedor.nit}) registrado`
+  );
+  return proveedor;
 }
 
-/** Modificar proveedor */
-export async function actualizarProveedorService(db: Db, id: number, datos: DatosProveedor): Promise<Proveedor> {
-  const { data } = await escribirTolerante<any>(
-    (p) => db.from('proveedor').update(p[0] as any).eq('id', id).select('*, producto_proveedor(id)').maybeSingle(),
-    [{ ...datos }],
+/** actualizarProveedor(id, proveedorDTO) */
+export async function actualizarProveedor(
+  db: Db,
+  id: number,
+  dto: ProveedorDTO,
+  auditoria: Auditoria
+): Promise<Proveedor> {
+  const datos = validarProveedor(dto);
+  const actual = await obtenerProveedor(db, id);
+  if (!actual) throw new ProveedorError('El proveedor no existe');
+  if (await verificarNitExistente(db, datos.nit, id)) throw new ProveedorError('Ya existe otro proveedor con ese NIT');
+
+  const { data } = await escribir(
+    (fila) => db.from('proveedor').update(fila as any).eq('id', id).select(SELECT_PROVEEDOR).single(),
+    datos,
     'No se pudo actualizar el proveedor'
   );
-  if (!data) throw new ProveedorError('El proveedor no existe');
-  return mapProveedor(data);
+  const proveedor = mapProveedor(data);
+
+  const cambios = (['razon_social', 'nit', 'contacto', 'telefono', 'correo', 'direccion'] as const)
+    .filter((k) => (actual[k] ?? null) !== (proveedor[k] ?? null))
+    .map((k) => `${k}: "${actual[k] ?? ''}" → "${proveedor[k] ?? ''}"`);
+  await registrarEventoProveedor(
+    db,
+    auditoria,
+    'ACTUALIZAR_PROVEEDOR',
+    `Proveedor #${id} "${proveedor.razon_social}" actualizado` + (cambios.length ? `. ${cambios.join('; ')}` : ' (sin cambios)')
+  );
+  return proveedor;
 }
 
-/** Desactivar / reactivar (baja lógica) */
-export async function cambiarEstadoProveedorService(db: Db, id: number, activo: boolean): Promise<Proveedor> {
-  const { data, omitidas } = await escribirTolerante<any>(
-    (p) => db.from('proveedor').update(p[0] as any).eq('id', id).select('*, producto_proveedor(id)').maybeSingle(),
-    [{ estado: activo }],
-    'No se pudo cambiar el estado'
+/** cambiarEstadoProveedor(id, activo): baja lógica, conserva el historial */
+export async function cambiarEstadoProveedor(
+  db: Db,
+  id: number,
+  activo: boolean,
+  auditoria: Auditoria
+): Promise<Proveedor> {
+  const { data, omitidas } = await escribir(
+    (fila) => db.from('proveedor').update(fila as any).eq('id', id).select(SELECT_PROVEEDOR).maybeSingle(),
+    { estado: activo },
+    'No se pudo cambiar el estado del proveedor'
   );
   if (omitidas.includes('estado')) {
-    throw new ProveedorError('La columna proveedor.estado aún no existe. Aplique la migración de CU14.');
+    throw new ProveedorError('Falta la columna proveedor.estado: ejecute el script SQL del CU14');
   }
   if (!data) throw new ProveedorError('El proveedor no existe');
-  return mapProveedor(data);
+  const proveedor = mapProveedor(data);
+  await registrarEventoProveedor(
+    db,
+    auditoria,
+    activo ? 'ACTIVAR_PROVEEDOR' : 'DESACTIVAR_PROVEEDOR',
+    `Proveedor #${id} "${proveedor.razon_social}" ${activo ? 'reactivado' : 'desactivado'}`
+  );
+  return proveedor;
 }
 
 // ===========================================================================
-// SERVICIOS — CATÁLOGO DE MAYORISTAS
+// CATÁLOGO DEL MAYORISTA
 // ===========================================================================
 
-/** Productos internos (BD Producto) para el selector del catálogo */
-export async function listarProductosService(db: Db): Promise<ProductoOpcion[]> {
+/** Productos del inventario general para vincular */
+export async function listarProductosInventario(db: Db): Promise<ProductoInventario[]> {
   const { data, error } = await db
     .from('producto')
     .select('id, nombre, unidad_medida, precio_compra_actual')
@@ -245,208 +286,214 @@ export async function listarProductosService(db: Db): Promise<ProductoOpcion[]> 
   }));
 }
 
-/** Catálogo actual de un proveedor */
-export async function obtenerCatalogoService(db: Db, proveedorId: number): Promise<CatalogoMayorista[]> {
+/** Catálogo de un proveedor */
+export async function obtenerCatalogo(db: Db, proveedorId: number): Promise<ItemCatalogo[]> {
   const { data, error } = await db.from('producto_proveedor').select(SELECT_CATALOGO).eq('proveedor_id', proveedorId);
   if (error) throw errorBD(error, 'No se pudo obtener el catálogo');
-  return ((data ?? []) as any[])
-    .map(mapCatalogo)
-    .sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
+  return ((data ?? []) as any[]).map(mapItem).sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
 }
 
-/**
- * recorrerYValidarListaProductos(listaDTO)
- * Valida cada fila y detecta productos o códigos repetidos dentro de la lista.
- */
-export function recorrerYValidarListaProductos(listaDTO: ProductoCatalogoDTO[]): ProductoCatalogoValido[] {
-  const lista = validar(listaCatalogoSchema, listaDTO);
-  const productos = new Set<number>();
-  const codigos = new Map<string, number>();
-  lista.forEach((item, i) => {
-    if (productos.has(item.productoId)) {
-      throw new ProveedorError(`Fila ${i + 1}: el producto está repetido en la lista`);
-    }
-    productos.add(item.productoId);
-    if (item.codigoItemProveedor) {
-      const clave = item.codigoItemProveedor.toLowerCase();
-      if (codigos.has(clave)) {
-        throw new ProveedorError(
-          `Fila ${i + 1}: código de ítem "${item.codigoItemProveedor}" repetido (también en la fila ${codigos.get(clave)! + 1})`
-        );
-      }
-      codigos.set(clave, i);
-    }
-  });
-  return lista;
+async function obtenerItem(db: Db, proveedorId: number, productoId: number): Promise<ItemCatalogo | null> {
+  const { data, error } = await db
+    .from('producto_proveedor')
+    .select(SELECT_CATALOGO)
+    .eq('proveedor_id', proveedorId)
+    .eq('producto_id', productoId)
+    .maybeSingle();
+  if (error) throw errorBD(error, 'No se pudo leer el catálogo');
+  return data ? mapItem(data) : null;
 }
 
-/** verificarProductosExistentes(listaDTO) en BD Producto → mapa id → nombre */
-export async function verificarProductosExistentesService(
-  db: Db,
-  lista: ProductoCatalogoValido[]
-): Promise<Map<number, string>> {
-  const ids = lista.map((i) => i.productoId);
-  const { data, error } = await db.from('producto').select('id, nombre').in('id', ids);
-  if (error) throw errorBD(error, 'No se pudieron verificar los productos');
-  const encontrados = new Map<number, string>(((data ?? []) as any[]).map((p) => [p.id, p.nombre]));
-  const faltantes = ids.filter((id) => !encontrados.has(id));
-  if (faltantes.length) {
-    throw new ProveedorError(`Productos inexistentes en el catálogo: ${faltantes.join(', ')}`);
-  }
-  return encontrados;
+/** El código de ítem no se repite dentro del mismo proveedor */
+async function codigoRepetido(db: Db, proveedorId: number, codigo: string, excluirProductoId?: number) {
+  let q = db
+    .from('producto_proveedor')
+    .select('producto_id')
+    .eq('proveedor_id', proveedorId)
+    .ilike('codigo_item_proveedor', codigo.replace(/[%_\\]/g, '\\$&'))
+    .limit(1);
+  if (excluirProductoId) q = q.neq('producto_id', excluirProductoId);
+  const { data, error } = await q;
+  if (error) throw errorBD(error, 'No se pudo verificar el código de ítem');
+  return !!data && data.length > 0;
 }
 
-/**
- * actualizarPreciosYStockMayorista(proveedorId, items) en BD CatalogoMayorista
- * Inserta los productos nuevos y actualiza los existentes en UNA sola
- * sentencia (upsert sobre proveedor_id + producto_id), por lo que la
- * actualización del catálogo es atómica: o se aplica completa o no se aplica.
- */
-export async function actualizarCatalogoService(
+/** vincularProducto(proveedorId, item): agrega un producto del inventario al catálogo */
+export async function vincularProducto(
   db: Db,
   proveedorId: number,
-  items: ProductoCatalogoValido[],
-  nombres: Map<number, string>
-): Promise<Omit<ResumenCatalogo, 'proveedorNombre' | 'catalogo' | 'proveedorId'>> {
-  const actual = await obtenerCatalogoService(db, proveedorId);
-  const porProducto = new Map(actual.map((c) => [c.producto_id, c]));
-  const enLista = new Set(items.map((i) => i.productoId));
+  dto: ItemCatalogoDTO,
+  auditoria: Auditoria
+): Promise<ItemCatalogo> {
+  const { productoId, codigo, precio } = validarItemCatalogo(dto);
 
-  // Código de ítem usado por otro producto del proveedor que no se toca en esta lista
-  for (const item of items) {
-    if (!item.codigoItemProveedor) continue;
-    const choque = actual.find(
-      (c) =>
-        c.producto_id !== item.productoId &&
-        !enLista.has(c.producto_id) &&
-        (c.codigo_item_proveedor ?? '').toLowerCase() === item.codigoItemProveedor!.toLowerCase()
-    );
-    if (choque) {
-      throw new ProveedorError(
-        `Código de ítem "${item.codigoItemProveedor}" ya asignado a "${choque.producto_nombre}" en este proveedor`
-      );
-    }
+  const proveedor = await obtenerProveedor(db, proveedorId);
+  if (!proveedor) throw new ProveedorError('El proveedor no existe');
+  if (!proveedor.estado) throw new ProveedorError('El proveedor está inactivo: reactívelo para modificar su catálogo');
+
+  const { data: producto, error } = await db.from('producto').select('id, nombre').eq('id', productoId).maybeSingle();
+  if (error) throw errorBD(error, 'No se pudo verificar el producto');
+  if (!producto) throw new ProveedorError('El producto no existe en el inventario');
+
+  if (await obtenerItem(db, proveedorId, productoId)) {
+    throw new ProveedorError('Ese producto ya está en el catálogo de este proveedor');
+  }
+  if (codigo && (await codigoRepetido(db, proveedorId, codigo))) {
+    throw new ProveedorError('Ese código de ítem ya está registrado para este proveedor');
   }
 
-  const ahora = new Date().toISOString();
-  const filas: Fila[] = [];
-  const cambiosPrecio: CambioPrecio[] = [];
-  let insertados = 0;
-  let actualizados = 0;
-  let sinCambios = 0;
-
-  for (const item of items) {
-    const previo = porProducto.get(item.productoId);
-    const igual =
-      previo &&
-      previo.precio_mayorista === item.precioMayorista &&
-      previo.stock_disponible === item.stockDisponible &&
-      (previo.codigo_item_proveedor ?? null) === (item.codigoItemProveedor ?? null);
-    if (igual) {
-      sinCambios++;
-      continue;
-    }
-    if (previo) actualizados++;
-    else insertados++;
-    if (!previo || previo.precio_mayorista !== item.precioMayorista) {
-      cambiosPrecio.push({
-        productoId: item.productoId,
-        productoNombre: nombres.get(item.productoId) ?? `Producto #${item.productoId}`,
-        precioAnterior: previo ? previo.precio_mayorista : null,
-        precioNuevo: item.precioMayorista,
-      });
-    }
-    filas.push({
+  await escribir(
+    (fila) => db.from('producto_proveedor').insert(fila as any),
+    {
       proveedor_id: proveedorId,
-      producto_id: item.productoId,
-      codigo_item_proveedor: item.codigoItemProveedor ?? null,
-      precio_compra: item.precioMayorista,
-      stock_disponible: item.stockDisponible,
-      fecha_actualizacion: ahora,
-    });
-  }
+      producto_id: productoId,
+      codigo_item_proveedor: codigo,
+      precio_compra: precio,
+      fecha_actualizacion: new Date().toISOString(),
+    },
+    'No se pudo agregar el producto al catálogo'
+  );
 
-  if (filas.length) {
-    try {
-      await escribirTolerante(
-        (p) => db.from('producto_proveedor').upsert(p as any, { onConflict: 'proveedor_id,producto_id' }),
-        filas,
-        'No se pudo actualizar el catálogo'
-      );
-    } catch (e: any) {
-      // Sin índice único (migración pendiente): actualización fila por fila
-      if (!/no unique or exclusion constraint|42P10/i.test(String(e?.message))) throw e;
-      for (const fila of filas) {
-        const previo = porProducto.get(fila.producto_id as number);
-        await escribirTolerante(
-          (p) =>
-            previo
-              ? db.from('producto_proveedor').update(p[0] as any).eq('id', previo.id)
-              : db.from('producto_proveedor').insert(p[0] as any),
-          [fila],
-          'No se pudo actualizar el catálogo'
-        );
-      }
-    }
-  }
-
-  return { insertados, actualizados, sinCambios, cambiosPrecio };
+  const item = await obtenerItem(db, proveedorId, productoId);
+  if (!item) throw new ProveedorError('No se pudo agregar el producto al catálogo');
+  await registrarEventoProveedor(
+    db,
+    auditoria,
+    'VINCULAR_PRODUCTO_PROVEEDOR',
+    `"${item.producto_nombre}" agregado al catálogo de "${proveedor.razon_social}" · código ${codigo ?? 'sin código'} · precio de compra ${bs(precio)}`
+  );
+  return item;
 }
 
-/** Quitar un producto del catálogo del proveedor */
-export async function eliminarItemCatalogoService(db: Db, catalogoId: number): Promise<CatalogoMayorista> {
-  const { data: actual, error } = await db.from('producto_proveedor').select(SELECT_CATALOGO).eq('id', catalogoId).maybeSingle();
-  if (error) throw errorBD(error, 'No se pudo leer el catálogo');
-  if (!actual) throw new ProveedorError('El producto ya no está en el catálogo');
-  const { error: delError } = await db.from('producto_proveedor').delete().eq('id', catalogoId);
-  if (delError) throw errorBD(delError, 'No se pudo quitar el producto');
-  return mapCatalogo(actual);
-}
-
-// ===========================================================================
-// SERVICIOS — BITÁCORA
-// ===========================================================================
-
-/** registrarEventoProveedor(usuarioId, accion, ip). Nunca lanza. */
-export async function registrarEventoProveedorService(
+/** actualizarItemCatalogo(proveedorId, productoId, código y precio) */
+export async function actualizarItemCatalogo(
   db: Db,
-  usuarioId: number,
-  accion: AccionProveedor,
-  ip: string,
-  descripcion?: string
-): Promise<void> {
-  try {
-    await escribirTolerante(
-      (p) => db.from('bitacora').insert(p[0] as any),
-      [{ usuario_id: usuarioId, accion, descripcion: descripcion ?? accion, ip }],
-      'No se pudo registrar en la bitácora'
-    );
-  } catch (e) {
-    console.error('[CU014] Bitácora:', (e as Error).message);
+  proveedorId: number,
+  productoId: number,
+  dto: Omit<ItemCatalogoDTO, 'productoId'>,
+  auditoria: Auditoria
+): Promise<ItemCatalogo> {
+  const { codigo, precio } = validarItemCatalogo({ ...dto, productoId });
+
+  const proveedor = await obtenerProveedor(db, proveedorId);
+  if (!proveedor) throw new ProveedorError('El proveedor no existe');
+  if (!proveedor.estado) throw new ProveedorError('El proveedor está inactivo: reactívelo para modificar su catálogo');
+
+  const actual = await obtenerItem(db, proveedorId, productoId);
+  if (!actual) throw new ProveedorError('El producto ya no está en el catálogo');
+  if (codigo && (await codigoRepetido(db, proveedorId, codigo, productoId))) {
+    throw new ProveedorError('Ese código de ítem ya está registrado para este proveedor');
   }
+
+  await escribir(
+    (fila) =>
+      db.from('producto_proveedor').update(fila as any).eq('proveedor_id', proveedorId).eq('producto_id', productoId),
+    { codigo_item_proveedor: codigo, precio_compra: precio, fecha_actualizacion: new Date().toISOString() },
+    'No se pudo actualizar el catálogo'
+  );
+
+  const item = await obtenerItem(db, proveedorId, productoId);
+  if (!item) throw new ProveedorError('No se pudo actualizar el catálogo');
+
+  const cambios: string[] = [];
+  if (actual.precio_compra !== precio) cambios.push(`precio ${bs(actual.precio_compra)} → ${bs(precio)}`);
+  if ((actual.codigo_item_proveedor ?? null) !== codigo) {
+    cambios.push(`código ${actual.codigo_item_proveedor ?? 'sin código'} → ${codigo ?? 'sin código'}`);
+  }
+  if (cambios.length) {
+    await registrarEventoProveedor(
+      db,
+      auditoria,
+      'ACTUALIZAR_PRECIO_PROVEEDOR',
+      `"${item.producto_nombre}" en "${proveedor.razon_social}": ${cambios.join(', ')}`
+    );
+  }
+  return item;
 }
+
+/** quitarProductoCatalogo(proveedorId, productoId) */
+export async function quitarProductoCatalogo(
+  db: Db,
+  proveedorId: number,
+  productoId: number,
+  auditoria: Auditoria
+): Promise<ItemCatalogo> {
+  const proveedor = await obtenerProveedor(db, proveedorId);
+  if (!proveedor) throw new ProveedorError('El proveedor no existe');
+  if (!proveedor.estado) throw new ProveedorError('El proveedor está inactivo: reactívelo para modificar su catálogo');
+
+  const actual = await obtenerItem(db, proveedorId, productoId);
+  if (!actual) throw new ProveedorError('El producto ya no está en el catálogo');
+
+  const { error } = await db
+    .from('producto_proveedor')
+    .delete()
+    .eq('proveedor_id', proveedorId)
+    .eq('producto_id', productoId);
+  if (error) throw errorBD(error, 'No se pudo quitar el producto del catálogo');
+
+  await registrarEventoProveedor(
+    db,
+    auditoria,
+    'QUITAR_PRODUCTO_PROVEEDOR',
+    `"${actual.producto_nombre}" retirado del catálogo de "${proveedor.razon_social}"`
+  );
+  return actual;
+}
+
+// ===========================================================================
+// SUBFLUJO "COMPARAR PRECIOS"
+// ===========================================================================
 
 /**
- * guardarHistorialPrecios(proveedorId, precios)
- * El modelo de datos no tiene una tabla de historial: cada cambio de precio
- * pactado queda como evento ACTUALIZAR_PRECIO_PROVEEDOR en la bitácora
- * (precio anterior → nuevo) y la fila del catálogo guarda su
- * fecha_actualizacion.
+ * compararPreciosProducto(productoId)
+ * Ofertas de todos los proveedores que venden el producto, de la más barata
+ * a la más cara. La mejor oferta se calcula solo entre proveedores ACTIVOS;
+ * los inactivos se muestran al final como referencia.
  */
-export async function guardarHistorialPreciosService(
-  db: Db,
-  params: { usuarioId: number; ip: string; proveedorId: number; proveedorNombre: string; precios: CambioPrecio[] }
-): Promise<void> {
-  for (const c of params.precios) {
-    await registrarEventoProveedorService(
-      db,
-      params.usuarioId,
-      'ACTUALIZAR_PRECIO_PROVEEDOR',
-      params.ip,
-      `Proveedor #${params.proveedorId} "${params.proveedorNombre}" · "${c.productoNombre}": ` +
-        (c.precioAnterior === null
-          ? `precio inicial Bs ${c.precioNuevo.toFixed(2)}`
-          : `Bs ${c.precioAnterior.toFixed(2)} → Bs ${c.precioNuevo.toFixed(2)}`)
-    );
-  }
+export async function compararPreciosProducto(db: Db, productoId: number): Promise<ComparativoPrecios> {
+  const { data: producto, error: errProducto } = await db
+    .from('producto')
+    .select('id, nombre, unidad_medida, precio_compra_actual')
+    .eq('id', productoId)
+    .maybeSingle();
+  if (errProducto) throw errorBD(errProducto, 'No se pudo leer el producto');
+  if (!producto) throw new ProveedorError('El producto no existe en el inventario');
+
+  const { data, error } = await db
+    .from('producto_proveedor')
+    .select('*, proveedor:proveedor_id(*)')
+    .eq('producto_id', productoId);
+  if (error) throw errorBD(error, 'No se pudo obtener el comparativo de precios');
+
+  const base = ((data ?? []) as any[]).map((r) => ({
+    proveedor_id: r.proveedor_id,
+    razon_social: r.proveedor?.razon_social ?? `Proveedor #${r.proveedor_id}`,
+    nit: r.proveedor?.nit ?? '',
+    activo: r.proveedor?.estado === undefined || r.proveedor?.estado === null ? true : Boolean(r.proveedor.estado),
+    codigo_item_proveedor: r.codigo_item_proveedor ?? null,
+    precio_compra: num(r.precio_compra),
+    fecha_actualizacion: r.fecha_actualizacion ?? null,
+  }));
+
+  const activos = base.filter((o) => o.activo);
+  const mejor = activos.length ? Math.min(...activos.map((o) => o.precio_compra)) : null;
+
+  const ofertas: OfertaProveedor[] = base
+    .map((o) => ({
+      ...o,
+      diferencia: mejor === null ? 0 : Math.round((o.precio_compra - mejor) * 100) / 100,
+      es_mejor: o.activo && mejor !== null && o.precio_compra === mejor,
+    }))
+    .sort((a, b) => Number(b.activo) - Number(a.activo) || a.precio_compra - b.precio_compra);
+
+  const p = producto as any;
+  return {
+    producto_id: p.id,
+    producto_nombre: p.nombre,
+    unidad_medida: p.unidad_medida ?? null,
+    precio_inventario: num(p.precio_compra_actual),
+    ofertas,
+    mejor_precio: mejor,
+  };
 }

@@ -107,7 +107,8 @@ function errorBD(error: any, porDefecto: string): VentaError {
   if (/ux_venta_nro_comprobante/.test(msg)) return new VentaError('Conflicto de correlativo, intente nuevamente');
   if (error?.code === 'P0001' && msg) return new VentaError(msg);
   console.error('[CU09] Error de base de datos:', error);
-  return new VentaError(porDefecto);
+  const detalle = [error?.message, error?.details, error?.hint].filter(Boolean).join(' · ');
+  return new VentaError(detalle ? `${porDefecto}: ${detalle}${error?.code ? ` (código ${error.code})` : ''}` : porDefecto);
 }
 
 /** Nombre visible del cliente: razón social (empresas) o nombre (personas) */
@@ -425,7 +426,7 @@ export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO
   const { usuarioId } = datosVentaDTO;
 
   const clienteId = datos.clienteId ?? (await buscarClienteMostrador(db));
-  if (!clienteId) throw new VentaError(`No existe el cliente "${CLIENTE_MOSTRADOR}". Ejecute la migración del CU09.`);
+  if (!clienteId) throw new VentaError('Seleccione un cliente para la venta');
 
   const { data: rpc, error } = await db.rpc('fn_registrar_venta', {
     p_usuario_id: usuarioId,
@@ -563,7 +564,6 @@ const ETIQUETA_PAGO: Record<string, string> = {
 const ETIQUETA_COMPROBANTE: Record<string, string> = {
   NOTA_VENTA: 'Nota de venta',
   RECIBO: 'Recibo',
-  FACTURA: 'Factura',
 };
 
 const bsPdf = (n: number) =>
@@ -713,7 +713,7 @@ export async function generarNotaVentaPdf(nota: NotaVenta): Promise<Uint8Array> 
   // ---------------- Pie ----------------
   escribir('Gracias por su compra.', M, M + 20, { s: 9, c: GRIS });
   escribir(
-    'Documento generado por SmartService. No válido como factura fiscal salvo que se indique lo contrario.',
+    'Documento generado por SmartService. Este comprobante no es una factura.',
     M,
     M + 6,
     { s: 7.5, c: GRIS }

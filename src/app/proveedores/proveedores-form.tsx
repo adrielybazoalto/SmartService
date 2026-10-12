@@ -1,670 +1,671 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+/**
+ * CU14 — Gestionar Proveedores y Catálogo de Mayoristas
+ * Formularios de la vista /proveedores:
+ *   - default ProveedoresForm: registro y edición de proveedor (modal)
+ *   - CatalogoProveedor: catálogo del mayorista (producto, código de ítem y precio de compra)
+ *   - ComparadorPrecios: subflujo "Comparar precios" de un producto entre proveedores
+ * Sin facturación ni impuestos.
+ */
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
+  actualizarItemCatalogoAction,
   actualizarProveedorAction,
-  eliminarItemCatalogoAction,
+  compararPreciosAction,
   obtenerCatalogoAction,
-  procesarActualizacionCatalogoAction,
+  quitarProductoCatalogoAction,
   registrarProveedorAction,
-  verificarRUCAction,
+  verificarNitAction,
+  vincularProductoAction,
 } from '@/app/actions/proveedores';
+import { NIT_MAX, NIT_MIN, nitValido } from '@/backend/proveedores/schema';
 import type {
-  CatalogoMayorista,
-  ProductoCatalogoDTO,
-  ProductoOpcion,
+  ComparativoPrecios,
+  ItemCatalogo,
+  ProductoInventario,
   Proveedor,
   ProveedorDTO,
-  ResumenCatalogo,
-} from '@/backend/proveedores';
+} from '@/backend/proveedores/types';
 
 // ---------------------------------------------------------------------------
-// Tipos y utilidades
+// Utilidades
 // ---------------------------------------------------------------------------
-export type PestanaProveedor = 'datos' | 'catalogo';
+export type Notificar = (tipo: 'ok' | 'error', texto: string) => void;
 
-type Props = {
-  /** null = nuevo proveedor */
-  proveedor: Proveedor | null;
-  productos: ProductoOpcion[];
-  pestanaInicial?: PestanaProveedor;
-  onClose: () => void;
-  onProveedorGuardado: (proveedor: Proveedor, esNuevo: boolean) => void;
-  onCatalogoActualizado?: (resumen: ResumenCatalogo) => void;
-  notificar: (tipo: 'ok' | 'error', texto: string) => void;
+const CORREO_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const bs = (n: number) =>
+  `Bs ${Number(n || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const fecha = (iso?: string | null) => {
+  if (!iso) return '—';
+  const d = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
+  return d.toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' });
 };
-
-type FilaCatalogo = {
-  key: string;
-  catalogoId: number | null; // null = fila nueva
-  productoId: string;
-  codigo: string;
-  precio: string;
-  stock: string;
-  original: { codigo: string; precio: string; stock: string } | null;
-};
-
-type ErroresProveedor = Partial<Record<keyof ProveedorDTO, string>>;
 
 const inputCls =
   'w-full bg-[#f8fafc] border border-gray-200 rounded-xl px-4 py-3 text-gray-800 placeholder:text-slate-400 focus:ring-2 focus:ring-[#8cd600] focus:outline-none disabled:opacity-60';
 const celdaCls =
   'w-full bg-[#f8fafc] border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-[#8cd600] focus:outline-none';
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const btnPrimario =
+  'inline-flex items-center justify-center gap-2 rounded-xl bg-[#8cd600] px-5 py-3 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-[#73b800] disabled:cursor-not-allowed disabled:opacity-50';
+const btnSecundario =
+  'rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50';
 
-const bs = (n: number) =>
-  `Bs ${Number(n || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ===========================================================================
+// Formulario de proveedor (registro y edición)
+// ===========================================================================
+type Errores = Partial<Record<keyof ProveedorDTO, string>>;
 
-let secuencia = 0;
-const nuevaKey = () => `n${Date.now()}-${secuencia++}`;
-
-function aFila(c: CatalogoMayorista): FilaCatalogo {
-  const base = {
-    codigo: c.codigo_item_proveedor ?? '',
-    precio: String(c.precio_mayorista),
-    stock: String(c.stock_disponible),
-  };
-  return { key: `c${c.id}`, catalogoId: c.id, productoId: String(c.producto_id), ...base, original: base };
-}
-
-const filaModificada = (f: FilaCatalogo) =>
-  !f.original ||
-  f.codigo.trim() !== f.original.codigo ||
-  Number(f.precio) !== Number(f.original.precio) ||
-  Number(f.stock || 0) !== Number(f.original.stock);
-
-function validarProveedor(v: ProveedorDTO): ErroresProveedor {
-  const e: ErroresProveedor = {};
+function validar(v: ProveedorDTO): Errores {
+  const e: Errores = {};
+  const nit = (v.nit ?? '').trim();
   if ((v.razon_social ?? '').trim().length < 3) e.razon_social = 'Mínimo 3 caracteres';
-  if (!/^[0-9A-Za-z-]{5,50}$/.test((v.nit ?? '').trim())) e.nit = 'NIT inválido (5 a 50 caracteres, sin espacios)';
-  if (v.correo?.trim() && !EMAIL_RE.test(v.correo.trim())) e.correo = 'Correo inválido';
+  if (!nit) e.nit = 'El NIT es obligatorio';
+  else if (!nitValido(nit)) e.nit = `De ${NIT_MIN} a ${NIT_MAX} letras, números o guiones, sin espacios`;
+  if (v.correo?.trim() && !CORREO_REGEX.test(v.correo.trim())) e.correo = 'Correo inválido';
   if (v.telefono?.trim() && !/^[0-9+\s()-]{6,30}$/.test(v.telefono.trim())) e.telefono = 'Teléfono inválido';
   return e;
 }
 
-// ===========================================================================
-// Componente
-// ===========================================================================
 export default function ProveedoresForm({
-  proveedor: proveedorInicial,
-  productos,
-  pestanaInicial = 'datos',
+  proveedor,
   onClose,
-  onProveedorGuardado,
-  onCatalogoActualizado,
-  notificar,
-}: Props) {
-  const [proveedor, setProveedor] = useState<Proveedor | null>(proveedorInicial);
-  const [pestana, setPestana] = useState<PestanaProveedor>(proveedorInicial ? pestanaInicial : 'datos');
-  const ocupadoRef = useRef<boolean>(false);
-
-  // ---------------- Datos del proveedor ----------------
+  onGuardado,
+}: {
+  proveedor: Proveedor | null;
+  onClose: () => void;
+  onGuardado: (p: Proveedor, esNuevo: boolean) => void;
+}) {
+  const esNuevo = !proveedor;
   const [valores, setValores] = useState<ProveedorDTO>({
-    razon_social: proveedorInicial?.razon_social ?? '',
-    nit: proveedorInicial?.nit ?? '',
-    contacto: proveedorInicial?.contacto ?? '',
-    telefono: proveedorInicial?.telefono ?? '',
-    correo: proveedorInicial?.correo ?? '',
-    direccion: proveedorInicial?.direccion ?? '',
+    razon_social: proveedor?.razon_social ?? '',
+    nit: proveedor?.nit ?? '',
+    contacto: proveedor?.contacto ?? '',
+    telefono: proveedor?.telefono ?? '',
+    correo: proveedor?.correo ?? '',
+    direccion: proveedor?.direccion ?? '',
   });
-  const [errores, setErrores] = useState<ErroresProveedor>({});
-  const [intentoEnvio, setIntentoEnvio] = useState(false);
-  const [guardandoDatos, setGuardandoDatos] = useState(false);
-  const [errorDatos, setErrorDatos] = useState<string | null>(null);
-  const [verificandoNit, setVerificandoNit] = useState(false);
+  const [errores, setErrores] = useState<Errores>({});
+  const [intento, setIntento] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+  const [errorServidor, setErrorServidor] = useState<string | null>(null);
 
-  // ---------------- Catálogo ----------------
-  const [filas, setFilas] = useState<FilaCatalogo[]>([]);
-  const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
-  const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
-  const [guardandoCatalogo, setGuardandoCatalogo] = useState(false);
-  const [quitandoId, setQuitandoId] = useState<number | null>(null);
-  const [resumen, setResumen] = useState<ResumenCatalogo | null>(null);
-
-  const productosPorId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
-
-  // Escape para cerrar
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !ocupadoRef.current && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !guardando && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, ocupadoRef]);
-  ocupadoRef.current = guardandoDatos || guardandoCatalogo;
+  }, [guardando, onClose]);
 
-  // ======================= DATOS =======================
   const cambiar = (campo: keyof ProveedorDTO, valor: string) => {
     const nuevos = { ...valores, [campo]: valor };
     setValores(nuevos);
-    if (intentoEnvio) setErrores(validarProveedor(nuevos));
+    if (intento) setErrores(validar(nuevos));
   };
 
-  /** verificarRUCExistente al salir del campo NIT */
-  const verificarNit = async () => {
+  // Aviso inmediato de NIT repetido al salir del campo
+  const comprobarNit = async () => {
     const nit = (valores.nit ?? '').trim();
-    if (!/^[0-9A-Za-z-]{5,50}$/.test(nit) || nit === proveedor?.nit) return;
-    setVerificandoNit(true);
-    const res = await verificarRUCAction(nit, proveedor?.id);
-    setVerificandoNit(false);
+    if (!nitValido(nit) || nit.toLowerCase() === proveedor?.nit?.toLowerCase()) return;
+    setVerificando(true);
+    const res = await verificarNitAction(nit, proveedor?.id);
+    setVerificando(false);
     if (res.ok && res.data.existe) setErrores((e) => ({ ...e, nit: 'Ya existe un proveedor con ese NIT' }));
   };
 
-  /** registrarDatosProveedor(proveedorDTO) */
-  const guardarDatos = async (e: FormEvent) => {
+  const enviar = async (e: FormEvent) => {
     e.preventDefault();
-    setIntentoEnvio(true);
-    setErrorDatos(null);
-    const errs = validarProveedor(valores);
+    setIntento(true);
+    setErrorServidor(null);
+    const errs = validar(valores);
     setErrores(errs);
     if (Object.keys(errs).length) return;
 
-    setGuardandoDatos(true);
-    const esNuevo = !proveedor;
+    setGuardando(true);
     const res = esNuevo ? await registrarProveedorAction(valores) : await actualizarProveedorAction(proveedor!.id, valores);
-    setGuardandoDatos(false);
-
+    setGuardando(false);
     if (!res.ok) {
       if (/NIT/i.test(res.error)) setErrores((x) => ({ ...x, nit: res.error }));
-      else setErrorDatos(res.error);
+      else setErrorServidor(res.error);
       return;
     }
-    notificar('ok', res.mensaje);
-    setProveedor(res.data);
-    onProveedorGuardado(res.data, esNuevo);
-    // Tras registrar, el flujo continúa con el catálogo del mayorista
-    if (esNuevo) setPestana('catalogo');
+    onGuardado(res.data, esNuevo);
   };
 
-  // ======================= CATÁLOGO =======================
-  const cargarCatalogo = useCallback(async (proveedorId: number) => {
-    setCargandoCatalogo(true);
-    setErrorCatalogo(null);
-    const res = await obtenerCatalogoAction(proveedorId);
-    setCargandoCatalogo(false);
-    if (!res.ok) return setErrorCatalogo(res.error);
-    setFilas(res.data.map(aFila));
-  }, []);
+  return (
+    <Modal onClose={() => !guardando && onClose()}>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Proveedor</p>
+          <h2 className="text-xl font-bold text-slate-900">{esNuevo ? 'Nuevo proveedor' : 'Editar proveedor'}</h2>
+        </div>
+        <button onClick={onClose} disabled={guardando} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Cerrar">
+          ✕
+        </button>
+      </div>
+
+      <form onSubmit={enviar} noValidate className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Campo etiqueta="Razón social" requerido error={errores.razon_social} className="sm:col-span-2">
+            <input
+              autoFocus
+              value={valores.razon_social}
+              onChange={(e) => cambiar('razon_social', e.target.value)}
+              maxLength={200}
+              placeholder="Distribuidora Andina S.R.L."
+              className={inputCls}
+            />
+          </Campo>
+          <Campo etiqueta="NIT" requerido error={errores.nit} ayuda={verificando ? 'Verificando…' : 'Letras, números y guiones'}>
+            <input
+              value={valores.nit}
+              onChange={(e) => {
+                cambiar('nit', e.target.value.replace(/\s/g, ''));
+                if (errores.nit) setErrores((x) => ({ ...x, nit: undefined }));
+              }}
+              onBlur={comprobarNit}
+              maxLength={NIT_MAX}
+              placeholder="NIT-PROV-001 o 1023456789"
+              className={`${inputCls} font-mono`}
+            />
+          </Campo>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo etiqueta="Persona de contacto">
+            <input value={valores.contacto ?? ''} onChange={(e) => cambiar('contacto', e.target.value)} maxLength={150} placeholder="Nombre y apellido" className={inputCls} />
+          </Campo>
+          <Campo etiqueta="Teléfono" error={errores.telefono}>
+            <input type="tel" value={valores.telefono ?? ''} onChange={(e) => cambiar('telefono', e.target.value)} maxLength={30} placeholder="+591 70000000" className={inputCls} />
+          </Campo>
+        </div>
+        <Campo etiqueta="Correo electrónico" error={errores.correo}>
+          <input type="email" value={valores.correo ?? ''} onChange={(e) => cambiar('correo', e.target.value)} maxLength={150} placeholder="ventas@proveedor.com" className={inputCls} />
+        </Campo>
+        <Campo etiqueta="Dirección">
+          <textarea rows={2} value={valores.direccion ?? ''} onChange={(e) => cambiar('direccion', e.target.value)} maxLength={255} placeholder="Calle, número, zona, ciudad" className={`${inputCls} resize-none`} />
+        </Campo>
+
+        {errorServidor && <Alerta>{errorServidor}</Alerta>}
+
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} disabled={guardando} className={btnSecundario}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={guardando} className={btnPrimario}>
+            {guardando && <Spinner />}
+            {esNuevo ? 'Registrar proveedor' : 'Guardar cambios'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ===========================================================================
+// Catálogo del mayorista
+// ===========================================================================
+export function CatalogoProveedor({
+  proveedor,
+  productos,
+  notificar,
+  onTotal,
+}: {
+  proveedor: Proveedor;
+  productos: ProductoInventario[];
+  notificar: Notificar;
+  onTotal: (total: number) => void;
+}) {
+  const [items, setItems] = useState<ItemCatalogo[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Alta
+  const [productoId, setProductoId] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [errorAlta, setErrorAlta] = useState<string | null>(null);
+  const [agregando, setAgregando] = useState(false);
+
+  // Edición en línea
+  const [editando, setEditando] = useState<number | null>(null);
+  const [edicion, setEdicion] = useState({ codigo: '', precio: '' });
+  const [guardando, setGuardando] = useState(false);
+  const [quitando, setQuitando] = useState<number | null>(null);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    const res = await obtenerCatalogoAction(proveedor.id);
+    setCargando(false);
+    if (!res.ok) return setError(res.error);
+    setError(null);
+    setItems(res.data);
+  }, [proveedor.id]);
 
   useEffect(() => {
-    if (pestana === 'catalogo' && proveedor) cargarCatalogo(proveedor.id);
-  }, [pestana, proveedor?.id, cargarCatalogo]); // eslint-disable-line react-hooks/exhaustive-deps
+    cargar();
+  }, [cargar]);
 
-  const usados = useMemo(() => new Set(filas.map((f) => f.productoId).filter(Boolean)), [filas]);
-  const modificadas = filas.filter(filaModificada);
-  const pendientes = modificadas.length;
-
-  const agregarFila = () =>
-    setFilas((prev) => [
-      ...prev,
-      { key: nuevaKey(), catalogoId: null, productoId: '', codigo: '', precio: '', stock: '0', original: null },
-    ]);
-
-  const editarFila = (key: string, campo: 'productoId' | 'codigo' | 'precio' | 'stock', valor: string) => {
-    setResumen(null);
-    setFilas((prev) =>
-      prev.map((f) => {
-        if (f.key !== key) return f;
-        const nueva = { ...f, [campo]: valor };
-        // Sugerir el precio de compra actual al elegir un producto nuevo
-        if (campo === 'productoId' && !f.precio) {
-          const p = productosPorId.get(Number(valor));
-          if (p) nueva.precio = String(p.precio_compra_actual);
-        }
-        return nueva;
-      })
-    );
+  const actualizarLista = (lista: ItemCatalogo[]) => {
+    const ordenada = [...lista].sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
+    setItems(ordenada);
+    onTotal(ordenada.length);
   };
 
-  const quitarFila = async (f: FilaCatalogo) => {
-    if (f.catalogoId === null) {
-      setFilas((prev) => prev.filter((x) => x.key !== f.key));
-      return;
+  const disponibles = useMemo(() => {
+    const usados = new Set(items.map((i) => i.producto_id));
+    return productos.filter((p) => !usados.has(p.id));
+  }, [productos, items]);
+
+  const elegido = productos.find((p) => p.id === Number(productoId));
+
+  const agregar = async (e: FormEvent) => {
+    e.preventDefault();
+    setErrorAlta(null);
+    if (!productoId) return setErrorAlta('Seleccione un producto');
+    if (precio.trim() === '' || !Number.isFinite(Number(precio))) return setErrorAlta('Ingrese el precio de compra');
+    if (Number(precio) < 0) return setErrorAlta('El precio de compra no puede ser negativo');
+
+    setAgregando(true);
+    const res = await vincularProductoAction(proveedor.id, {
+      productoId: Number(productoId),
+      codigoItemProveedor: codigo.trim() || null,
+      precioCompra: precio,
+    });
+    setAgregando(false);
+    if (!res.ok) return setErrorAlta(res.error);
+    actualizarLista([...items, res.data]);
+    setProductoId('');
+    setCodigo('');
+    setPrecio('');
+    notificar('ok', res.mensaje);
+  };
+
+  const guardarEdicion = async (item: ItemCatalogo) => {
+    if (edicion.precio.trim() === '' || !Number.isFinite(Number(edicion.precio)) || Number(edicion.precio) < 0) {
+      return notificar('error', 'El precio de compra debe ser un número mayor o igual a 0');
     }
-    const nombre = productosPorId.get(Number(f.productoId))?.nombre ?? 'este producto';
-    if (!confirm(`¿Quitar "${nombre}" del catálogo del proveedor?`)) return;
-    setQuitandoId(f.catalogoId);
-    const res = await eliminarItemCatalogoAction(f.catalogoId);
-    setQuitandoId(null);
+    setGuardando(true);
+    const res = await actualizarItemCatalogoAction(proveedor.id, item.producto_id, {
+      codigoItemProveedor: edicion.codigo.trim() || null,
+      precioCompra: edicion.precio,
+    });
+    setGuardando(false);
     if (!res.ok) return notificar('error', res.error);
-    setFilas((prev) => prev.filter((x) => x.key !== f.key));
+    actualizarLista(items.map((i) => (i.producto_id === item.producto_id ? res.data : i)));
+    setEditando(null);
     notificar('ok', res.mensaje);
   };
 
-  /** recorrerYValidarListaProductos (versión cliente, para feedback inmediato) */
-  const validarFilas = (lista: FilaCatalogo[]): string | null => {
-    const productosVistos = new Set<string>();
-    const codigos = new Map<string, number>();
-    for (let i = 0; i < lista.length; i++) {
-      const f = lista[i];
-      const n = filas.indexOf(f) + 1;
-      if (!f.productoId) return `Fila ${n}: seleccione un producto`;
-      if (productosVistos.has(f.productoId)) return `Fila ${n}: producto repetido`;
-      productosVistos.add(f.productoId);
-      if (f.precio.trim() === '' || !Number.isFinite(Number(f.precio))) return `Fila ${n}: ingrese el precio mayorista`;
-      if (Number(f.precio) < 0) return `Fila ${n}: el precio no puede ser negativo`;
-      if (!Number.isInteger(Number(f.stock || 0)) || Number(f.stock || 0) < 0) return `Fila ${n}: stock inválido`;
-    }
-    for (let i = 0; i < filas.length; i++) {
-      const c = filas[i].codigo.trim().toLowerCase();
-      if (!c) continue;
-      if (codigos.has(c)) return `Fila ${i + 1}: código de ítem repetido (fila ${codigos.get(c)! + 1})`;
-      codigos.set(c, i);
-    }
-    return null;
+  const quitar = async (item: ItemCatalogo) => {
+    if (!confirm(`¿Quitar "${item.producto_nombre}" del catálogo de ${proveedor.razon_social}?`)) return;
+    setQuitando(item.producto_id);
+    const res = await quitarProductoCatalogoAction(proveedor.id, item.producto_id);
+    setQuitando(null);
+    if (!res.ok) return notificar('error', res.error);
+    actualizarLista(items.filter((i) => i.producto_id !== item.producto_id));
+    notificar('ok', res.mensaje);
   };
 
-  /** seleccionarProveedorYCatalogo → procesarActualizacionCatalogo(proveedorId, listaDTO) */
-  const guardarCatalogo = async () => {
-    if (!proveedor) return;
-    setErrorCatalogo(null);
-    const invalido = validarFilas(modificadas);
-    if (invalido) return setErrorCatalogo(invalido);
+  const editable = proveedor.estado;
 
-    const listaDTO: ProductoCatalogoDTO[] = modificadas.map((f) => ({
-      productoId: Number(f.productoId),
-      codigoItemProveedor: f.codigo.trim() || null,
-      precioMayorista: Number(f.precio),
-      stockDisponible: Number(f.stock || 0),
-    }));
+  return (
+    <div className="space-y-5">
+      {/* Alta */}
+      {editable ? (
+        <form onSubmit={agregar} className="rounded-xl border border-gray-100 bg-[#f8fafc]/60 p-4">
+          <p className="mb-3 text-sm font-semibold text-slate-900">Agregar producto del inventario</p>
+          <div className="grid gap-3 md:grid-cols-12">
+            <div className="md:col-span-5">
+              <select value={productoId} onChange={(e) => setProductoId(e.target.value)} className={inputCls} aria-label="Producto">
+                <option value="">
+                  {productos.length === 0
+                    ? 'No hay productos en el inventario'
+                    : disponibles.length
+                      ? 'Seleccione un producto…'
+                      : 'Todos los productos ya están en el catálogo'}
+                </option>
+                {disponibles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                  </option>
+                ))}
+              </select>
+              {elegido && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Precio de compra en inventario: <strong>{bs(elegido.precio_compra_actual)}</strong>
+                  {elegido.unidad_medida ? ` / ${elegido.unidad_medida}` : ''}
+                </p>
+              )}
+            </div>
+            <input
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              maxLength={100}
+              placeholder="Código del proveedor"
+              className={`${inputCls} font-mono md:col-span-3`}
+              aria-label="Código de ítem del proveedor"
+            />
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              value={precio}
+              onChange={(e) => setPrecio(e.target.value)}
+              placeholder="Precio compra"
+              className={`${inputCls} md:col-span-2`}
+              aria-label="Precio de compra"
+            />
+            <button type="submit" disabled={agregando || !disponibles.length} className={`${btnPrimario} md:col-span-2`}>
+              {agregando && <Spinner />}
+              Agregar
+            </button>
+          </div>
+          {errorAlta && <p className="mt-2 text-sm text-red-600">{errorAlta}</p>}
+        </form>
+      ) : (
+        <div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+          Proveedor inactivo: reactívelo para modificar su catálogo.
+        </div>
+      )}
 
-    setGuardandoCatalogo(true);
-    const res = await procesarActualizacionCatalogoAction(proveedor.id, listaDTO);
-    setGuardandoCatalogo(false);
-    if (!res.ok) {
-      setErrorCatalogo(res.error);
-      notificar('error', res.error);
+      <p className="text-sm font-semibold text-slate-900">
+        Productos que provee <span className="font-normal text-slate-400">({items.length})</span>
+      </p>
+
+      {cargando ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-14 animate-pulse rounded-xl bg-[#f8fafc]" />
+          ))}
+        </div>
+      ) : error ? (
+        <Alerta>
+          {error}{' '}
+          <button onClick={cargar} className="font-semibold underline">
+            Reintentar
+          </button>
+        </Alerta>
+      ) : items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-slate-500">
+          Este proveedor aún no tiene productos en su catálogo.
+        </div>
+      ) : (
+        <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+          <li className="hidden grid-cols-12 gap-3 bg-[#f8fafc] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:grid">
+            <span className="col-span-4">Producto</span>
+            <span className="col-span-3">Código proveedor</span>
+            <span className="col-span-2 text-right">Precio compra</span>
+            <span className="col-span-1">Actualizado</span>
+            <span className="col-span-2 text-right">Acciones</span>
+          </li>
+          {items.map((item) => {
+            const enEdicion = editando === item.producto_id;
+            const variacion =
+              item.precio_inventario > 0 ? ((item.precio_compra - item.precio_inventario) / item.precio_inventario) * 100 : null;
+            return (
+              <li key={item.producto_id} className={`grid grid-cols-12 items-center gap-3 px-4 py-3 ${enEdicion ? 'bg-[#8cd600]/5' : ''}`}>
+                <div className="col-span-12 md:col-span-4">
+                  <p className="font-medium text-slate-900">{item.producto_nombre}</p>
+                  <p className="text-xs text-slate-400">
+                    Inventario {bs(item.precio_inventario)}
+                    {item.unidad_medida ? ` / ${item.unidad_medida}` : ''}
+                  </p>
+                </div>
+                <div className="col-span-6 md:col-span-3">
+                  {enEdicion ? (
+                    <input
+                      value={edicion.codigo}
+                      onChange={(e) => setEdicion((s) => ({ ...s, codigo: e.target.value }))}
+                      maxLength={100}
+                      placeholder="Sin código"
+                      className={`${celdaCls} font-mono`}
+                    />
+                  ) : item.codigo_item_proveedor ? (
+                    <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">{item.codigo_item_proveedor}</span>
+                  ) : (
+                    <span className="text-xs text-slate-400">Sin código</span>
+                  )}
+                </div>
+                <div className="col-span-6 text-right md:col-span-2">
+                  {enEdicion ? (
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={edicion.precio}
+                      onChange={(e) => setEdicion((s) => ({ ...s, precio: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && guardarEdicion(item)}
+                      className={`${celdaCls} text-right`}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-end">
+                      <span className="font-semibold text-slate-900">{bs(item.precio_compra)}</span>
+                      {variacion !== null && Math.abs(variacion) >= 0.5 && (
+                        <span className={`text-[11px] font-semibold ${variacion < 0 ? 'text-[#3f6b00]' : 'text-amber-600'}`}>
+                          {variacion < 0 ? '▼' : '▲'} {Math.abs(variacion).toFixed(1)}% vs inventario
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <span className="col-span-6 text-xs text-slate-500 md:col-span-1">{fecha(item.fecha_actualizacion)}</span>
+                <div className="col-span-6 flex justify-end gap-1 md:col-span-2">
+                  {enEdicion ? (
+                    <>
+                      <button
+                        onClick={() => guardarEdicion(item)}
+                        disabled={guardando}
+                        className="rounded-lg bg-[#8cd600] px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-[#73b800] disabled:opacity-50"
+                      >
+                        {guardando ? '…' : 'Guardar'}
+                      </button>
+                      <button onClick={() => setEditando(null)} className="rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100">
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    editable && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditando(item.producto_id);
+                            setEdicion({ codigo: item.codigo_item_proveedor ?? '', precio: String(item.precio_compra) });
+                          }}
+                          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => quitar(item)}
+                          disabled={quitando === item.producto_id}
+                          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {quitando === item.producto_id ? '…' : 'Quitar'}
+                        </button>
+                      </>
+                    )
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+
+// ===========================================================================
+// Subflujo "Comparar precios"
+// ===========================================================================
+export function ComparadorPrecios({
+  productos,
+  version = 0,
+}: {
+  productos: ProductoInventario[];
+  /** Cambia cuando se modifica un catálogo, para recargar el comparativo */
+  version?: number;
+}) {
+  const [productoId, setProductoId] = useState<number | null>(null);
+  const [filtro, setFiltro] = useState('');
+  const [datos, setDatos] = useState<ComparativoPrecios | null>(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const opciones = useMemo(() => {
+    const q = filtro.trim().toLowerCase();
+    return q ? productos.filter((p) => p.nombre.toLowerCase().includes(q)) : productos;
+  }, [productos, filtro]);
+
+  useEffect(() => {
+    if (!productoId) {
+      setDatos(null);
       return;
     }
-    setFilas(res.data.catalogo.map(aFila));
-    setResumen(res.data);
-    notificar('ok', res.mensaje);
-    onCatalogoActualizado?.(res.data);
-  };
+    let vigente = true;
+    setCargando(true);
+    setError(null);
+    compararPreciosAction(productoId).then((res) => {
+      if (!vigente) return;
+      setCargando(false);
+      if (res.ok) setDatos(res.data);
+      else {
+        setDatos(null);
+        setError(res.error);
+      }
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [productoId, version]);
 
-  const ocupado = guardandoDatos || guardandoCatalogo;
-  const cerrar = () => {
-    if (ocupado) return;
-    if (pendientes > 0 && !confirm('Hay cambios del catálogo sin guardar. ¿Cerrar de todos modos?')) return;
-    onClose();
-  };
+  const peor = datos?.ofertas.filter((o) => o.activo).reduce((m, o) => Math.max(m, o.precio_compra), 0) ?? 0;
+  const ahorro = datos?.mejor_precio != null && peor > datos.mejor_precio ? peor - datos.mejor_precio : 0;
 
-  // =========================================================================
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && cerrar()}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-w-4xl sm:rounded-2xl"
-      >
-        {/* Cabecera */}
-        <div className="border-b border-gray-100 px-5 pb-4 pt-5 sm:px-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">CU014 · Proveedor</p>
-              <h2 className="truncate text-xl font-bold text-slate-900">
-                {proveedor ? proveedor.razon_social : 'Nuevo proveedor'}
-              </h2>
-              {proveedor && <p className="text-sm text-slate-500">NIT {proveedor.nit}</p>}
+    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-bold text-slate-900">Comparar precios</h2>
+        <p className="text-sm text-slate-500">
+          Elija un producto para ver qué proveedor lo ofrece más barato.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <input
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+          placeholder="Filtrar productos"
+          className={inputCls}
+          aria-label="Filtrar productos"
+        />
+        <select
+          value={productoId ?? ''}
+          onChange={(e) => setProductoId(e.target.value ? Number(e.target.value) : null)}
+          className={inputCls}
+          aria-label="Producto a comparar"
+        >
+          <option value="">Seleccione un producto</option>
+          {opciones.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-5">
+        {error ? (
+          <Alerta>{error}</Alerta>
+        ) : !productoId ? null : cargando && !datos ? (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Spinner /> Cargando comparativo…
+          </div>
+        ) : datos && datos.ofertas.length === 0 ? (
+          <div className="rounded-xl bg-[#f8fafc] p-6 text-center text-sm text-slate-500">
+            Ningún proveedor tiene <strong>{datos.producto_nombre}</strong> en su catálogo.
+          </div>
+        ) : datos ? (
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-[#8cd600]/40 bg-[#8cd600]/10 p-3">
+                <p className="text-xs font-medium text-slate-600">Mejor precio</p>
+                <p className="text-lg font-bold text-slate-900">
+                  {datos.mejor_precio != null ? bs(datos.mejor_precio) : '—'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-[#f8fafc] p-3">
+                <p className="text-xs font-medium text-slate-500">Precio en inventario</p>
+                <p className="text-lg font-bold text-slate-900">{bs(datos.precio_inventario)}</p>
+              </div>
+              <div className="col-span-2 rounded-xl bg-[#f8fafc] p-3 sm:col-span-1">
+                <p className="text-xs font-medium text-slate-500">Ahorro vs. el más caro</p>
+                <p className="text-lg font-bold text-slate-900">{bs(ahorro)}</p>
+              </div>
             </div>
-            <button
-              onClick={cerrar}
-              disabled={ocupado}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              aria-label="Cerrar"
-            >
-              ✕
-            </button>
-          </div>
 
-          <div className="mt-4 flex gap-1 rounded-xl bg-[#f8fafc] p-1">
-            <Pestana activa={pestana === 'datos'} onClick={() => setPestana('datos')}>
-              Datos del proveedor
-            </Pestana>
-            <Pestana
-              activa={pestana === 'catalogo'}
-              onClick={() => proveedor && setPestana('catalogo')}
-              deshabilitada={!proveedor}
-              titulo={!proveedor ? 'Registre primero al proveedor' : undefined}
-            >
-              Catálogo mayorista {proveedor ? `(${filas.length || proveedor.total_productos})` : ''}
-            </Pestana>
-          </div>
-        </div>
-
-        {/* Contenido */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          {pestana === 'datos' ? (
-            <form id="form-proveedor" onSubmit={guardarDatos} noValidate className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Campo etiqueta="Razón social" requerido error={errores.razon_social} className="sm:col-span-2">
-                  <input
-                    autoFocus
-                    value={valores.razon_social ?? ''}
-                    onChange={(e) => cambiar('razon_social', e.target.value)}
-                    maxLength={200}
-                    placeholder="Distribuidora Andina S.R.L."
-                    className={inputCls}
-                  />
-                </Campo>
-                <Campo
-                  etiqueta="NIT"
-                  requerido
-                  error={errores.nit}
-                  ayuda={verificandoNit ? 'Verificando NIT…' : undefined}
+            <ul className="space-y-2">
+              {datos.ofertas.map((o, i) => (
+                <li
+                  key={o.proveedor_id}
+                  className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center ${
+                    o.es_mejor ? 'border-[#8cd600] bg-[#8cd600]/5' : 'border-gray-100'
+                  } ${o.activo ? '' : 'opacity-60'}`}
                 >
-                  <input
-                    value={valores.nit ?? ''}
-                    onChange={(e) => {
-                      cambiar('nit', e.target.value.replace(/\s/g, ''));
-                      if (errores.nit) setErrores((x) => ({ ...x, nit: undefined }));
-                    }}
-                    onBlur={verificarNit}
-                    maxLength={50}
-                    inputMode="numeric"
-                    placeholder="1023456789"
-                    className={inputCls}
-                  />
-                </Campo>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Campo etiqueta="Persona de contacto" error={errores.contacto}>
-                  <input
-                    value={valores.contacto ?? ''}
-                    onChange={(e) => cambiar('contacto', e.target.value)}
-                    maxLength={150}
-                    placeholder="Nombre y apellido"
-                    className={inputCls}
-                  />
-                </Campo>
-                <Campo etiqueta="Teléfono" error={errores.telefono}>
-                  <input
-                    type="tel"
-                    value={valores.telefono ?? ''}
-                    onChange={(e) => cambiar('telefono', e.target.value)}
-                    maxLength={30}
-                    placeholder="+591 70000000"
-                    className={inputCls}
-                  />
-                </Campo>
-              </div>
-              <Campo etiqueta="Correo electrónico" error={errores.correo}>
-                <input
-                  type="email"
-                  value={valores.correo ?? ''}
-                  onChange={(e) => cambiar('correo', e.target.value)}
-                  maxLength={150}
-                  placeholder="ventas@proveedor.com"
-                  className={inputCls}
-                />
-              </Campo>
-              <Campo etiqueta="Dirección" error={errores.direccion}>
-                <textarea
-                  rows={2}
-                  value={valores.direccion ?? ''}
-                  onChange={(e) => cambiar('direccion', e.target.value)}
-                  maxLength={255}
-                  placeholder="Av. / Calle, número, zona, ciudad"
-                  className={`${inputCls} resize-none`}
-                />
-              </Campo>
-              {errorDatos && <Alerta>{errorDatos}</Alerta>}
-            </form>
-          ) : (
-            <div className="space-y-4">
-              {!proveedor?.estado && (
-                <div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
-                  Proveedor desactivado: reactívelo para actualizar su catálogo.
-                </div>
-              )}
-
-              {/* mostrarResumenCatalogo */}
-              {resumen && (
-                <div className="rounded-xl border border-[#8cd600]/40 bg-[#8cd600]/10 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-900">Resumen de la actualización</p>
-                    <button onClick={() => setResumen(null)} className="text-xs font-medium text-slate-500 hover:text-slate-800">
-                      Ocultar
-                    </button>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-600">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                      {o.razon_social}
+                      {o.es_mejor && (
+                        <span className="rounded-md bg-[#8cd600] px-1.5 py-0.5 text-[11px] font-bold text-gray-900">
+                          Más barato
+                        </span>
+                      )}
+                      {!o.activo && (
+                        <span className="rounded-md bg-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                          Inactivo
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Código {o.codigo_item_proveedor ?? 'sin código'} · Actualizado {fecha(o.fecha_actualizacion)}
+                    </p>
                   </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <Indicador etiqueta="Nuevos" valor={resumen.insertados} />
-                    <Indicador etiqueta="Actualizados" valor={resumen.actualizados} />
-                    <Indicador etiqueta="Sin cambios" valor={resumen.sinCambios} />
+                  <div className="text-left sm:text-right">
+                    <p className="text-base font-bold text-slate-900">{bs(o.precio_compra)}</p>
+                    {o.activo && o.diferencia > 0 && (
+                      <p className="text-xs font-medium text-red-600">+{bs(o.diferencia)}</p>
+                    )}
                   </div>
-                  {resumen.cambiosPrecio.length > 0 && (
-                    <ul className="mt-3 space-y-1 text-xs text-slate-700">
-                      {resumen.cambiosPrecio.map((c) => (
-                        <li key={c.productoId} className="flex justify-between gap-2">
-                          <span className="truncate">{c.productoNombre}</span>
-                          <span className="whitespace-nowrap font-medium">
-                            {c.precioAnterior === null ? 'nuevo' : bs(c.precioAnterior)} → {bs(c.precioNuevo)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {cargandoCatalogo ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-14 animate-pulse rounded-xl bg-[#f8fafc]" />
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {filas.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-slate-500">
-                      Este proveedor aún no tiene productos en su catálogo.
-                    </div>
-                  ) : (
-                    <div className="overflow-hidden rounded-xl border border-gray-100">
-                      <div className="hidden grid-cols-12 gap-3 bg-[#f8fafc] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:grid">
-                        <span className="col-span-4">Producto</span>
-                        <span className="col-span-3">Código proveedor</span>
-                        <span className="col-span-2 text-right">Precio mayorista</span>
-                        <span className="col-span-2 text-right">Stock mayorista</span>
-                        <span className="col-span-1" />
-                      </div>
-                      <ul className="divide-y divide-gray-100">
-                        {filas.map((f, i) => {
-                          const prod = productosPorId.get(Number(f.productoId));
-                          const cambiada = filaModificada(f);
-                          const ref = prod?.precio_compra_actual ?? 0;
-                          const precioNum = Number(f.precio);
-                          const variacion = ref && f.precio !== '' ? ((precioNum - ref) / ref) * 100 : null;
-                          return (
-                            <li
-                              key={f.key}
-                              className={`grid grid-cols-12 items-start gap-3 px-4 py-3 ${cambiada ? 'bg-[#8cd600]/5' : ''}`}
-                            >
-                              <div className="col-span-12 md:col-span-4">
-                                <span className="mb-1 block text-[11px] font-semibold uppercase text-slate-400 md:hidden">
-                                  Producto
-                                </span>
-                                {f.catalogoId === null ? (
-                                  <select
-                                    value={f.productoId}
-                                    onChange={(e) => editarFila(f.key, 'productoId', e.target.value)}
-                                    className={celdaCls}
-                                    aria-label={`Producto fila ${i + 1}`}
-                                  >
-                                    <option value="">Seleccione…</option>
-                                    {productos
-                                      .filter((p) => String(p.id) === f.productoId || !usados.has(String(p.id)))
-                                      .map((p) => (
-                                        <option key={p.id} value={p.id}>
-                                          {p.nombre}
-                                        </option>
-                                      ))}
-                                  </select>
-                                ) : (
-                                  <p className="py-2 text-sm font-medium text-slate-900">{prod?.nombre ?? `Producto #${f.productoId}`}</p>
-                                )}
-                                {prod && (
-                                  <p className="mt-0.5 text-xs text-slate-400">
-                                    Compra actual {bs(ref)}
-                                    {prod.unidad_medida ? ` / ${prod.unidad_medida}` : ''}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="col-span-12 md:col-span-3">
-                                <span className="mb-1 block text-[11px] font-semibold uppercase text-slate-400 md:hidden">
-                                  Código proveedor
-                                </span>
-                                <input
-                                  value={f.codigo}
-                                  onChange={(e) => editarFila(f.key, 'codigo', e.target.value)}
-                                  maxLength={100}
-                                  placeholder="Ej. HK-DS2CD"
-                                  className={`${celdaCls} font-mono`}
-                                />
-                              </div>
-                              <div className="col-span-6 md:col-span-2">
-                                <span className="mb-1 block text-[11px] font-semibold uppercase text-slate-400 md:hidden">
-                                  Precio
-                                </span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  inputMode="decimal"
-                                  value={f.precio}
-                                  onChange={(e) => editarFila(f.key, 'precio', e.target.value)}
-                                  placeholder="0.00"
-                                  className={`${celdaCls} text-right`}
-                                />
-                                {variacion !== null && Math.abs(variacion) >= 0.5 && (
-                                  <p className={`mt-0.5 text-right text-[11px] font-semibold ${variacion < 0 ? 'text-[#3f6b00]' : 'text-amber-600'}`}>
-                                    {variacion < 0 ? '▼' : '▲'} {Math.abs(variacion).toFixed(1)}%
-                                  </p>
-                                )}
-                              </div>
-                              <div className="col-span-4 md:col-span-2">
-                                <span className="mb-1 block text-[11px] font-semibold uppercase text-slate-400 md:hidden">
-                                  Stock
-                                </span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  inputMode="numeric"
-                                  value={f.stock}
-                                  onChange={(e) => editarFila(f.key, 'stock', e.target.value)}
-                                  className={`${celdaCls} text-right`}
-                                />
-                              </div>
-                              <div className="col-span-2 flex justify-end pt-5 md:col-span-1 md:pt-0">
-                                <button
-                                  type="button"
-                                  onClick={() => quitarFila(f)}
-                                  disabled={quitandoId === f.catalogoId && f.catalogoId !== null}
-                                  className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                                  aria-label="Quitar producto"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={agregarFila}
-                    disabled={!proveedor?.estado || usados.size >= productos.length}
-                    className="w-full rounded-xl border border-dashed border-[#8cd600] px-4 py-3 text-sm font-semibold text-[#3f6b00] transition hover:bg-[#8cd600]/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    + Agregar producto al catálogo
-                  </button>
-                </>
-              )}
-
-              {errorCatalogo && <Alerta>{errorCatalogo}</Alerta>}
-            </div>
-          )}
-        </div>
-
-        {/* Pie */}
-        <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs text-slate-400">
-            {pestana === 'catalogo'
-              ? pendientes
-                ? `${pendientes} cambio(s) sin guardar`
-                : 'Sin cambios pendientes'
-              : 'Los campos con * son obligatorios'}
-          </p>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={cerrar}
-              disabled={ocupado}
-              className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Cerrar
-            </button>
-            {pestana === 'datos' ? (
-              <button
-                type="submit"
-                form="form-proveedor"
-                disabled={guardandoDatos}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#8cd600] px-5 py-3 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-[#73b800] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {guardandoDatos && <Spinner />}
-                {proveedor ? 'Guardar cambios' : 'Registrar proveedor'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={guardarCatalogo}
-                disabled={guardandoCatalogo || pendientes === 0 || !proveedor?.estado}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#8cd600] px-5 py-3 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-[#73b800] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {guardandoCatalogo && <Spinner />}
-                Guardar catálogo
-              </button>
-            )}
-          </div>
-        </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Subcomponentes
-// ---------------------------------------------------------------------------
-function Pestana({
-  activa,
-  deshabilitada,
-  titulo,
-  onClick,
-  children,
-}: {
-  activa: boolean;
-  deshabilitada?: boolean;
-  titulo?: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+// ===========================================================================
+// Componentes pequeños
+// ===========================================================================
+function Modal({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={deshabilitada}
-      title={titulo}
-      className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-        activa ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-      }`}
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      {children}
-    </button>
+      <div role="dialog" aria-modal="true" className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white p-6 shadow-xl sm:max-w-2xl sm:rounded-2xl">
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -695,15 +696,6 @@ function Campo({
         <span className="mt-1 block text-xs text-slate-400">{ayuda}</span>
       ) : null}
     </label>
-  );
-}
-
-function Indicador({ etiqueta, valor }: { etiqueta: string; valor: number }) {
-  return (
-    <div className="rounded-lg bg-white px-2 py-2">
-      <p className="text-lg font-bold text-slate-900">{valor}</p>
-      <p className="text-[11px] uppercase tracking-wide text-slate-500">{etiqueta}</p>
-    </div>
   );
 }
 
