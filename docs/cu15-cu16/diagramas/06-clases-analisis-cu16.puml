@@ -1,0 +1,115 @@
+@startuml 06-clases-analisis-cu16
+' 3.3 Análisis de Clases — CU16 Gestionar Inventario y Movimientos de Kárdex
+skinparam shadowing false
+hide empty members
+
+class IU_Inventario <<boundary>> {
+  +mostrarCatalogo()
+  +filtrar(texto, categoría, estado, soloCriticos)
+  +mostrarAlertaStockCritico()
+}
+class IU_FormularioProducto <<boundary>> {
+  +registrar(datos)
+  +modificar(datos)
+}
+class IU_FormularioCategoria <<boundary>> {
+  +registrar(nombre, descripción)
+}
+class IU_FormularioAjuste <<boundary>> {
+  +ingresarConteo(stockContado, justificación)
+  +mostrarDiferencia()
+}
+class IU_FormularioInventarioInicial <<boundary>> {
+  +ingresarCantidad(cantidad, observación)
+}
+class IU_ConfirmarDesactivacion <<boundary>> {
+  +confirmar()
+}
+class IU_Kardex <<boundary>> {
+  +mostrarMovimientos(productoId)
+}
+
+class ControlGestionarInventario <<control>> {
+  +obtenerCatalogo(filtros)
+  +listarStockCritico()
+  +listarCategorias()
+  +obtenerKardex(productoId)
+  +registrarProducto(usuarioId, datos)
+  +modificarProducto(usuarioId, datos)
+  +desactivarProducto(usuarioId, productoId)
+  +registrarCategoria(usuarioId, datos)
+}
+class ControlKardex <<control>> {
+  +registrarAjuste(usuarioId, productoId, stockContado, justificación)
+  +registrarInventarioInicial(usuarioId, productoId, cantidad, observación)
+}
+class "NúcleoKárdex" as NucleoKardex <<control>> {
+  +aplicarMovimiento(producto, tipo, motivo, cantidad, documento)
+}
+
+class Producto <<entity>> {
+  id
+  codigo
+  nombre
+  descripcion_tecnica
+  unidad_medida
+  margen_ganancia
+  precio_compra_actual
+  stock_disponible
+  stock_minimo
+  estado
+}
+class CategoriaProducto <<entity>> {
+  id
+  nombre
+  descripcion
+}
+class MovimientoKardex <<entity>> {
+  id
+  tipo_movimiento
+  motivo
+  cantidad
+  stock_anterior
+  stock_resultante
+  documento
+  origen_movimiento
+  observacion
+  fecha_movimiento
+}
+class Usuario <<entity>> {
+  id
+  nombre
+}
+class Bitacora <<entity>> {
+  id
+  accion
+  descripcion
+  fecha_hora
+}
+
+IU_Inventario --> IU_FormularioProducto
+IU_Inventario --> IU_FormularioCategoria
+IU_Inventario --> IU_FormularioAjuste
+IU_Inventario --> IU_FormularioInventarioInicial
+IU_Inventario --> IU_ConfirmarDesactivacion
+IU_Inventario --> IU_Kardex
+IU_Inventario --> ControlGestionarInventario
+IU_FormularioProducto --> ControlGestionarInventario
+IU_FormularioCategoria --> ControlGestionarInventario
+IU_ConfirmarDesactivacion --> ControlGestionarInventario
+IU_Kardex --> ControlGestionarInventario
+IU_FormularioAjuste --> ControlKardex
+IU_FormularioInventarioInicial --> ControlKardex
+ControlKardex --> NucleoKardex
+ControlKardex --> Bitacora
+ControlGestionarInventario --> Producto
+ControlGestionarInventario --> CategoriaProducto
+ControlGestionarInventario --> MovimientoKardex
+ControlGestionarInventario --> Bitacora
+NucleoKardex --> Producto
+NucleoKardex --> MovimientoKardex
+
+CategoriaProducto "1" -- "0..*" Producto
+Producto "1" -- "0..*" MovimientoKardex
+Usuario "1" -- "0..*" MovimientoKardex : responsable
+@enduml

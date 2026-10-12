@@ -1,0 +1,25 @@
+@startuml 01-casos-de-uso-cu15-cu16
+' 2.5.3 Diagrama de Estructuración de Casos de Uso — Paquete 2 (parte de CU15 y CU16)
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+actor "Administrador" as Administrador
+actor "Encargado" as Encargado
+
+rectangle "SmartService — Paquete 2: Gestión Comercial, Clientes, Catálogo y Ventas" {
+  usecase "CU09 - Gestionar Ventas\ny Arqueo de Caja" as CU09
+  usecase "CU14 - Gestionar Proveedores\ny Catálogo de Mayoristas" as CU14
+  usecase "CU15 - Registrar Compras\nde Equipos e Insumos" as CU15
+  usecase "CU16 - Gestionar Inventario\ny Movimientos de Kárdex" as CU16
+}
+
+Encargado --> CU15
+Administrador --> CU15
+Administrador --> CU16
+Encargado --> CU16 : solo consulta
+
+CU15 ..> CU16 : <<include>>
+CU09 ..> CU16 : <<include>>
+CU14 ..> CU15 : <<extend>>\n(proveedor no registrado)
+@enduml

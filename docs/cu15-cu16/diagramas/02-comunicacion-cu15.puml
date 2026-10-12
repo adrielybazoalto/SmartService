@@ -1,0 +1,36 @@
+@startuml 02-comunicacion-cu15
+' 3.2.1 Diagrama de Comunicación — CU15 Registrar Compras de Equipos e Insumos
+' Los mensajes 8.1 a 8.6 ocurren en UNA transacción dentro de fn_registrar_compra.
+left to right direction
+skinparam shadowing false
+
+actor "Encargado" as Encargado
+boundary "IU_Compras\n(/compras)" as IUL
+boundary "IU_RegistrarCompra\n(/compras/nueva)" as IUN
+boundary "IU_ComprobanteIngreso\n(/compras/[compraId])" as IUC
+control "ControlRegistrarCompra" as CRC
+control "NúcleoKárdex (CU16)\nprivate.fn_kardex_aplicar" as NK
+entity "Proveedor" as PRV
+entity "Producto" as PRO
+entity "ProductoProveedor" as PP
+entity "Compra" as COM
+entity "DetalleCompra" as DET
+entity "MovimientoKardex" as MK
+entity "Bitácora" as BIT
+
+Encargado -- IUL : "1: seleccionarNuevaCompra()"
+IUL -- IUN : "2: mostrarFormulario()"
+Encargado -- IUN : "5: ingresarDocumento(tipo, número, fecha)\n6: agregarLinea(producto, cantidad, costoUnitario)\n7: confirmarCompra()"
+IUN -- CRC : "3: listarProveedoresActivos()\n4: listarProductosDisponibles(texto, proveedorId)\n5.1: verificarDocumento(proveedorId, tipo, número)\n8: registrarCompra(datosCompra)"
+CRC -- PRV : "3.1: consultarActivos()"
+CRC -- PRO : "4.1: consultarActivos(texto)\n8.4: actualizarUltimoCosto()"
+CRC -- PP : "4.2: consultarPrecioPactado(proveedorId)\n8.5: actualizarPrecioPactado()"
+CRC -- COM : "5.2: buscarDocumento(proveedor, tipo, número normalizado)\n8.1: insertarCabecera()"
+CRC -- DET : "8.2: insertarLinea()"
+CRC -- NK : "8.3: aplicarEntrada(ENTRADA, COMPRA, cantidad, documento)"
+NK -- PRO : "8.3.1: bloquearYSumarStock()"
+NK -- MK : "8.3.2: insertarMovimiento(stockAnterior, stockResultante)"
+CRC -- BIT : "8.6: registrarEvento(NUEVA_COMPRA)"
+IUN -- IUC : "9: mostrarComprobante(compraId)"
+IUC -- CRC : "9.1: obtenerComprobanteIngreso(compraId)"
+@enduml
