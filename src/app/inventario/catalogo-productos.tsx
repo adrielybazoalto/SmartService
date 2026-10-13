@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import type { CategoriaDTO, ProductoInventarioDTO } from '@/backend/inventario/types'
 import type { CapacidadesInventario } from './acceso'
-import { EstadoProducto } from './componentes'
+import { EstadoProducto, FotoProducto } from './componentes'
+import { DetalleProducto } from './detalle-producto'
 import { formatoBs, formatoCantidad, formatoNumero, precioVentaReferencial } from './formato'
 import {
   ConfirmarDesactivacion,
@@ -17,7 +18,7 @@ import {
 type Dialogo =
   | { tipo: 'nuevo' }
   | { tipo: 'categoria' }
-  | { tipo: 'editar' | 'inicial' | 'ajuste' | 'desactivar'; producto: ProductoInventarioDTO }
+  | { tipo: 'detalle' | 'editar' | 'inicial' | 'ajuste' | 'desactivar'; producto: ProductoInventarioDTO }
   | null
 
 /**
@@ -106,10 +107,21 @@ export function CatalogoProductos({
                   {productos.map((p) => (
                     <tr key={p.id} className={`transition-colors hover:bg-slate-50/80 ${p.activo && p.critico ? 'bg-rose-50/40' : ''} ${p.activo ? '' : 'text-slate-400'}`}>
                       <td className="px-4 py-3">
-                        <p className={`font-medium ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
-                        <p className="text-xs text-slate-500">
-                          <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'} · {p.unidadMedida}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <MiniaturaProducto producto={p} abrir={setDialogo} />
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setDialogo({ tipo: 'detalle', producto: p })}
+                              className={`cursor-pointer text-left font-medium hover:underline ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}
+                            >
+                              {p.nombre}
+                            </button>
+                            <p className="text-xs text-slate-500">
+                              <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'} · {p.unidadMedida}
+                            </p>
+                          </div>
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">{formatoBs(p.precioCompraActual)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">{formatoNumero(p.margenGanancia)} %</td>
@@ -136,11 +148,14 @@ export function CatalogoProductos({
             {productos.map((p) => (
               <li key={p.id} className={`tarjeta p-4 ${p.activo && p.critico ? 'border-rose-200' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className={`font-semibold ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <MiniaturaProducto producto={p} abrir={setDialogo} />
+                    <div className="min-w-0">
+                      <p className={`font-semibold ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'}
+                      </p>
+                    </div>
                   </div>
                   <EstadoProducto activo={p.activo} critico={p.critico} />
                 </div>
@@ -173,6 +188,7 @@ export function CatalogoProductos({
         <p className="text-xs text-slate-500">Tu rol tiene acceso de solo consulta al inventario.</p>
       )}
 
+      {dialogo?.tipo === 'detalle' && <DetalleProducto producto={dialogo.producto} onCerrar={cerrar} />}
       {dialogo?.tipo === 'nuevo' && <FormularioProducto producto={null} categorias={categorias} onCerrar={cerrar} onExito={alExito} />}
       {dialogo?.tipo === 'editar' && <FormularioProducto producto={dialogo.producto} categorias={categorias} onCerrar={cerrar} onExito={alExito} />}
       {dialogo?.tipo === 'categoria' && <FormularioCategoria onCerrar={cerrar} onExito={alExito} />}
@@ -197,6 +213,12 @@ function AccionesProducto({
   const boton = 'cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors'
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${movil ? '' : 'justify-end'}`}>
+      {/* En escritorio el detalle se abre desde la foto o el nombre (la columna no se desborda) */}
+      {movil && (
+        <button type="button" onClick={() => abrir({ tipo: 'detalle', producto: p })} className={`${boton} text-slate-600 hover:bg-slate-100`}>
+          Detalle
+        </button>
+      )}
       <Link href={`/inventario/kardex/${p.id}`} className={`${boton} bg-lime-100 text-lime-800 hover:bg-lime-200`}>
         Kárdex
       </Link>
@@ -221,5 +243,25 @@ function AccionesProducto({
         </button>
       )}
     </div>
+  )
+}
+
+/** Foto principal en el catálogo; al pulsarla abre el detalle con todas las fotos. */
+function MiniaturaProducto({ producto: p, abrir }: { producto: ProductoInventarioDTO; abrir: (d: Dialogo) => void }) {
+  const total = (p.imagenPrincipal ? 1 : 0) + p.imagenesAdicionales.length
+  return (
+    <button
+      type="button"
+      onClick={() => abrir({ tipo: 'detalle', producto: p })}
+      aria-label={`Ver detalle y fotografías de ${p.nombre}`}
+      className="relative shrink-0 cursor-pointer rounded-lg focus-visible:ring-2 focus-visible:ring-lime-500"
+    >
+      <FotoProducto key={p.imagenPrincipal?.url ?? 'sin-foto'} url={p.imagenPrincipal?.url ?? null} nombre="" className={`h-12 w-12 ${p.activo ? '' : 'opacity-60'}`} />
+      {total > 1 && (
+        <span aria-hidden="true" className="absolute -bottom-1 -right-1 rounded-full bg-slate-800 px-1.5 text-[10px] font-semibold leading-4 text-white">
+          {total}
+        </span>
+      )}
+    </button>
   )
 }

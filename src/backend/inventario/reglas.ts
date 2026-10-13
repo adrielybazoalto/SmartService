@@ -1,4 +1,4 @@
-import type { AccionInventario } from './types'
+import type { AccionInventario, ImagenProductoDTO } from './types'
 
 /**
  * Reglas de negocio PURAS de CU16 (sin BD ni Next.js): se prueban aisladas.
@@ -47,4 +47,58 @@ export function sanitizarBusqueda(texto: string): string {
 export function aNumero(valor: string | number | null | undefined): number {
   const n = typeof valor === 'number' ? valor : Number(valor ?? 0)
   return Number.isFinite(n) ? n : 0
+}
+
+/** Fila de IMAGEN_PRODUCTO tal como llega embebida en la consulta de PRODUCTO. */
+export interface FilaImagenProducto {
+  id: number
+  url_imagen: string | null
+  es_principal: boolean | null
+  orden: number | null
+}
+
+/**
+ * URL que se puede usar en <img src>: http(s) absoluta o ruta del propio sitio
+ * ("/..."). Descarta vacías, "javascript:", "data:", "//host" y similares.
+ */
+export function esUrlImagenValida(url: string | null | undefined): url is string {
+  if (typeof url !== 'string') return false
+  const u = url.trim()
+  if (!u || u.length > 500) return false
+  if (u.startsWith('/')) return !u.startsWith('//') && !u.startsWith('/\\')
+  try {
+    const { protocol } = new URL(u)
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+/** Orden de IMAGEN_PRODUCTO: `orden` ascendente (NULL al final) y luego id. */
+function compararImagenes(a: ImagenProductoDTO, b: ImagenProductoDTO): number {
+  if (a.orden !== b.orden) {
+    if (a.orden === null) return 1
+    if (b.orden === null) return -1
+    return a.orden - b.orden
+  }
+  return a.id - b.id
+}
+
+/**
+ * Separa la foto principal (catálogo) de las adicionales (detalle).
+ * Principal: la primera marcada `es_principal`; si ninguna lo está, la primera
+ * por orden. Las URL no válidas se omiten (la interfaz muestra el respaldo).
+ */
+export function separarImagenes(filas: readonly FilaImagenProducto[] | null | undefined): {
+  principal: ImagenProductoDTO | null
+  adicionales: ImagenProductoDTO[]
+} {
+  const imagenes: ImagenProductoDTO[] = []
+  for (const f of filas ?? []) {
+    if (!esUrlImagenValida(f.url_imagen)) continue
+    imagenes.push({ id: f.id, url: f.url_imagen.trim(), esPrincipal: f.es_principal === true, orden: f.orden ?? null })
+  }
+  imagenes.sort(compararImagenes)
+  const principal = imagenes.find((i) => i.esPrincipal) ?? imagenes[0] ?? null
+  return { principal, adicionales: imagenes.filter((i) => i !== principal) }
 }
