@@ -39,10 +39,16 @@ export async function registrarBitacora(
  * módulos (caja, inventario, cotizaciones, órdenes) al ejecutar una acción
  * auditable.
  */
-export async function registrarEvento(db: Db, input: RegistrarEventoInput): Promise<Bitacora> {
+export async function registrarEvento(
+  db: Db,
+  input: RegistrarEventoInput,
+  ip?: string | null,
+): Promise<Bitacora> {
   const parsed = registrarEventoSchema.parse(input)
-  const ip = await obtenerIpOrigen()
-  const { data, error } = await db.from('bitacora').insert({ ...parsed, ...(ip ? { ip } : {}) } as NuevoEventoBitacora).select().single()
+  // La IP puede venir capturada por el llamador (p. ej. la Server Action del
+  // CU07); si no, se resuelve aquí como respaldo.
+  const ipOrigen = ip ?? (await obtenerIpOrigen())
+  const { data, error } = await db.from('bitacora').insert({ ...parsed, ...(ipOrigen ? { ip: ipOrigen } : {}) } as NuevoEventoBitacora).select().single()
   if (error) {
     console.error('Error al registrar en bitácora:', error)
     throw new Error(`No se pudo registrar el evento en la bitácora: ${error.message}`)
@@ -52,19 +58,20 @@ export async function registrarEvento(db: Db, input: RegistrarEventoInput): Prom
 
 /**
  * CU07 — Evento de auditoría del módulo Clientes (Gestionar Clientes y
- * Establecimientos). Invoca `registrarEvento()` con el detalle de la acción.
+ * Establecimientos). Invoca `registrarEvento()` con el detalle de la acción y
+ * la IP de origen capturada por la Server Action.
  *
- * NOTA DE DISEÑO: por el momento NO se recibe ni se persiste la IP del
- * solicitante; la firma queda lista para la unificación posterior del
- * rastreo de eventos (fuente/contexto) sin cambiar a los llamadores.
+ * Requisito de auditoría: TODO registro de bitácora incluye la dirección IP,
+ * que se persiste en la columna `ip` de BITACORA.
  */
 export async function guardarEventoCliente(
   db: Db,
   usuario_id: number,
   accion: string,
   descripcion: string | null = null,
+  ip: string | null = null,
 ): Promise<Bitacora> {
-  return registrarEvento(db, { usuario_id, accion, descripcion })
+  return registrarEvento(db, { usuario_id, accion, descripcion }, ip)
 }
 
 /** Lista y filtra la bitácora — pasos 2 y 3 del flujo principal del CU06. */

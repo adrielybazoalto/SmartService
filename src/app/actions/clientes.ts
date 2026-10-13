@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireUser } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { tienePermisoModulo } from '@/lib/permisos'
+import { obtenerIpOrigen } from '@/lib/ip'
 import { guardarEventoCliente } from '@/backend/bitacora'
 import {
   crearCliente,
@@ -141,17 +142,19 @@ export async function registrarEstablecimientoBD(
 }
 
 /**
- * Invoca guardarEventoCliente() en la bitácora (CU06). Un fallo de auditoría
- * NO interrumpe el registro del cliente.
+ * Invoca guardarEventoCliente() en la bitácora (CU06), persistando la IP de
+ * origen del solicitante. Un fallo de auditoría NO interrumpe el registro del
+ * cliente.
  */
 export async function registrarBitacoraAccion(
   usuario_id: number,
   accion: string,
   descripcion: string,
+  ip: string | null,
 ): Promise<void> {
   try {
     const db = getSupabaseServiceClient()
-    await guardarEventoCliente(db, usuario_id, accion, descripcion)
+    await guardarEventoCliente(db, usuario_id, accion, descripcion, ip)
   } catch (e) {
     console.error('Error al registrar en bitácora (CU07):', e)
   }
@@ -162,7 +165,7 @@ export async function registrarBitacoraAccion(
  *   1. validación del documento único (verificarDocumento)
  *   2. creación del cliente (CLIENTE)
  *   3. creación del establecimiento (ESTABLECIMIENTO)
- *   4. registro en bitácora (guardarEventoCliente)
+ *   4. registro en bitácora (guardarEventoCliente) con la IP de origen
  */
 export async function procesarRegistroCliente(
   datosFormulario: RegistroClienteFormulario,
@@ -205,11 +208,13 @@ export async function procesarRegistroCliente(
       longitud: formulario.longitud ?? null,
     })
 
-    // 4) Bitácora (guardarEventoCliente).
+    // 4) Bitácora (guardarEventoCliente), incluyendo la IP de origen.
+    const ip = await obtenerIpOrigen()
     await registrarBitacoraAccion(
       actor.id,
       'REGISTRO_CLIENTE',
       `Se registró el cliente ${cliente.nombre} (${cliente.tipo_cliente}) con el establecimiento ${establecimiento.nombre_establecimiento} (${establecimiento.direccion}).`,
+      ip,
     )
 
     return {
