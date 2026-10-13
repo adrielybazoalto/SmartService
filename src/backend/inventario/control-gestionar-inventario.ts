@@ -1,7 +1,14 @@
 import type { Db } from '@/lib/supabase/types'
 import { registrarEvento } from '@/backend/bitacora'
 import { ErrorInventario, traducirErrorBD } from './errores'
-import { aNumero, esStockCritico, sanitizarBusqueda, sentidoMovimiento } from './reglas'
+import {
+  aNumero,
+  esStockCritico,
+  sanitizarBusqueda,
+  sentidoMovimiento,
+  separarImagenes,
+  type FilaImagenProducto,
+} from './reglas'
 import {
   filtrosProductosSchema,
   modificarProductoSchema,
@@ -22,6 +29,7 @@ import type {
   ProductoInventarioDTO,
 } from './types'
 
+/** Incluye las fotos de IMAGEN_PRODUCTO por su relación con PRODUCTO (solo lectura). */
 const COLUMNAS_PRODUCTO =
   'id, codigo, nombre, descripcion_tecnica, unidad_medida, margen_ganancia, precio_compra_actual, stock_disponible, stock_minimo, estado, categoria_producto(id, nombre), imagen_producto(id, url_imagen, es_principal, orden)'
 
@@ -37,16 +45,14 @@ type FilaProducto = {
   stock_minimo: string | number
   estado: boolean
   categoria_producto: { id: number; nombre: string } | null
-  imagen_producto?: Array<{ id?: number; url_imagen: string; es_principal?: boolean; orden?: number }> | null
+<<<<<<< HEAD
+  imagen_producto?: FilaImagenProducto[] | null
 }
 
 function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
   const stock = aNumero(p.stock_disponible)
   const minimo = aNumero(p.stock_minimo)
-  const imagenes = Array.isArray(p.imagen_producto) ? p.imagen_producto : []
-  const imgPrincipal = imagenes.find((i) => i.es_principal) ?? imagenes[0]
-  const imagenUrl = imgPrincipal?.url_imagen ?? null
-
+  const { principal, adicionales } = separarImagenes(p.imagen_producto)
   return {
     id: p.id,
     codigo: p.codigo,
@@ -60,8 +66,8 @@ function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
     stockMinimo: minimo,
     activo: p.estado,
     critico: esStockCritico(stock, minimo),
-    imagenUrl,
-    url_imagen: imagenUrl,
+    imagenPrincipal: principal,
+    imagenesAdicionales: adicionales,
   }
 }
 

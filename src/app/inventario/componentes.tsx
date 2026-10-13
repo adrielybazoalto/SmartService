@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 /**
  * Piezas de interfaz de CU16 (tema claro "PULSE"). Locales al módulo para no
@@ -208,5 +208,59 @@ export function EstadoProducto({ activo, critico }: { activo: boolean; critico: 
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
       Normal
     </span>
+  )
+}
+
+/**
+ * Fotografía de producto (IMAGEN_PRODUCTO). Si no hay URL o la imagen no carga,
+ * muestra un respaldo neutro. Se usa <img> (no next/image) para no exigir el
+ * registro de dominios remotos en next.config.ts, igual que el módulo de ventas.
+ */
+export function FotoProducto({
+  url,
+  nombre,
+  className = 'h-10 w-10',
+  ajuste = 'cover',
+}: {
+  url: string | null
+  nombre: string
+  /** Tamaño y forma del recuadro (clases de Tailwind). */
+  className?: string
+  /** cover: recorta para llenar (miniaturas). contain: foto completa, centrada (vista grande). */
+  ajuste?: 'cover' | 'contain'
+}) {
+  const [urlFallida, setUrlFallida] = useState<string | null>(null)
+
+  if (!url || urlFallida === url) {
+    return (
+      <span
+        role="img"
+        aria-label={nombre ? `${nombre}: sin fotografía` : 'Sin fotografía'}
+        className={`flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-400 ${className}`}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-1/2 w-1/2 max-h-12 max-w-12">
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <circle cx="9" cy="10" r="1.75" />
+          <path d="m4 18 5-5 3.5 3.5L15 14l5 4.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    )
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={nombre}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setUrlFallida(url)}
+      // Si la imagen falló ANTES de hidratar (HTML del servidor), onError ya no
+      // se dispara: al montar se revisa si terminó de cargar sin contenido.
+      ref={(img) => {
+        if (img?.complete && img.naturalWidth === 0) setUrlFallida(url)
+      }}
+      className={`shrink-0 rounded-lg border border-slate-200 ${ajuste === 'contain' ? 'bg-slate-50 object-contain object-center p-2' : 'bg-white object-cover'} ${className}`}
+    />
   )
 }

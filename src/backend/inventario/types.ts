@@ -21,6 +21,15 @@ export interface CategoriaDTO {
   descripcion: string | null
 }
 
+/** Fotografía de IMAGEN_PRODUCTO (solo lectura en CU16). */
+export interface ImagenProductoDTO {
+  id: number
+  url: string
+  esPrincipal: boolean
+  /** NULL = sin orden asignado (se muestra al final). */
+  orden: number | null
+}
+
 export interface ProductoInventarioDTO {
   id: number
   codigo: string | null
@@ -35,9 +44,10 @@ export interface ProductoInventarioDTO {
   activo: boolean
   /** stock disponible <= stock mínimo (RF16). */
   critico: boolean
-  /** URL o ruta de la imagen del producto (si tiene). */
-  imagenUrl: string | null
-  url_imagen?: string | null
+  /** Foto del catálogo: la marcada como principal o, si no hay, la primera por orden. */
+  imagenPrincipal: ImagenProductoDTO | null
+  /** Las demás fotos, en orden, para el detalle del producto. */
+  imagenesAdicionales: ImagenProductoDTO[]
 }
 
 export interface MovimientoKardexDTO {

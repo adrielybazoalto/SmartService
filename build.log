@@ -1,0 +1,49 @@
+
+> smartservice@0.1.0 build
+> next build
+
+▲ Next.js 16.3.6 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 92ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.0s
+  Running TypeScript ...
+  Finished TypeScript in 7.0s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/19) ...
+  Generating static pages using 7 workers (4/19) 
+  Generating static pages using 7 workers (9/19) 
+  Generating static pages using 7 workers (14/19) 
+✓ Generating static pages using 7 workers (19/19) in 1117ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /bitacora
+├ ƒ /clientes
+├ ƒ /compras
+├ ƒ /compras/[compraId]
+├ ƒ /compras/nueva
+├ ƒ /cotizaciones
+├ ƒ /cotizaciones/editar/[id]
+├ ƒ /cotizaciones/nuevo
+├ ƒ /cotizaciones/pdf/[id]
+├ ƒ /inventario
+├ ƒ /inventario/kardex/[productoId]
+├ ƒ /login
+├ ƒ /perfil
+├ ƒ /proveedores
+├ ƒ /recuperar
+├ ƒ /roles
+├ ƒ /servicios
+├ ƒ /usuarios
+└ ƒ /ventas
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+RC:0
