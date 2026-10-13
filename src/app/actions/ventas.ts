@@ -19,7 +19,6 @@ import {
   buscarClienteMostrador,
   listarClientesVenta as listarClientesService,
   listarProductosVenta as listarProductosService,
-  listarServiciosVenta as listarServiciosService,
   listarTurnosCerrados as listarTurnosService,
   listarVentasCaja,
   obtenerResumenCaja as obtenerResumenCajaService,
@@ -38,7 +37,6 @@ import {
   type RegistrarVentaInput,
   type ResultadoCaja,
   type ResumenArqueo,
-  type ServicioVenta,
 } from '@/backend/ventas';
 
 // ===========================================================================
@@ -84,10 +82,9 @@ const numeroValido = (v: unknown): v is number => typeof v === 'number' && Numbe
 export async function obtenerDatosVentas(): Promise<RespuestaAccion<DatosVentas>> {
   try {
     const { db, usuarioId, nombre, esAdmin } = await contexto();
-    const [caja, productos, servicios, clientes, clienteMostradorId] = await Promise.all([
+    const [caja, productos, clientes, clienteMostradorId] = await Promise.all([
       verificarCajaAbierta(db, usuarioId),
       listarProductosService(db),
-      listarServiciosService(db),
       listarClientesService(db),
       buscarClienteMostrador(db),
     ]);
@@ -99,7 +96,6 @@ export async function obtenerDatosVentas(): Promise<RespuestaAccion<DatosVentas>
         resumen: caja ? resumirCaja(caja, ventas) : null,
         ventas,
         productos,
-        servicios,
         clientes,
         cliente_mostrador_id: clienteMostradorId,
       },
@@ -117,16 +113,6 @@ export async function listarProductosVenta(): Promise<RespuestaAccion<ProductoVe
     return exito(productos, `${productos.length} producto(s)`);
   } catch (e) {
     return falla(e, 'Error al listar productos');
-  }
-}
-
-export async function listarServiciosVenta(): Promise<RespuestaAccion<ServicioVenta[]>> {
-  try {
-    const { db } = await contexto();
-    const servicios = await listarServiciosService(db);
-    return exito(servicios, `${servicios.length} servicio(s)`);
-  } catch (e) {
-    return falla(e, 'Error al listar servicios');
   }
 }
 
@@ -216,7 +202,7 @@ export async function procesarCajaAction(
 // Ventas
 // ===========================================================================
 
-/** Pasos 3-7: venta atómica de productos y/o servicios */
+/** Pasos 3-7: venta atómica de productos (stock y kárdex: include CU16) */
 export async function registrarVentaAction(input: RegistrarVentaInput): Promise<RespuestaAccion<ComprobanteVenta>> {
   try {
     const { db, usuarioId } = await contexto();

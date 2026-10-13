@@ -52,20 +52,15 @@ export const cierreCajaSchema = z.object({
 // Venta
 // ---------------------------------------------------------------------------
 
-/** Ítem de venta: un producto O un servicio, con su cantidad (u horas) */
-export const itemVentaSchema = z
-  .object({
-    productoId: id('Producto').nullable().optional(),
-    servicioId: id('Servicio').nullable().optional(),
+/** Ítem de venta: un producto con su cantidad */
+export const itemVentaSchema = z.object({
+    productoId: id('Producto'),
     cantidad: z.coerce
       .number({ message: 'Cantidad inválida' })
       .positive({ message: 'La cantidad debe ser mayor a 0' })
       .max(100_000, { message: 'Cantidad fuera de rango' })
       .refine(dosDecimales, { message: 'La cantidad admite como máximo 2 decimales' }),
-  })
-  .refine((it) => (it.productoId == null) !== (it.servicioId == null), {
-    message: 'Cada línea debe ser un producto o un servicio',
-  });
+});
 
 /** datosVentaDTO (sin usuarioId, que lo pone el servidor desde la sesión) */
 export const registrarVentaSchema = z.object({
@@ -75,7 +70,7 @@ export const registrarVentaSchema = z.object({
   descuento: monto('El descuento').default(0),
   items: z
     .array(itemVentaSchema, { message: 'Lista de ítems inválida' })
-    .min(1, { message: 'Agregue al menos un producto o servicio a la venta' })
+    .min(1, { message: 'Agregue al menos un producto a la venta' })
     .max(100, { message: 'Demasiadas líneas en una sola venta' }),
 });
 

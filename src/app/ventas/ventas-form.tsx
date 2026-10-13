@@ -6,7 +6,6 @@ import type {
   ClienteVenta,
   ComprobanteVenta,
   ProductoVenta,
-  ServicioVenta,
   TipoComprobante,
   TipoPago,
 } from '@/backend/ventas';
@@ -41,7 +40,6 @@ export async function abrirNotaVentaPdf(ventaId: number): Promise<string | null>
 
 type Props = {
   productos: ProductoVenta[];
-  servicios: ServicioVenta[];
   clientes: ClienteVenta[];
   clienteMostradorId: number | null;
   cajaAbierta: boolean;
@@ -49,14 +47,12 @@ type Props = {
   onVentaRegistrada: () => void;
 };
 
-/** Ítem vendible: producto (con stock) o servicio (cobrado por hora) */
+/** Ítem vendible: producto del inventario (CU16) con su stock */
 type Opcion = {
-  tipo: 'PRODUCTO' | 'SERVICIO';
   id: number;
   nombre: string;
   precio: number;
-  /** null en servicios: no manejan stock */
-  stock: number | null;
+  stock: number;
   stockMinimo: number;
   unidad: string;
   imagen: string | null;
@@ -86,7 +82,6 @@ const inputCls =
 
 export default function VentasForm({
   productos,
-  servicios,
   clientes,
   clienteMostradorId,
   cajaAbierta,
@@ -94,7 +89,6 @@ export default function VentasForm({
   onVentaRegistrada,
 }: Props) {
   const [busqueda, setBusqueda] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState<'TODOS' | 'PRODUCTO' | 'SERVICIO'>('TODOS');
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [lineas, setLineas] = useState<Linea[]>([]);
   // Cliente por defecto: "Cliente de mostrador"; si no existe, el primero de la lista.
@@ -115,11 +109,10 @@ export default function VentasForm({
   const [ultimaVenta, setUltimaVenta] = useState<ComprobanteVenta | null>(null);
   const buscadorRef = useRef<HTMLInputElement>(null);
 
-  // ---- Catálogo unificado: productos + servicios (paso 3) -------------------
+  // ---- Catálogo de productos (paso 3) -----------------------------------------
   const opciones = useMemo<Opcion[]>(
-    () => [
-      ...productos.map((p) => ({
-        tipo: 'PRODUCTO' as const,
+    () =>
+      productos.map((p) => ({
         id: p.id,
         nombre: p.nombre,
         precio: p.precio_venta,
@@ -128,28 +121,16 @@ export default function VentasForm({
         unidad: p.unidad_medida ?? 'UND',
         imagen: p.imagen_url,
       })),
-      ...servicios.map((s) => ({
-        tipo: 'SERVICIO' as const,
-        id: s.id,
-        nombre: s.nombre,
-        precio: s.precio_hora,
-        stock: null,
-        stockMinimo: 0,
-        unidad: 'hora',
-        imagen: null,
-      })),
-    ],
-    [productos, servicios]
+    [productos]
   );
 
-  // Sin texto: muestra el catálogo (según el filtro); con texto: busca por nombre o código
+  // Sin texto: muestra el catálogo; con texto: busca por nombre o código
   const resultados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return opciones
-      .filter((o) => filtroTipo === 'TODOS' || o.tipo === filtroTipo)
       .filter((o) => !q || o.nombre.toLowerCase().includes(q) || String(o.id) === q)
       .slice(0, q ? 15 : 30);
-  }, [busqueda, opciones, filtroTipo]);
+  }, [busqueda, opciones]);
 
   const clientesFiltrados = useMemo(() => {
     const q = busquedaCliente.trim().toLowerCase();
@@ -167,21 +148,21 @@ export default function VentasForm({
   const total = r2(Math.max(0, subtotal - descuentoNum));
   const cambio = tipoPago === 'EFECTIVO' && efectivoRecibido ? r2(Number(efectivoRecibido) - total) : null;
   const descuentoInvalido = descuentoNum > subtotal;
-  const hayExcesoStock = lineas.some((l) => l.stock !== null && l.cantidad > l.stock);
+  const hayExcesoStock = lineas.some((l) => l.cantidad > l.stock);
 
   // ---- Manejo del carrito ---------------------------------------------------
   const agregar = (o: Opcion) => {
     setError(null);
-    if (o.stock !== null && o.stock <= 0) {
+    if (o.stock <= 0) {
       setError(`"${o.nombre}" no tiene stock disponible`);
       return;
     }
-    const key = `${o.tipo}-${o.id}`;
+    const key = `P-${o.id}`;
     setLineas((prev) => {
       const existe = prev.find((l) => l.key === key);
       if (existe) {
         return prev.map((l) =>
-          l.key === key ? { ...l, cantidad: o.stock === null ? l.cantidad + 1 : Math.min(l.cantidad + 1, o.stock) } : l
+          l.key === key ? { ...l, cantidad: Math.min(l.cantidad + 1, o.stock) } : l
         );
       }
       return [...prev, { ...o, key, cantidad: 1 }];
@@ -191,7 +172,7 @@ export default function VentasForm({
     buscadorRef.current?.focus();
   };
 
-  /** Cantidades con hasta 2 decimales (metros de cable, horas de servicio) */
+  /** Cantidades con hasta 2 decimales (p. ej. metros de cable) */
   const cambiarCantidad = (key: string, valor: number) => {
     if (!Number.isFinite(valor)) return;
     setLineas((prev) => prev.map((l) => (l.key === key ? { ...l, cantidad: Math.max(0.01, r2(valor)) } : l)));
@@ -214,7 +195,7 @@ export default function VentasForm({
   const confirmar = async () => {
     setError(null);
     if (!cajaAbierta) return setError('Debe abrir un turno de caja antes de vender');
-    if (lineas.length === 0) return setError('Agregue al menos un producto o servicio');
+    if (lineas.length === 0) return setError('Agregue al menos un producto');
     if (!clienteId) return setError('Seleccione un cliente');
     if (descuentoInvalido) return setError('El descuento no puede ser mayor al subtotal');
     if (hayExcesoStock) return setError('Hay productos con cantidad mayor al stock disponible');
@@ -226,9 +207,7 @@ export default function VentasForm({
       tipoPago,
       tipoComprobante,
       descuento: descuentoNum,
-      items: lineas.map((l) =>
-        l.tipo === 'PRODUCTO' ? { productoId: l.id, cantidad: l.cantidad } : { servicioId: l.id, cantidad: l.cantidad }
-      ),
+      items: lineas.map((l) => ({ productoId: l.id, cantidad: l.cantidad })),
     });
     setGuardando(false);
 
@@ -287,34 +266,10 @@ export default function VentasForm({
       )}
 
       <fieldset disabled={deshabilitado} className="space-y-5">
-        {/* Buscador de productos y servicios */}
+        {/* Buscador de productos */}
         <div className="relative">
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-            <label className="text-sm font-medium text-slate-700">Producto o servicio</label>
-            <div className="flex gap-1 rounded-lg bg-[#f8fafc] p-0.5 text-xs">
-              {(
-                [
-                  ['TODOS', 'Todos'],
-                  ['PRODUCTO', 'Productos'],
-                  ['SERVICIO', 'Servicios'],
-                ] as const
-              ).map(([valor, etiqueta]) => (
-                <button
-                  key={valor}
-                  type="button"
-                  onClick={() => {
-                    setFiltroTipo(valor);
-                    setMostrarResultados(true);
-                    buscadorRef.current?.focus();
-                  }}
-                  className={`rounded-md px-2.5 py-1 font-semibold transition ${
-                    filtroTipo === valor ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {etiqueta}
-                </button>
-              ))}
-            </div>
+            <label className="text-sm font-medium text-slate-700">Producto</label>
           </div>
           <input
             ref={buscadorRef}
@@ -337,10 +292,10 @@ export default function VentasForm({
           {mostrarResultados && resultados.length > 0 && (
             <ul className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-100 bg-white p-1 shadow-lg">
               {resultados.map((o) => {
-                const agotado = o.stock !== null && o.stock <= 0;
-                const critico = o.stock !== null && o.stock <= o.stockMinimo;
+                const agotado = o.stock <= 0;
+                const critico = o.stock <= o.stockMinimo;
                 return (
-                  <li key={`${o.tipo}-${o.id}`}>
+                  <li key={o.id}>
                     <button
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
@@ -348,21 +303,16 @@ export default function VentasForm({
                       disabled={agotado}
                       className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <Miniatura url={o.imagen} nombre={o.nombre} servicio={o.tipo === 'SERVICIO'} />
+                      <Miniatura url={o.imagen} nombre={o.nombre} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900">{o.nombre}</p>
-                        {o.tipo === 'SERVICIO' ? (
-                          <p className="text-xs text-slate-500">Servicio técnico · por hora</p>
-                        ) : (
-                          <p className={`text-xs ${agotado ? 'text-red-600' : critico ? 'text-amber-600' : 'text-slate-500'}`}>
-                            Stock: {fmtCant(o.stock ?? 0)} {o.unidad}
-                            {agotado ? ' · Agotado' : critico ? ' · Crítico' : ''}
-                          </p>
-                        )}
+                        <p className={`text-xs ${agotado ? 'text-red-600' : critico ? 'text-amber-600' : 'text-slate-500'}`}>
+                          Stock: {fmtCant(o.stock)} {o.unidad}
+                          {agotado ? ' · Agotado' : critico ? ' · Crítico' : ''}
+                        </p>
                       </div>
                       <span className="whitespace-nowrap text-sm font-semibold text-slate-900">
                         {bs(o.precio)}
-                        {o.tipo === 'SERVICIO' && <span className="text-xs font-normal text-slate-500">/h</span>}
                       </span>
                     </button>
                   </li>
@@ -372,7 +322,7 @@ export default function VentasForm({
           )}
           {opciones.length === 0 && (
             <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              No se cargó ningún producto ni servicio. Revise que existan en la base de datos y que el
+              No se cargó ningún producto. Revise que existan en la base de datos y que el
               servidor use la clave service_role de Supabase.
             </p>
           )}
@@ -386,7 +336,7 @@ export default function VentasForm({
         {/* Carrito */}
         {lineas.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 bg-[#f8fafc] p-8 text-center text-sm text-slate-500">
-            Busque y agregue productos o servicios a la venta.
+            Busque y agregue productos a la venta.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-gray-100">
@@ -399,22 +349,18 @@ export default function VentasForm({
             </div>
             <ul className="divide-y divide-gray-100">
               {lineas.map((l) => {
-                const excede = l.stock !== null && l.cantidad > l.stock;
-                const paso = l.tipo === 'SERVICIO' ? 0.5 : 1;
+                const excede = l.cantidad > l.stock;
+                const paso = 1;
                 return (
                   <li key={l.key} className="grid grid-cols-12 items-center gap-3 px-4 py-3">
                     <div className="col-span-12 flex min-w-0 items-center gap-3 sm:col-span-5">
-                      <Miniatura url={l.imagen} nombre={l.nombre} servicio={l.tipo === 'SERVICIO'} />
+                      <Miniatura url={l.imagen} nombre={l.nombre} />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-900">{l.nombre}</p>
-                        {l.tipo === 'SERVICIO' ? (
-                          <p className="text-xs text-slate-500">Servicio · cantidad en horas</p>
-                        ) : (
-                          <p className={`text-xs ${excede ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-                            Disponible: {fmtCant(l.stock ?? 0)} {l.unidad}
-                            {excede && ' · excede el stock'}
-                          </p>
-                        )}
+                        <p className={`text-xs ${excede ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+                          Disponible: {fmtCant(l.stock)} {l.unidad}
+                          {excede && ' · excede el stock'}
+                        </p>
                       </div>
                     </div>
                     <span className="col-span-4 text-sm text-slate-600 sm:col-span-2 sm:text-right">{bs(l.precio)}</span>
@@ -612,16 +558,12 @@ export default function VentasForm({
 }
 
 /** Imagen principal del producto (o sus iniciales si no tiene) */
-function Miniatura({ url, nombre, servicio }: { url: string | null; nombre: string; servicio?: boolean }) {
+function Miniatura({ url, nombre }: { url: string | null; nombre: string }) {
   const [fallo, setFallo] = useState(false);
   if (!url || fallo) {
     return (
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-          servicio ? 'bg-[#8cd600]/15 text-[#3f6b00]' : 'bg-slate-100 text-slate-500'
-        }`}
-      >
-        {servicio ? 'SV' : nombre.slice(0, 2).toUpperCase()}
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">
+        {nombre.slice(0, 2).toUpperCase()}
       </span>
     );
   }

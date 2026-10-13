@@ -37,7 +37,6 @@ import {
   type ProductoVenta,
   type ResultadoCaja,
   type ResumenArqueo,
-  type ServicioVenta,
   type TipoPago,
   type TotalesVenta,
   type VentaResumen,
@@ -59,7 +58,7 @@ export const MENSAJES = {
   SIN_CAJA_CIERRE: 'No tiene una caja abierta para cerrar',
   DESCUENTO: 'El descuento no puede ser mayor al subtotal',
   SIN_MIGRACION:
-    'Falta instalar las funciones de ventas en la base de datos (ejecute la migración 20261012_cu09_ventas_caja.sql)',
+    'Falta instalar las funciones de ventas en la base de datos (ejecute 20261012_cu09_solo_lo_necesario.sql)',
 } as const;
 
 export const CLIENTE_MOSTRADOR = 'Cliente de mostrador';
@@ -98,15 +97,23 @@ const rpcNoExiste = (error: any) =>
  */
 function errorBD(error: any, porDefecto: string): VentaError {
   if (rpcNoExiste(error)) {
-    // En la terminal del servidor queda el nombre exacto de la función que no se encontró
-    console.error('[CU09] Función SQL no encontrada (¿se ejecutó la migración?):', error?.message ?? error);
-    return new VentaError(MENSAJES.SIN_MIGRACION);
+    console.error('[CU09] Error al llamar la función SQL:', error);
+    // PGRST202: la API de Supabase que usa la app no ve la función
+    if (error?.code === 'PGRST202' || /Could not find the function/i.test(error?.message ?? '')) {
+      return new VentaError(
+        `${MENSAJES.SIN_MIGRACION}. Detalle: ${error?.message ?? 'función no encontrada'}. ` +
+          'Si el script ya se ejecutó, revise que NEXT_PUBLIC_SUPABASE_URL de .env.local sea el mismo proyecto.'
+      );
+    }
+    // 42883 desde dentro de la función: la función existe, falla una operación interna
+    return new VentaError(`Error en la base de datos: ${error?.message ?? 'operación no soportada'}`);
   }
   const msg: string = error?.message ?? '';
   if (/ux_caja_usuario_abierta/.test(msg)) return new VentaError(MENSAJES.CAJA_DUPLICADA);
   if (/ux_venta_nro_comprobante/.test(msg)) return new VentaError('Conflicto de correlativo, intente nuevamente');
   if (error?.code === 'P0001' && msg) return new VentaError(msg);
   console.error('[CU09] Error de base de datos:', error);
+  // Se muestra el motivo real para poder corregirlo (restricción, columna, etc.)
   const detalle = [error?.message, error?.details, error?.hint].filter(Boolean).join(' · ');
   return new VentaError(detalle ? `${porDefecto}: ${detalle}${error?.code ? ` (código ${error.code})` : ''}` : porDefecto);
 }
@@ -352,20 +359,6 @@ export async function listarProductosVenta(db: Db): Promise<ProductoVenta[]> {
   }));
 }
 
-/** Servicios activos (CU17) que se pueden vender en mostrador, cobrados por hora */
-export async function listarServiciosVenta(db: Db): Promise<ServicioVenta[]> {
-  const { data, error } = await db.from('servicio').select('*').order('nombre');
-  if (error) throw errorBD(error, 'No se pudieron cargar los servicios');
-  return ((data ?? []) as any[])
-    .filter((s) => s.activo !== false)
-    .map((s) => ({
-      id: s.id,
-      nombre: s.nombre,
-      descripcion: s.descripcion ?? null,
-      precio_hora: r2(num(s.precio_hora_base)),
-    }));
-}
-
 /** Clientes para la venta (solo lectura; venta.cliente_id es obligatorio) */
 export async function listarClientesVenta(db: Db, limite = 500): Promise<ClienteVenta[]> {
   const { data, error } = await db.from('cliente').select('*').limit(limite);
@@ -434,9 +427,7 @@ export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO
     p_tipo_pago: datos.tipoPago,
     p_tipo_comprobante: datos.tipoComprobante,
     p_descuento: datos.descuento,
-    p_items: datos.items.map((i) =>
-      i.productoId != null ? { producto_id: i.productoId, cantidad: i.cantidad } : { servicio_id: i.servicioId, cantidad: i.cantidad }
-    ),
+    p_items: datos.items.map((i) => ({ producto_id: i.productoId, cantidad: i.cantidad })),
   } as any);
   if (error || !rpc) throw errorBD(error, 'No se pudo registrar la venta');
 
@@ -470,7 +461,7 @@ async function describirVenta(db: Db, c: ComprobanteVenta): Promise<string> {
     if (!nota) return `Venta ${c.nroComprobante} · ${base}`;
     const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
     let items = nota.items
-      .map((i) => `${i.descripcion} x${fmt(i.cantidad)}${i.tipo === 'SERVICIO' ? ' h' : ''}`)
+      .map((i) => `${i.descripcion} x${fmt(i.cantidad)}`)
       .join(', ');
     if (items.length > 400) items = `${items.slice(0, 397)}...`;
     return `Venta ${c.nroComprobante} · Cliente: ${nota.cliente.nombre} · ${items} · ${base}`;
@@ -503,10 +494,7 @@ export async function anularVenta(
 export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVenta | null> {
   const { data, error } = await db
     .from('venta')
-    .select(
-      '*, cliente:cliente_id(*), usuario:usuario_id(nombre), ' +
-        'detalle_venta(*, producto:producto_id(nombre, unidad_medida), servicio:servicio_id(nombre))'
-    )
+    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
     .eq('id', ventaId)
     .maybeSingle();
   if (error) throw errorBD(error, 'No se pudo leer la venta');
@@ -526,9 +514,8 @@ export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVen
     items: ((v.detalle_venta ?? []) as any[])
       .sort((a, b) => a.id - b.id)
       .map((d) => ({
-        tipo: d.producto_id != null ? ('PRODUCTO' as const) : ('SERVICIO' as const),
-        descripcion: d.producto?.nombre ?? d.servicio?.nombre ?? '—',
-        unidad: d.producto_id != null ? (d.producto?.unidad_medida ?? 'UND') : 'HORA',
+        descripcion: d.producto?.nombre ?? `Producto #${d.producto_id}`,
+        unidad: d.producto?.unidad_medida ?? 'UND',
         cantidad: num(d.cantidad),
         precio_unitario: num(d.precio_unitario),
         subtotal: num(d.subtotal),
@@ -677,7 +664,7 @@ export async function generarNotaVentaPdf(nota: NotaVenta): Promise<Uint8Array> 
   sello();
   encabezadoTabla();
   for (const it of nota.items) {
-    const lineas = partir(`${it.descripcion}${it.tipo === 'SERVICIO' ? ' (servicio)' : ''}`, normal, 9.5, anchoDesc);
+    const lineas = partir(it.descripcion, normal, 9.5, anchoDesc);
     const alto = 13 * lineas.length + 14;
     if (y - alto < M + 140) {
       page = pdf.addPage([ANCHO, ALTO]);

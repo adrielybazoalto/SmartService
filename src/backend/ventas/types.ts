@@ -2,8 +2,8 @@
  * CU09 — Gestionar Ventas y Arqueo de Caja · Tipos del dominio
  *
  * Las entidades reflejan el DDL del documento (CAJA, VENTA, DETALLE_VENTA,
- * MOVIMIENTO_KARDEX, PRODUCTO, SERVICIO, BITACORA). Los campos con `?` los
- * agrega la migración 20261012_cu09_ventas_caja.sql.
+ * MOVIMIENTO_KARDEX, PRODUCTO, BITACORA). Los campos con `?` los agrega la
+ * migración del CU09. Alcance acordado: la venta es SOLO de productos.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -16,7 +16,8 @@ export type Db = SupabaseClient<any, 'public', any>;
 export const TIPOS_PAGO = ['EFECTIVO', 'QR', 'TARJETA', 'TRANSFERENCIA'] as const;
 export type TipoPago = (typeof TIPOS_PAGO)[number];
 
-export const TIPOS_COMPROBANTE = ['NOTA_VENTA', 'RECIBO', 'FACTURA'] as const;
+/** La empresa no emite factura: solo nota de venta o recibo */
+export const TIPOS_COMPROBANTE = ['NOTA_VENTA', 'RECIBO'] as const;
 export type TipoComprobante = (typeof TIPOS_COMPROBANTE)[number];
 
 export type EstadoCaja = 'ABIERTA' | 'CERRADA';
@@ -65,12 +66,11 @@ export interface Venta {
   tipo_pago?: TipoPago | null;
 }
 
-/** Tabla DETALLE_VENTA: cada línea es un producto o un servicio */
+/** Tabla DETALLE_VENTA: cada línea es un producto */
 export interface DetalleVenta {
   id: number;
   venta_id: number;
-  producto_id: number | null;
-  servicio_id: number | null;
+  producto_id: number;
   cantidad: number;
   precio_unitario: number;
   subtotal: number;
@@ -115,11 +115,10 @@ export type CajaDTO =
       cajaId?: number;
     };
 
-/** Ítem que llega desde la IU: un producto O un servicio */
+/** Ítem que llega desde la IU: un producto con su cantidad */
 export interface ItemVentaDTO {
-  productoId?: number | null;
-  servicioId?: number | null;
-  /** Unidades del producto u horas del servicio (hasta 2 decimales) */
+  productoId: number;
+  /** Unidades del producto (hasta 2 decimales, p. ej. metros de cable) */
   cantidad: number;
 }
 
@@ -160,14 +159,6 @@ export interface ProductoVenta {
   precio_venta: number;
   /** Imagen principal (IMAGEN_PRODUCTO), solo lectura; se administra en el catálogo */
   imagen_url: string | null;
-}
-
-/** Servicio técnico vendible en mostrador (CU17), cobrado por hora */
-export interface ServicioVenta {
-  id: number;
-  nombre: string;
-  descripcion: string | null;
-  precio_hora: number;
 }
 
 /** Cliente asociado a la venta (venta.cliente_id). Solo lectura en el CU09. */
@@ -218,7 +209,6 @@ export interface DatosVentas {
   resumen: ResumenArqueo | null;
   ventas: VentaResumen[];
   productos: ProductoVenta[];
-  servicios: ServicioVenta[];
   clientes: ClienteVenta[];
   cliente_mostrador_id: number | null;
 }
@@ -236,7 +226,6 @@ export interface NotaVenta {
   cajero: string;
   cliente: { nombre: string; documento: string | null };
   items: {
-    tipo: 'PRODUCTO' | 'SERVICIO';
     descripcion: string;
     unidad: string;
     cantidad: number;

@@ -211,7 +211,6 @@ export default function VentasPage() {
               <div className="xl:col-span-2">
                 <VentasForm
                   productos={datos.productos}
-                  servicios={datos.servicios ?? []}
                   clientes={datos.clientes}
                   clienteMostradorId={datos.cliente_mostrador_id}
                   cajaAbierta={!!caja}
