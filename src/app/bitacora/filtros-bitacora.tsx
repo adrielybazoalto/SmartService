@@ -9,6 +9,7 @@ interface FiltrosBitacoraProps {
     fecha_fin: string
     usuario_id: string
     accion: string
+    ip: string
   }
 }
 
@@ -30,12 +31,13 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
     }
     if (filtros.usuario_id) params.set('usuario_id', filtros.usuario_id)
     if (filtros.accion) params.set('accion', filtros.accion)
+    if (filtros.ip) params.set('ip', filtros.ip.trim())
 
     router.push(`/bitacora?${params.toString()}`)
   }
 
   function handleLimpiar() {
-    setFiltros({ fecha_inicio: '', fecha_fin: '', usuario_id: '', accion: '' })
+    setFiltros({ fecha_inicio: '', fecha_fin: '', usuario_id: '', accion: '', ip: '' })
     router.push('/bitacora')
   }
 
@@ -96,8 +98,24 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           value={filtros.accion}
           onChange={(e) => setFiltros({ ...filtros, accion: e.target.value })}
           className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
+          
         />
       </div>
+      
+      <div className="flex flex-col gap-1">
+        <label htmlFor="ip" className="text-xs font-medium text-slate-500">
+          Dirección IP
+        </label>
+        <input
+          id="ip"
+          type="text"
+          placeholder="Ej: 192.168."
+          value={filtros.ip}
+          onChange={(e) => setFiltros({ ...filtros, ip: e.target.value })}
+          className="w-40 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
+        />
+      </div>
+      
 
       <div className="flex gap-2">
         <button

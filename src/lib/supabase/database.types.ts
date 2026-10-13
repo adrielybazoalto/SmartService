@@ -158,19 +158,27 @@ export type Database = {
         }
         Relationships: []
       }
-      servicio: {
-        Row: { id: number; nombre: string; descripcion: string | null; precio_hora_base: string }
+            servicio: {
+        Row: {
+          id: number
+          nombre: string
+          descripcion: string | null
+          precio_hora_base: string
+          activo: boolean
+        }
         Insert: {
           id?: number
           nombre: string
           descripcion?: string | null
           precio_hora_base: string
+          activo?: boolean
         }
         Update: {
           id?: number
           nombre?: string
           descripcion?: string | null
           precio_hora_base?: string
+          activo?: boolean
         }
         Relationships: []
       }
@@ -462,6 +470,7 @@ export type Database = {
           fecha_hora: string
           accion: string
           descripcion: string | null
+          ip: string | null
         }
         Insert: {
           id?: number
@@ -469,6 +478,7 @@ export type Database = {
           fecha_hora?: string
           accion: string
           descripcion?: string | null
+          ip: string | null
         }
         Update: {
           id?: number
@@ -476,6 +486,7 @@ export type Database = {
           fecha_hora?: string
           accion?: string
           descripcion?: string | null
+          ip: string | null
         }
         Relationships: [
           {

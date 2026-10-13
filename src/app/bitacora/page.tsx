@@ -13,6 +13,7 @@ interface PageProps {
     fecha_fin?: string
     usuario_id?: string
     accion?: string
+    ip?: string
   }>
 }
 
@@ -24,6 +25,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
     fecha_fin: params.fecha_fin || undefined,
     usuario_id: params.usuario_id ? Number(params.usuario_id) : undefined,
     accion: params.accion || undefined,
+    ip: params.ip || undefined,
   }
 
   let eventos: Awaited<ReturnType<typeof listarBitacoraAction>> = []
@@ -50,6 +52,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
           fecha_fin: params.fecha_fin ?? '',
           usuario_id: params.usuario_id ?? '',
           accion: params.accion ?? '',
+          ip: params.ip ?? '',
         }}
       />
 
@@ -73,6 +76,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
                 <th className="px-4 py-3 font-semibold text-slate-500">Fecha y hora</th>
                 <th className="px-4 py-3 font-semibold text-slate-500">Usuario (ID)</th>
                 <th className="px-4 py-3 font-semibold text-slate-500">Acción</th>
+                <th className="px-4 py-3 font-semibold text-slate-500">IP de origen</th>
                 <th className="px-4 py-3 font-semibold text-slate-500">Descripción</th>
               </tr>
             </thead>
@@ -84,6 +88,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
                   </td>
                   <td className="px-4 py-3">{evento.usuario_id}</td>
                   <td className="px-4 py-3">{evento.accion}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{evento.ip ?? 'No disponible'}</td>
                   <td className="px-4 py-3">{evento.descripcion}</td>
                 </tr>
               ))}

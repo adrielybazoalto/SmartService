@@ -31,6 +31,7 @@ export const MODULOS: ModuloRegistrado[] = [
   { clave: 'BITACORA', ruta: '/bitacora', etiqueta: 'Bitácora', descripcion: 'Auditoría de eventos y accesos' },
   { clave: 'CLIENTES', ruta: '/clientes', etiqueta: 'Clientes', descripcion: 'Gestión de clientes y establecimientos' },
   { clave: 'COTIZACIONES', ruta: '/cotizaciones', etiqueta: 'Cotizaciones', descripcion: 'Cotizaciones y servicios' },
+  { clave: 'SERVICIOS', ruta: '/servicios', etiqueta: 'Servicios', descripcion: 'Catálogo de servicios técnicos y tarifas' },
   { clave: 'ORDENES_TRABAJO', ruta: '/ordenes-trabajo', etiqueta: 'Órdenes de trabajo', descripcion: 'Órdenes de trabajo y asignaciones' },
   { clave: 'CAJA', ruta: '/caja', etiqueta: 'Caja', descripcion: 'Control y arqueo de caja' },
   { clave: 'VENTAS', ruta: '/ventas', etiqueta: 'Ventas', descripcion: 'Registro de ventas' },
