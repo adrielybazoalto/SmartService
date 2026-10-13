@@ -31,7 +31,7 @@ export default async function ServiciosPage({ searchParams }: PageProps) {
     <main className="flex flex-col gap-6 p-8">
       <div className="flex flex-col gap-1.5">
         <PageHeaderBadge
-          paquete="P2"
+          paquete="P3"
           cu="CU17"
           titulo="GESTIONAR CATÁLOGO DE SERVICIOS TÉCNICOS Y TARIFAS"
         />

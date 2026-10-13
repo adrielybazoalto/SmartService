@@ -240,7 +240,7 @@ export default function GestionarClientesPage() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
           <div>
             <PageHeaderBadge
-              paquete="P3"
+              paquete="P2"
               cu="CU07"
               titulo="GESTIONAR CLIENTES Y ESTABLECIMIENTOS"
             />

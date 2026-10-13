@@ -7,8 +7,8 @@
 
 /**
  * Insignia de paquete y caso de uso con el mismo estilo que PageHeaderBadge
- * (local por el mismo motivo que InsigniaCU16: lib/navigation.ts aún describe
- * el P2 del Ciclo 1).
+ * (local, igual que InsigniaCU16). El P2 del sistema es «Gestión Comercial,
+ * Clientes, Catálogo y Ventas» (ver lib/navigation.ts).
  */
 export function InsigniaCU15() {
   const partes = ['P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS', 'CU15', 'REGISTRAR COMPRAS DE EQUIPOS E INSUMOS']

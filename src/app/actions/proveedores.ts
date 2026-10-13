@@ -10,8 +10,8 @@
  *  - En un archivo 'use server' solo se exportan funciones async (y tipos).
  */
 import { revalidatePath } from 'next/cache';
-import { headers } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
+import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
 import {
   ProveedorError,
@@ -43,12 +43,6 @@ const RUTA = '/proveedores';
 // ---------------------------------------------------------------------------
 // Contexto de la petición
 // ---------------------------------------------------------------------------
-async function obtenerIp(): Promise<string | null> {
-  const h = await headers();
-  const reenviada = h.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return reenviada || h.get('x-real-ip') || null;
-}
-
 async function contexto(): Promise<{ db: Db; auditoria: Auditoria }> {
   const u = (await getCurrentUser()) as any;
   const usuarioId = Number(u?.id ?? u?.uid);
@@ -57,7 +51,7 @@ async function contexto(): Promise<{ db: Db; auditoria: Auditoria }> {
   }
   return {
     db: getSupabaseServiceClient() as unknown as Db,
-    auditoria: { usuarioId, ip: await obtenerIp() },
+    auditoria: { usuarioId, ip: await obtenerIpOrigen() },
   };
 }
 

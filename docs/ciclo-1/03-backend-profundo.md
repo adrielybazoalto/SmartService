@@ -218,7 +218,7 @@ cookieStore.set(COOKIE_NAME, token, {
   - `MODULOS` (L28-37): catálogo de 8 rutas.
   - `moduloPorRuta` (L39).
   - `getPermisosDeRol` (L44-60): es *fail-closed*; si hay error devuelve `[]` (L52-55).
-  - `getModulosPermitidos` (L63): **sin uso actual**.
+  - ~~`getModulosPermitidos`~~: eliminado en el Ciclo 2 por no tener uso (el menú se arma desde `lib/navigation.ts`).
   - `tienePermisoModulo` (L76-86): una ruta que no está en `MODULOS` devuelve `true` (L81).
   - `requerirAccesoModulo` (L93-99).
 

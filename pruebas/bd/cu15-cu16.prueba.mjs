@@ -370,7 +370,12 @@ const conteo = async (db) => q1(db, `SELECT (SELECT count(*) FROM compra)::int c
   resultado('…un solo vínculo (producto 2, proveedor 1)', dup.n === 1, JSON.stringify(dup));
   await db.close();
 
-  db = await nuevaBD({ cu14Extra: `ALTER TABLE bitacora ADD COLUMN ip varchar(45) NOT NULL DEFAULT ''; ALTER TABLE bitacora ALTER COLUMN ip DROP DEFAULT;` });
+  // CU09: schema.sql ya define bitacora.ip (nullable). Se simula la variante
+  // NOT NULL SIN DEFAULT que CU16 debe detectar y rechazar.
+  db = await nuevaBD({ cu14Extra: `ALTER TABLE bitacora ADD COLUMN IF NOT EXISTS ip varchar(45);
+    UPDATE bitacora SET ip = '' WHERE ip IS NULL;
+    ALTER TABLE bitacora ALTER COLUMN ip SET NOT NULL;
+    ALTER TABLE bitacora ALTER COLUMN ip DROP DEFAULT;` });
   await esperaError(db, 'Bitácora con columna IP NOT NULL sin DEFAULT: CU16 aborta', 'dueno', '', leer('migracion_cu16_inventario.sql').replace(/NOTIFY.*$/m, ''), [], /bitacora\.ip/);
   await db.close();
 

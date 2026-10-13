@@ -96,7 +96,7 @@ export interface Bitacora {
   fecha_hora: string;
   accion: string;
   descripcion: string | null;
-  ip_origen?: string | null;
+  ip?: string | null;
 }
 
 // ===========================================================================

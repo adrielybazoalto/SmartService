@@ -11,8 +11,8 @@
  *  - Respuesta uniforme: { ok: true, data, mensaje } | { ok: false, error }.
  */
 import { revalidatePath } from 'next/cache';
-import { headers } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
+import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
 import {
   VentaError,
@@ -47,13 +47,6 @@ type RespuestaAccion<T> = { ok: true; data: T; mensaje: string } | { ok: false; 
 
 type Contexto = { db: Db; usuarioId: number; nombre: string; esAdmin: boolean; ip: string | null };
 
-/** IP de origen de la petición (detrás de un proxy viene en x-forwarded-for) */
-async function obtenerIp(): Promise<string | null> {
-  const h = await headers();
-  const reenviada = h.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return reenviada || h.get('x-real-ip') || null;
-}
-
 /**
  * Usuario de la sesión creada por loginAction (CU01):
  * createSession({ uid, nombre, correo, rol_id, rol, version }).
@@ -69,7 +62,7 @@ async function contexto(): Promise<Contexto> {
     usuarioId: id,
     nombre: u.nombre ?? u.correo ?? `Usuario #${id}`,
     esAdmin: /admin/i.test(rol),
-    ip: await obtenerIp(),
+    ip: await obtenerIpOrigen(),
   };
 }
 

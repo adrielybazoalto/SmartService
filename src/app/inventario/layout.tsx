@@ -5,9 +5,9 @@ import { ErrorInventario, exigirAccesoInventario } from '@/backend/inventario'
  * Protección de /inventario (CU16): sesión válida + permiso de ruta INVENTARIO
  * + acción LEER sobre 'Catálogo e Inventario'.
  *
- * No usa requerirAccesoModulo('/inventario'): '/inventario' aún no está en
- * MODULOS (lib/permisos.ts) y esa función deja pasar las rutas no registradas.
- * Las Server Actions vuelven a verificar cada operación.
+ * Usa el chequeo específico del dominio (exigirAccesoInventario), más estricto
+ * que requerirAccesoModulo('/inventario'): además del permiso de ruta valida la
+ * acción de ROL_FUNCION. Las Server Actions vuelven a verificar cada operación.
  */
 export default async function LayoutInventario({ children }: { children: React.ReactNode }) {
   let destino: string | null = null

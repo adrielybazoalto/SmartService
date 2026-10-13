@@ -9,9 +9,8 @@ import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 /**
  * Insignia de paquete y caso de uso con el mismo estilo que PageHeaderBadge.
- * Es local porque lib/navigation.ts todavía describe el P2 del Ciclo 1
- * («GESTIÓN DE PERSONAL TÉCNICO»); en la especificación oficial vigente el
- * P2 es «Gestión Comercial, Clientes, Catálogo y Ventas».
+ * Es local porque este módulo usa su propia insignia; el P2 del sistema es
+ * «Gestión Comercial, Clientes, Catálogo y Ventas» (ver lib/navigation.ts).
  */
 export function InsigniaCU16() {
   const partes = ['P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS', 'CU16', 'GESTIONAR INVENTARIO Y KÁRDEX']

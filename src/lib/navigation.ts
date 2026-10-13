@@ -1,15 +1,18 @@
 /**
- * CONFIGURACIÓN DE NAVEGACIÓN POR PAQUETES (Ciclo 1 — P1 habilitado).
+ * CONFIGURACIÓN DE NAVEGACIÓN POR PAQUETES (Ciclo 2 — sistema unificado).
  *
  * Única fuente de verdad del alcance del sistema: el Sidebar y el Dashboard
  * se construyen a partir de este arreglo. Para habilitar un paquete en un
  * ciclo futuro solo hay que cambiar `habilitado: true` (y agregar sus items).
  *
  * P1: SEGURIDAD Y ACCESOS → habilitado (CU01, CU03–CU06).
- * P2: GESTIÓN DE PERSONAL TÉCNICO → deshabilitado (sin rutas aún).
- * P3: CLIENTES, VENTAS Y COTIZACIONES → habilitado SOLO con CU07
- *     (Gestionar Clientes y Establecimientos); cotizaciones/ventas/caja
- *     siguen sin rutas en este ciclo.
+ * P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS → habilitado
+ *     (CU07 clientes, CU09 ventas, CU14 proveedores, CU15 compras,
+ *      CU16 inventario).
+ * P3: SERVICIOS TÉCNICOS Y TARIFAS → habilitado (CU17 servicios).
+ *
+ * La visibilidad de cada ítem además depende del permiso activo del rol en
+ * la BD (PERMISO ⋈ ROL_PERMISO, ver lib/permisos.ts).
  */
 
 export interface ItemNav {
@@ -90,13 +93,7 @@ export const PAQUETES: PaqueteNav[] = [
   },
   {
     id: 'P2',
-    nombre: 'GESTIÓN DE PERSONAL TÉCNICO',
-    habilitado: false,
-    items: [],
-  },
-  {
-    id: 'P3',
-    nombre: 'CLIENTES, VENTAS Y COTIZACIONES',
+    nombre: 'GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS',
     habilitado: true,
     items: [
       {
@@ -106,6 +103,53 @@ export const PAQUETES: PaqueteNav[] = [
         clave: 'CLIENTES',
         cu: 'CU07',
         descripcion: 'Registro y consulta de clientes con sus establecimientos.',
+      },
+      {
+        id: 'ventas',
+        etiqueta: 'Ventas y Caja (CU09)',
+        ruta: '/ventas',
+        clave: 'VENTAS',
+        cu: 'CU09',
+        descripcion: 'Registro de ventas en mostrador, turnos y arqueo de caja.',
+      },
+      {
+        id: 'proveedores',
+        etiqueta: 'Proveedores y Mayoristas (CU14)',
+        ruta: '/proveedores',
+        clave: 'PROVEEDORES',
+        cu: 'CU14',
+        descripcion: 'Proveedores, catálogo de mayoristas y comparación de precios.',
+      },
+      {
+        id: 'compras',
+        etiqueta: 'Compras de Equipos e Insumos (CU15)',
+        ruta: '/compras',
+        clave: 'COMPRAS',
+        cu: 'CU15',
+        descripcion: 'Registro de compras a proveedores con su detalle de productos.',
+      },
+      {
+        id: 'inventario',
+        etiqueta: 'Inventario y Kárdex (CU16)',
+        ruta: '/inventario',
+        clave: 'INVENTARIO',
+        cu: 'CU16',
+        descripcion: 'Stock, movimientos de kárdex, ajustes e inventario inicial.',
+      },
+    ],
+  },
+  {
+    id: 'P3',
+    nombre: 'SERVICIOS TÉCNICOS Y TARIFAS',
+    habilitado: true,
+    items: [
+      {
+        id: 'servicios',
+        etiqueta: 'Catálogo de Servicios (CU17)',
+        ruta: '/servicios',
+        clave: 'SERVICIOS',
+        cu: 'CU17',
+        descripcion: 'Catálogo de servicios técnicos y tarifas por hora.',
       },
     ],
   },
