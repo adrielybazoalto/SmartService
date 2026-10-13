@@ -1,0 +1,100 @@
+@startuml 08-diagrama-relacional-cu15-cu16
+' 4.2.2.2 Diagrama Relacional — tablas nuevas y modificadas por CU15 y CU16
+skinparam shadowing false
+hide circle
+skinparam linetype ortho
+
+entity "CATEGORIA_PRODUCTO" as categoria_producto {
+  * id : SERIAL <<PK>>
+  --
+  * nombre : VARCHAR(100) <<UQ>>
+  descripcion : VARCHAR(255)
+}
+entity "PRODUCTO" as producto {
+  * id : SERIAL <<PK>>
+  --
+  * categoria_id : INTEGER <<FK>>
+  codigo : VARCHAR(50) <<UQ>>
+  * nombre : VARCHAR(150)
+  descripcion_tecnica : TEXT
+  * unidad_medida : VARCHAR(50)
+  * margen_ganancia : NUMERIC(10,2)
+  * precio_compra_actual : NUMERIC(12,2)
+  * stock_disponible : NUMERIC(12,2)
+  * stock_minimo : NUMERIC(12,2)
+  * estado : BOOLEAN
+}
+entity "PROVEEDOR" as proveedor {
+  * id : SERIAL <<PK>>
+  --
+  * razon_social : VARCHAR(200)
+  nit : VARCHAR(50) <<UQ>>
+  contacto : VARCHAR(150)
+  telefono : VARCHAR(30)
+  correo : VARCHAR(150)
+  * estado : BOOLEAN
+}
+entity "PRODUCTO_PROVEEDOR" as producto_proveedor {
+  * id : SERIAL <<PK>>
+  --
+  * producto_id : INTEGER <<FK>>
+  * proveedor_id : INTEGER <<FK>>
+  * precio_compra : NUMERIC(12,2)
+  codigo_item_proveedor : VARCHAR(100)
+  * fecha_actualizacion : TIMESTAMPTZ
+}
+entity "USUARIO" as usuario {
+  * id : SERIAL <<PK>>
+  --
+  * nombre : VARCHAR(150)
+}
+entity "COMPRA" as compra {
+  * id : SERIAL <<PK>>
+  --
+  * proveedor_id : INTEGER <<FK>>
+  * usuario_id : INTEGER <<FK>>
+  * tipo_documento : VARCHAR(20)
+  * nro_documento : VARCHAR(50)
+  nro_documento_normalizado : VARCHAR(50) <<generada>>
+  * fecha_compra : DATE
+  * total : NUMERIC(12,2)
+  observacion : TEXT
+  * fecha_registro : TIMESTAMPTZ
+}
+entity "DETALLE_COMPRA" as detalle_compra {
+  * id : SERIAL <<PK>>
+  --
+  * compra_id : INTEGER <<FK>>
+  * producto_id : INTEGER <<FK>>
+  * cantidad : NUMERIC(12,2)
+  * costo_unitario : NUMERIC(12,2)
+  * subtotal : NUMERIC(12,2)
+}
+entity "MOVIMIENTO_KARDEX" as movimiento_kardex {
+  * id : SERIAL <<PK>>
+  --
+  * producto_id : INTEGER <<FK>>
+  * usuario_id : INTEGER <<FK>>
+  compra_id : INTEGER <<FK>>
+  * tipo_movimiento : VARCHAR(30)
+  motivo : VARCHAR(30)
+  * cantidad : NUMERIC(12,2)
+  * stock_anterior : NUMERIC(12,2)
+  stock_resultante : NUMERIC(12,2)
+  documento : VARCHAR(100)
+  origen_movimiento : VARCHAR(100)
+  * fecha_movimiento : TIMESTAMP
+  observacion : TEXT
+}
+
+categoria_producto ||--o{ producto
+producto ||--o{ producto_proveedor
+proveedor ||--o{ producto_proveedor
+proveedor ||--o{ compra
+usuario ||--o{ compra
+compra ||--|{ detalle_compra
+producto ||--o{ detalle_compra
+producto ||--o{ movimiento_kardex
+usuario ||--o{ movimiento_kardex
+compra |o--o{ movimiento_kardex
+@enduml

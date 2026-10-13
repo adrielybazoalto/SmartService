@@ -1,0 +1,82 @@
+@startuml 07-diagrama-clases-cu15-cu16
+' 4.2.1.1 Diagrama de Clase — clases que agregan o modifican CU15 y CU16
+' (añadir al diagrama de clases general; el resto de clases no cambia)
+skinparam shadowing false
+hide empty methods
+
+class CategoriaProducto {
+  id : int
+  nombre : string
+  descripcion : string
+}
+class Producto {
+  id : int
+  codigo : string  <<nuevo CU16>>
+  nombre : string
+  descripcion_tecnica : string
+  unidad_medida : string
+  margen_ganancia : decimal
+  precio_compra_actual : decimal
+  stock_disponible : decimal
+  stock_minimo : decimal
+  estado : boolean  <<nuevo CU16>>
+}
+class Proveedor {
+  id : int
+  razon_social : string
+  nit : string
+  contacto : string
+  telefono : string
+  correo : string
+  estado : boolean  <<nuevo CU15/CU14>>
+}
+class ProductoProveedor {
+  id : int
+  precio_compra : decimal
+  codigo_item_proveedor : string
+  fecha_actualizacion : datetime  <<nuevo CU15/CU14>>
+}
+class MovimientoKardex {
+  id : int
+  tipo_movimiento : string
+  motivo : string  <<nuevo CU16>>
+  cantidad : decimal
+  stock_anterior : decimal
+  stock_resultante : decimal  <<nuevo CU16>>
+  documento : string  <<nuevo CU16>>
+  origen_movimiento : string
+  fecha_movimiento : datetime
+  observacion : string
+}
+class Compra <<nueva CU15>> {
+  id : int
+  tipo_documento : string
+  nro_documento : string
+  nro_documento_normalizado : string
+  fecha_compra : date
+  total : decimal
+  observacion : string
+  fecha_registro : datetime
+}
+class DetalleCompra <<nueva CU15>> {
+  id : int
+  cantidad : decimal
+  costo_unitario : decimal
+  subtotal : decimal
+}
+class Usuario {
+  id : int
+  nombre : string
+}
+
+CategoriaProducto "1" -- "0..*" Producto
+Producto "1" -- "0..*" ProductoProveedor
+Proveedor "1" -- "0..*" ProductoProveedor
+Proveedor "1" -- "0..*" Compra
+Usuario "1" -- "0..*" Compra
+Compra "1" *-- "1..100" DetalleCompra
+Producto "1" -- "0..*" DetalleCompra
+Producto "1" -- "0..*" MovimientoKardex
+Usuario "1" -- "0..*" MovimientoKardex
+Compra "0..1" -- "0..*" MovimientoKardex
+@enduml

@@ -1,0 +1,27 @@
+@startuml 03-comunicacion-cu16
+' 3.2.1 Diagrama de Comunicación — CU16 Gestionar Inventario y Movimientos de Kárdex (flujo principal)
+left to right direction
+skinparam shadowing false
+
+actor "Administrador" as Administrador
+boundary "IU_Inventario\n(/inventario)" as IUI
+boundary "IU_FormularioProducto" as IUF
+boundary "IU_Kardex\n(/inventario/kardex/[productoId])" as IUK
+control "ControlGestionarInventario" as CGI
+entity "Producto" as PRO
+entity "CategoriaProducto" as CAT
+entity "MovimientoKardex" as MK
+entity "Bitácora" as BIT
+
+Administrador -- IUI : "1: ingresarInventario()\n2: seleccionarNuevoProducto()\n4: consultarKardex(producto)"
+IUI -- CGI : "1.1: obtenerCatalogo(filtros)\n1.2: listarStockCritico()\n1.3: listarCategorias()"
+CGI -- PRO : "1.1.1: consultarProductos()\n1.2.1: consultarStockMenorOIgualAlMinimo()\n3.1.1: insertar(stock = 0, estado = activo)"
+CGI -- CAT : "1.3.1: consultarCategorias()"
+IUI -- IUF : "2.1: mostrarFormulario()"
+Administrador -- IUF : "3: ingresarDatos(código, nombre, categoría, unidad,\n   costo, margen, stockMínimo)"
+IUF -- CGI : "3.1: registrarProducto(datos)"
+CGI -- BIT : "3.1.2: registrarEvento(NUEVO_PRODUCTO)"
+IUI -- IUK : "4.1: mostrarKardex(productoId)"
+IUK -- CGI : "4.1.1: obtenerKardex(productoId)"
+CGI -- MK : "4.1.1.1: consultarMovimientos(orden cronológico)"
+@enduml

@@ -1,0 +1,120 @@
+@startuml 05-clases-analisis-cu15
+' 3.3 Análisis de Clases — CU15 Registrar Compras de Equipos e Insumos
+skinparam shadowing false
+hide empty members
+
+class IU_Compras <<boundary>> {
+  +mostrarListado()
+  +filtrar(proveedor, tipoDocumento, número, desde, hasta)
+  +verDetalle(compraId)
+}
+class IU_RegistrarCompra <<boundary>> {
+  +seleccionarProveedor(proveedorId)
+  +buscarProducto(texto)
+  +agregarLinea(producto)
+  +quitarLinea(producto)
+  +mostrarSubtotalesYTotal()
+  +confirmarCompra()
+}
+class IU_ComprobanteIngreso <<boundary>> {
+  +mostrar(compraId)
+  +imprimir()
+}
+
+class ControlRegistrarCompra <<control>> {
+  +listarProveedoresActivos()
+  +listarProductosDisponibles(texto, proveedorId)
+  +verificarDocumento(proveedorId, tipo, número)
+  +calcularResumen(lineas)
+  +registrarCompra(usuarioId, datosCompra)
+  +listarCompras(filtros)
+  +obtenerComprobanteIngreso(compraId)
+}
+class "NúcleoKárdex (CU16)" as NucleoKardex <<control>> {
+  +aplicarMovimiento(producto, tipo, motivo, cantidad, documento)
+}
+
+class Compra <<entity>> {
+  id
+  tipo_documento
+  nro_documento
+  nro_documento_normalizado
+  fecha_compra
+  total
+  observacion
+  fecha_registro
+}
+class DetalleCompra <<entity>> {
+  id
+  cantidad
+  costo_unitario
+  subtotal
+}
+class Proveedor <<entity>> {
+  id
+  razon_social
+  nit
+  contacto
+  telefono
+  estado
+}
+class Producto <<entity>> {
+  id
+  codigo
+  nombre
+  unidad_medida
+  precio_compra_actual
+  stock_disponible
+  estado
+}
+class ProductoProveedor <<entity>> {
+  precio_compra
+  codigo_item_proveedor
+  fecha_actualizacion
+}
+class MovimientoKardex <<entity>> {
+  id
+  tipo_movimiento
+  motivo
+  cantidad
+  stock_anterior
+  stock_resultante
+  documento
+  fecha_movimiento
+}
+class Usuario <<entity>> {
+  id
+  nombre
+}
+class Bitacora <<entity>> {
+  id
+  accion
+  descripcion
+  fecha_hora
+}
+
+IU_Compras --> IU_RegistrarCompra
+IU_Compras --> IU_ComprobanteIngreso
+IU_RegistrarCompra --> IU_ComprobanteIngreso
+IU_Compras --> ControlRegistrarCompra
+IU_RegistrarCompra --> ControlRegistrarCompra
+IU_ComprobanteIngreso --> ControlRegistrarCompra
+ControlRegistrarCompra --> NucleoKardex : <<include>> CU16
+ControlRegistrarCompra --> Compra
+ControlRegistrarCompra --> DetalleCompra
+ControlRegistrarCompra --> Proveedor
+ControlRegistrarCompra --> ProductoProveedor
+ControlRegistrarCompra --> Producto
+ControlRegistrarCompra --> Bitacora
+NucleoKardex --> Producto
+NucleoKardex --> MovimientoKardex
+
+Proveedor "1" -- "0..*" Compra
+Usuario "1" -- "0..*" Compra : responsable
+Compra "1" *-- "1..100" DetalleCompra
+Producto "1" -- "0..*" DetalleCompra
+Compra "0..1" -- "0..*" MovimientoKardex
+Producto "1" -- "0..*" MovimientoKardex
+Producto "1" -- "0..*" ProductoProveedor
+Proveedor "1" -- "0..*" ProductoProveedor
+@enduml
