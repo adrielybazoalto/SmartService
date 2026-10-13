@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation' // 1. Importa redirect de Next.js
 import { getCurrentUser } from '@/lib/auth'
 import { getPermisosDeRol } from '@/lib/permisos'
 import { PAQUETES } from '@/lib/navigation'
@@ -8,8 +9,8 @@ import { PageHeaderBadge } from '@/components/page-header-badge'
 
 /**
  * Panel principal. El grid de tarjetas muestra los casos de uso de TODOS los
- * paquetes habilitados en lib/navigation.ts (P1: CU03..CU06, P3: CU07),
- * filtrados por el permiso activo del rol (RBAC en BD — PERMISO ⋈ ROL_PERMISO).
+ * paquetes habilitados en lib/navigation.ts, filtrados por el permiso activo
+ * del rol (RBAC en BD — PERMISO ⋈ ROL_PERMISO).
  */
 export default async function Home({
   searchParams,
@@ -17,6 +18,15 @@ export default async function Home({
   searchParams: Promise<{ aviso?: string }>
 }) {
   const usuario = await getCurrentUser()
+
+  // ---------------------------------------------------------------------------
+  // CORRECCIÓN CLAVE (CU01): Si no hay un usuario autenticado en la sesión,
+  // se fuerza la redirección inmediata al formulario de inicio de sesión.
+  // ---------------------------------------------------------------------------
+  if (!usuario) {
+    redirect('/login')
+  }
+
   const { aviso } = await searchParams
   const sinPermiso = aviso === 'sin_permiso'
 
@@ -25,7 +35,7 @@ export default async function Home({
     paquete.items.filter((item) => item.id !== 'inicio' && item.clave !== ''),
   )
 
-  const permisos = usuario ? await getPermisosDeRol(usuario.rol_id) : []
+  const permisos = await getPermisosDeRol(usuario.rol_id)
   const modulos = itemsHabilitados
     .filter((item) => permisos.includes(item.clave))
     .map((item) => ({
@@ -43,21 +53,19 @@ export default async function Home({
         </div>
       )}
 
-      {usuario && (
-        <header className="flex flex-col gap-2">
-          <PageHeaderBadge paquete="P1" cu="CU01" />
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-              Hola, {usuario.nombre}
-            </h1>
-            {usuario.rol?.nombre && <BadgeRol rol={usuario.rol.nombre} />}
-          </div>
-          <p className="text-slate-500">
-            Bienvenido a SmartService. Accede a los módulos disponibles para tu
-            rol.
-          </p>
-        </header>
-      )}
+      <header className="flex flex-col gap-2">
+        <PageHeaderBadge paquete="P1" cu="CU01" />
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Hola, {usuario.nombre}
+          </h1>
+          {usuario.rol?.nombre && <BadgeRol rol={usuario.rol.nombre} />}
+        </div>
+        <p className="text-slate-500">
+          Bienvenido a SmartService. Accede a los módulos disponibles para tu
+          rol.
+        </p>
+      </header>
 
       {modulos.length > 0 ? (
         <section
