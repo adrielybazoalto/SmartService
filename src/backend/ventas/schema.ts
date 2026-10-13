@@ -65,7 +65,7 @@ export const itemVentaSchema = z.object({
 /** datosVentaDTO (sin usuarioId, que lo pone el servidor desde la sesión) */
 export const registrarVentaSchema = z.object({
   clienteId: id('Cliente').nullable().optional(),
-  tipoPago: z.enum(TIPOS_PAGO, { message: 'Método de pago inválido' }),
+  tipoPago: z.enum(TIPOS_PAGO, { message: 'Método de pago no habilitado: use efectivo o QR' }),
   tipoComprobante: z.enum(TIPOS_COMPROBANTE, { message: 'Tipo de comprobante inválido' }),
   descuento: monto('El descuento').default(0),
   items: z

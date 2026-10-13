@@ -65,12 +65,17 @@ const bs = (n: number) =>
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const fmtCant = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
+/** Métodos de pago habilitados: efectivo y QR */
 const PAGOS: { valor: TipoPago; etiqueta: string }[] = [
   { valor: 'EFECTIVO', etiqueta: 'Efectivo' },
   { valor: 'QR', etiqueta: 'QR' },
-  { valor: 'TARJETA', etiqueta: 'Tarjeta' },
-  { valor: 'TRANSFERENCIA', etiqueta: 'Transf.' },
 ];
+
+/**
+ * Imagen opcional del QR de cobro del negocio (el que entrega el banco).
+ * Si existe public/qr-cobro.png se muestra esa; si no, se genera un QR con el monto.
+ */
+const QR_COBRO_NEGOCIO = '/qr-cobro.png';
 
 const COMPROBANTES: { valor: TipoComprobante; etiqueta: string }[] = [
   { valor: 'NOTA_VENTA', etiqueta: 'Nota de venta' },
@@ -101,6 +106,7 @@ export default function VentasForm({
   }, [clienteId, clientePorDefecto]);
   const [busquedaCliente, setBusquedaCliente] = useState('');
   const [tipoPago, setTipoPago] = useState<TipoPago>('EFECTIVO');
+  const [pagoQrConfirmado, setPagoQrConfirmado] = useState(false);
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('NOTA_VENTA');
   const [descuento, setDescuento] = useState('');
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
@@ -148,6 +154,10 @@ export default function VentasForm({
   const total = r2(Math.max(0, subtotal - descuentoNum));
   const cambio = tipoPago === 'EFECTIVO' && efectivoRecibido ? r2(Number(efectivoRecibido) - total) : null;
   const descuentoInvalido = descuentoNum > subtotal;
+  // Si cambia el monto, el pago por QR debe confirmarse de nuevo
+  useEffect(() => {
+    setPagoQrConfirmado(false);
+  }, [total]);
   const hayExcesoStock = lineas.some((l) => l.cantidad > l.stock);
 
   // ---- Manejo del carrito ---------------------------------------------------
@@ -187,6 +197,7 @@ export default function VentasForm({
     setClienteId(clientePorDefecto);
     setBusquedaCliente('');
     setTipoPago('EFECTIVO');
+    setPagoQrConfirmado(false);
     setTipoComprobante('NOTA_VENTA');
     setError(null);
   };
@@ -200,6 +211,7 @@ export default function VentasForm({
     if (descuentoInvalido) return setError('El descuento no puede ser mayor al subtotal');
     if (hayExcesoStock) return setError('Hay productos con cantidad mayor al stock disponible');
     if (cambio !== null && cambio < 0) return setError('El efectivo recibido es menor al total');
+    if (tipoPago === 'QR' && !pagoQrConfirmado) return setError('Confirme que recibió el pago por QR');
 
     setGuardando(true);
     const res = await registrarVenta({
@@ -469,12 +481,15 @@ export default function VentasForm({
         {/* Método de pago */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">Método de pago</label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2">
             {PAGOS.map((p) => (
               <button
                 key={p.valor}
                 type="button"
-                onClick={() => setTipoPago(p.valor)}
+                onClick={() => {
+                  setTipoPago(p.valor);
+                  setPagoQrConfirmado(false);
+                }}
                 className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
                   tipoPago === p.valor
                     ? 'border-[#8cd600] bg-[#8cd600] text-gray-900'
@@ -519,6 +534,10 @@ export default function VentasForm({
             </div>
           )}
         </div>
+        {/* Cobro por QR */}
+        {tipoPago === 'QR' && lineas.length > 0 && !descuentoInvalido && (
+          <PanelQr total={total} confirmado={pagoQrConfirmado} onConfirmar={setPagoQrConfirmado} />
+        )}
       </fieldset>
 
       {/* Totales */}
@@ -547,12 +566,89 @@ export default function VentasForm({
       <button
         type="button"
         onClick={confirmar}
-        disabled={deshabilitado || lineas.length === 0 || descuentoInvalido || hayExcesoStock}
+        disabled={
+          deshabilitado || lineas.length === 0 || descuentoInvalido || hayExcesoStock || (tipoPago === 'QR' && !pagoQrConfirmado)
+        }
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#8cd600] px-5 py-3.5 text-base font-semibold text-gray-900 shadow-sm transition hover:bg-[#73b800] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {guardando && <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />}
         {guardando ? 'Registrando…' : `Confirmar venta · ${bs(total)}`}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Cobro por QR: muestra el QR y el monto a pagar. El cajero confirma cuando
+ * ve el pago acreditado en la app del banco; recién entonces se registra la venta.
+ */
+function PanelQr({
+  total,
+  confirmado,
+  onConfirmar,
+}: {
+  total: number;
+  confirmado: boolean;
+  onConfirmar: (v: boolean) => void;
+}) {
+  const [usarImagenNegocio, setUsarImagenNegocio] = useState(true);
+  const [qrGenerado, setQrGenerado] = useState<string | null>(null);
+  const monto = total.toFixed(2);
+
+  // QR con los datos del cobro (se usa si no existe public/qr-cobro.png)
+  useEffect(() => {
+    if (usarImagenNegocio) return;
+    let vigente = true;
+    const contenido = `SmartService | Cobro por QR | Monto: Bs ${monto} | ${new Date().toLocaleString('es-BO')}`;
+    import('qrcode')
+      .then((m) => ((m as any).default ?? m).toDataURL(contenido, { width: 260, margin: 1 }) as Promise<string>)
+      .then((url) => vigente && setQrGenerado(url))
+      .catch(() => vigente && setQrGenerado(null));
+    return () => {
+      vigente = false;
+    };
+  }, [usarImagenNegocio, monto]);
+
+  return (
+    <div className="rounded-xl border border-[#8cd600]/50 bg-[#8cd600]/5 p-4">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+        <div className="flex h-44 w-44 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white p-2">
+          {usarImagenNegocio ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={QR_COBRO_NEGOCIO}
+              alt="QR de cobro del negocio"
+              className="h-full w-full object-contain"
+              onError={() => setUsarImagenNegocio(false)}
+            />
+          ) : qrGenerado ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={qrGenerado} alt={`QR de cobro por Bs ${monto}`} className="h-full w-full object-contain" />
+          ) : (
+            <span className="text-center text-xs text-slate-400">Generando QR…</span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1 text-center sm:text-left">
+          <p className="text-sm font-medium text-slate-600">Monto a pagar por QR</p>
+          <p className="text-3xl font-bold text-slate-900">{bs(total)}</p>
+          <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-left text-xs text-slate-500">
+            <li>El cliente escanea el QR con la app de su banco.</li>
+            <li>Paga exactamente {bs(total)}.</li>
+            <li>Verifique el pago acreditado en la app del negocio y confírmelo aquí.</li>
+          </ol>
+          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={confirmado}
+              onChange={(e) => onConfirmar(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[#8cd600]"
+            />
+            <span>
+              Confirmo que recibí el pago por QR de <strong>{bs(total)}</strong>
+            </span>
+          </label>
+        </div>
+      </div>
     </div>
   );
 }
