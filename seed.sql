@@ -127,14 +127,14 @@ INSERT INTO PERMISO (id, nombre, ruta, descripcion) VALUES
 (6, 'ORDENES_TRABAJO', '/ordenes-trabajo', 'Órdenes de trabajo'),
 (7, 'CAJA', '/caja', 'Control y arqueo de caja'),
 (8, 'VENTAS', '/ventas', 'Registro de ventas'),
-(9, 'SERVICIOS', '/servicios', 'Catálogo de servicios técnicos y tarifas')
+(10, 'SERVICIOS', '/servicios', 'Catálogo de servicios técnicos y tarifas')
 ON CONFLICT (nombre) DO NOTHING;
 
 -- ADMINISTRADOR: acceso total (todos los módulos)
 INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion) VALUES
 (1, 1, 'Acceso total'), (1, 2, 'Acceso total'), (1, 3, 'Acceso total'),
 (1, 4, 'Acceso total'), (1, 5, 'Acceso total'), (1, 6, 'Acceso total'),
-(1, 7, 'Acceso total'), (1, 8, 'Acceso total'), (1, 9, 'Acceso total')
+(1, 7, 'Acceso total'), (1, 8, 'Acceso total'), (1, 10, 'Acceso total')
 ON CONFLICT (rol_id, permiso_id) DO NOTHING;
 
 -- ENCARGADO: módulos operativos (NO /usuarios, /roles, /bitacora)
