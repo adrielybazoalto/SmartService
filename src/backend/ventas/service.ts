@@ -9,8 +9,8 @@
  *   fn_anular_venta     → ANULADA + devolución de stock + ENTRADA en kárdex
  *   fn_cerrar_caja      → efectivo esperado + diferencia + cierre, con la caja bloqueada
  *
- * La bitácora se escribe con la función común del CU06 (`registrarEvento`),
- * que captura la IP de origen: este módulo no obtiene ni envía la IP.
+ * La bitácora se escribe en BITACORA con usuario_id, accion, descripcion e
+ * ip (columna oficial `ip`). La IP la obtiene la Server Action de la petición.
  *
  * Métodos del diagrama:
  *   verificarCajaAbierta · procesarAperturaOArqueo · calcularDiferenciaArqueo
@@ -20,7 +20,6 @@
  *   ejecutan dentro de fn_registrar_venta para garantizar la atomicidad)
  */
 import { ZodError, type z } from 'zod';
-import { registrarEvento } from '@/backend/bitacora';
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 import { anularVentaSchema, aperturaCajaSchema, cierreCajaSchema, registrarVentaSchema } from './schema';
@@ -137,22 +136,26 @@ function mapCaja(row: any): Caja {
 }
 
 // ===========================================================================
-// BITÁCORA (función común del CU06)
+// BITÁCORA (CU06) — columna oficial `ip`
 // ===========================================================================
 
 /**
- * guardarEventoCaja(usuarioId, accion) → registrarEvento del CU06.
- * La IP de origen la captura esa función común. Nunca lanza: un fallo de
- * auditoría no debe deshacer una venta ya confirmada.
+ * guardarEventoCaja(usuarioId, accion, ip)
+ * Registra el evento en BITACORA con la IP de origen. Nunca lanza: un fallo
+ * de auditoría no debe deshacer una venta ya confirmada.
  */
 export async function guardarEventoCaja(
   db: Db,
   usuarioId: number,
   accion: AccionCaja,
-  descripcion: string
+  descripcion: string,
+  ip: string | null = null
 ): Promise<void> {
   try {
-    await registrarEvento(db as any, { usuario_id: usuarioId, accion, descripcion });
+    const { error } = await db
+      .from('bitacora')
+      .insert({ usuario_id: usuarioId, accion, descripcion, ip } as any);
+    if (error) console.error(`[CU09] No se pudo registrar ${accion} en la bitácora: ${error.message}`);
   } catch (e) {
     console.error('[CU09] No se pudo registrar en la bitácora:', (e as Error)?.message ?? e);
   }
@@ -263,7 +266,8 @@ export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise
       db,
       cajaDTO.usuarioId,
       'APERTURA_CAJA',
-      `Apertura de caja #${caja.id} con fondo inicial Bs ${montoInicial.toFixed(2)}`
+      `Apertura de caja #${caja.id} con fondo inicial Bs ${montoInicial.toFixed(2)}`,
+      cajaDTO.ip ?? null
     );
     return { caja };
   }
@@ -295,7 +299,8 @@ export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise
     `Cierre de caja #${caja.id}: esperado Bs ${esperado.toFixed(2)}, contado Bs ${montoReal.toFixed(2)}, ` +
       `diferencia Bs ${diferencia.toFixed(2)} (${tipoDif}). Ventas: ${resumen.cantidad_ventas}, ` +
       `total Bs ${resumen.total_vendido.toFixed(2)}` +
-      (observacion ? `. Obs: ${observacion}` : '')
+      (observacion ? `. Obs: ${observacion}` : ''),
+    cajaDTO.ip ?? null
   );
 
   return { caja: { ...caja, monto_diferencia: diferencia }, resumen, diferencia };
@@ -442,7 +447,7 @@ export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO
     tipoComprobante: datos.tipoComprobante,
   };
 
-  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', await describirVenta(db, comprobante));
+  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', await describirVenta(db, comprobante), datosVentaDTO.ip ?? null);
   return comprobante;
 }
 
@@ -476,7 +481,7 @@ async function describirVenta(db: Db, c: ComprobanteVenta): Promise<string> {
  */
 export async function anularVenta(
   db: Db,
-  params: { usuarioId: number; ventaId: number }
+  params: { usuarioId: number; ventaId: number; ip?: string | null }
 ): Promise<{ ventaId: number; nroComprobante: string | null }> {
   const { ventaId } = validar(anularVentaSchema, params);
   const { data: rpc, error } = await db.rpc('fn_anular_venta', {
@@ -486,7 +491,13 @@ export async function anularVenta(
   if (error || !rpc) throw errorBD(error, 'No se pudo anular la venta');
   const nro: string | null = (rpc as any).nro_comprobante ?? null;
 
-  await guardarEventoCaja(db, params.usuarioId, 'ANULAR_VENTA', `Venta ${nro ?? ventaId} anulada; stock devuelto`);
+  await guardarEventoCaja(
+    db,
+    params.usuarioId,
+    'ANULAR_VENTA',
+    `Venta ${nro ?? ventaId} anulada; stock devuelto`,
+    params.ip ?? null
+  );
   return { ventaId, nroComprobante: nro };
 }
 

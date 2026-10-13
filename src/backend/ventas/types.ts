@@ -103,12 +103,13 @@ export interface Bitacora {
 // DTOs
 // ===========================================================================
 
-/** cajaDTO → procesarAperturaOArqueo(). La IP no viaja: la toma la bitácora común. */
+/** cajaDTO → procesarAperturaOArqueo(). `ip` se guarda en bitacora.ip. */
 export type CajaDTO =
-  | { tipo: 'APERTURA'; usuarioId: number; montoInicial: number }
+  | { tipo: 'APERTURA'; usuarioId: number; montoInicial: number; ip?: string | null }
   | {
       tipo: 'ARQUEO';
       usuarioId: number;
+      ip?: string | null;
       montoReal: number;
       observacion?: string;
       /** Caja a cerrar; si se indica y es de otro usuario, se rechaza */
@@ -125,6 +126,8 @@ export interface ItemVentaDTO {
 /** datosVentaDTO → registrarVentaDirecta() */
 export interface DatosVentaDTO {
   usuarioId: number;
+  /** IP de origen de la petición (la pone el servidor), se guarda en bitacora.ip */
+  ip?: string | null;
   clienteId?: number | null;
   tipoPago: TipoPago;
   tipoComprobante: TipoComprobante;
