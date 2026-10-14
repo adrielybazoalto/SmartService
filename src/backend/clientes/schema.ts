@@ -17,13 +17,16 @@ export const TIPO_INMUEBLE = [
 const vacioANull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v)
 
 export const crearClienteSchema = z.object({
-  nombre: z.string().min(2, 'El nombre es obligatorio').max(150),
+  nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(150),
   tipo_cliente: z.enum(TIPO_CLIENTE),
-  razon_social: z.string().max(150).nullable().optional(),
-  documento_identidad: z.string().max(30).nullable().optional(),
-  correo: z.string().email('Correo inválido').max(100).nullable().optional(),
-  telefono: z.string().max(20).nullable().optional(),
-  telefono_alternativo: z.string().max(20).nullable().optional(),
+  razon_social: z.preprocess(vacioANull, z.string().trim().max(150).nullable().optional()),
+  documento_identidad: z.preprocess(vacioANull, z.string().trim().max(30).nullable().optional()),
+  correo: z.preprocess(
+    vacioANull,
+    z.string().trim().email('Correo inválido').max(100).nullable().optional(),
+  ),
+  telefono: z.preprocess(vacioANull, z.string().trim().max(20).nullable().optional()),
+  telefono_alternativo: z.preprocess(vacioANull, z.string().trim().max(20).nullable().optional()),
 })
 
 export const actualizarClienteSchema = crearClienteSchema.partial()
@@ -42,6 +45,7 @@ export const registrarClienteCompletoSchema = z.object({
     .preprocess(vacioANull, z.string().trim().max(30).nullable().optional()),
   nombreRazonSocial: z.string().trim().min(2, 'El nombre o razón social es obligatorio').max(150),
   telefono: z.preprocess(vacioANull, z.string().trim().max(20).nullable().optional()),
+  telefonoAlternativo: z.preprocess(vacioANull, z.string().trim().max(20).nullable().optional()),
   correo: z.preprocess(
     vacioANull,
     z.string().trim().email('Correo inválido').max(100).nullable().optional(),
@@ -70,8 +74,25 @@ export const registrarClienteCompletoSchema = z.object({
   ),
 })
 
+/**
+ * CU07 — Input para la edición de datos de un cliente existente.
+ */
+export const editarClienteFormularioSchema = z.object({
+  id: z.number().int().positive('ID de cliente inválido'),
+  tipoCliente: z.enum(TIPO_CLIENTE),
+  documento: z.preprocess(vacioANull, z.string().trim().max(30).nullable().optional()),
+  nombreRazonSocial: z.string().trim().min(2, 'El nombre o razón social es obligatorio').max(150),
+  telefono: z.preprocess(vacioANull, z.string().trim().max(20).nullable().optional()),
+  telefonoAlternativo: z.preprocess(vacioANull, z.string().trim().max(20).nullable().optional()),
+  correo: z.preprocess(
+    vacioANull,
+    z.string().trim().email('Correo inválido').max(100).nullable().optional(),
+  ),
+})
+
 export type CrearClienteInput = z.infer<typeof crearClienteSchema>
 export type ActualizarClienteInput = z.infer<typeof actualizarClienteSchema>
 export type RegistroClienteCompletoInput = z.infer<typeof registrarClienteCompletoSchema>
 /** Tipo del formulario tal como lo envía la IU (antes de los preprocess). */
 export type RegistroClienteFormulario = z.input<typeof registrarClienteCompletoSchema>
+export type EditarClienteFormulario = z.infer<typeof editarClienteFormularioSchema>

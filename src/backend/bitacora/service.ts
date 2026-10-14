@@ -17,12 +17,13 @@ import { obtenerIpOrigen } from '@/lib/ip'
 export async function registrarBitacora(
   db: Db,
   input: RegistrarBitacoraInput,
+  ip?: string | null,
 ): Promise<Bitacora> {
   const parsed = registrarBitacoraSchema.parse(input)
-  const ip = await obtenerIpOrigen()
+  const ipOrigen = (ip && ip.trim()) ? ip.trim() : (await obtenerIpOrigen())
   const { data, error } = await db
     .from('bitacora')
-    .insert({ ...parsed, ...(ip ? { ip } : {}) } as NuevaBitacora)
+    .insert({ ...parsed, ip: ipOrigen } as NuevaBitacora)
     .select()
     .single()
   if (error) {
@@ -45,10 +46,13 @@ export async function registrarEvento(
   ip?: string | null,
 ): Promise<Bitacora> {
   const parsed = registrarEventoSchema.parse(input)
-  // La IP puede venir capturada por el llamador (p. ej. la Server Action del
-  // CU07); si no, se resuelve aquí como respaldo.
-  const ipOrigen = ip ?? (await obtenerIpOrigen())
-  const { data, error } = await db.from('bitacora').insert({ ...parsed, ...(ipOrigen ? { ip: ipOrigen } : {}) } as NuevoEventoBitacora).select().single()
+  // La IP puede venir capturada por el llamador; si no, se resuelve mediante el helper centralizado
+  const ipOrigen = (ip && ip.trim()) ? ip.trim() : (await obtenerIpOrigen())
+  const { data, error } = await db
+    .from('bitacora')
+    .insert({ ...parsed, ip: ipOrigen } as NuevoEventoBitacora)
+    .select()
+    .single()
   if (error) {
     console.error('Error al registrar en bitácora:', error)
     throw new Error(`No se pudo registrar el evento en la bitácora: ${error.message}`)
@@ -71,7 +75,8 @@ export async function guardarEventoCliente(
   descripcion: string | null = null,
   ip: string | null = null,
 ): Promise<Bitacora> {
-  return registrarEvento(db, { usuario_id, accion, descripcion }, ip)
+  const ipOrigen = (ip && ip.trim()) ? ip.trim() : (await obtenerIpOrigen())
+  return registrarEvento(db, { usuario_id, accion, descripcion }, ipOrigen)
 }
 
 /** Lista y filtra la bitácora — pasos 2 y 3 del flujo principal del CU06. */

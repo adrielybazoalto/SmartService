@@ -87,9 +87,11 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
                     <FechaHoraBolivia fecha={evento.fecha_hora} />
                   </td>
                   <td className="px-4 py-3">{evento.usuario_id}</td>
-                  <td className="px-4 py-3">{evento.accion}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{evento.ip ?? 'No disponible'}</td>
-                  <td className="px-4 py-3">{evento.descripcion}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-800">{evento.accion}</td>
+                  <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-slate-600">
+                    {evento.ip && evento.ip !== 'null' && evento.ip.trim() !== '' ? evento.ip : '127.0.0.1'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{evento.descripcion || '—'}</td>
                 </tr>
               ))}
             </tbody>

@@ -31,7 +31,7 @@ export function FiltrosServicios({ valoresIniciales }: FiltrosServiciosProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm"
+      className="flex flex-wrap items-end gap-4 rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm"
     >
       <div className="flex flex-col gap-1">
         <label htmlFor="q" className="text-xs font-medium text-slate-500">

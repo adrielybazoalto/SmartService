@@ -2,6 +2,7 @@
 
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { tienePermisoModulo } from '@/lib/permisos'
+import { obtenerIpOrigen } from '@/lib/ip'
 import {
   listarBitacora,
   filtrarBitacoraSchema,
@@ -19,21 +20,23 @@ export async function listarBitacoraAction(filtros: FiltrarBitacoraInput = {}) {
   const db = getSupabaseServiceClient()
   return listarBitacora(db, parsed)
 }
+
 export async function registrarBitacoraAction(
   usuarioId: number | null,
   accion: string,
   descripcion: string,
-  ip: string // <-- Parámetro de auditoría IP
+  ip?: string | null
 ) {
   const db = getSupabaseServiceClient()
+  const ipOrigen = (ip && ip.trim()) ? ip.trim() : (await obtenerIpOrigen())
 
   const { error } = await db.from('bitacora').insert({
-    usuario_id: usuarioId as number ,
+    usuario_id: usuarioId as number,
     accion: accion,
     descripcion: descripcion,
-    ip: ip, // <-- Guarda la IP en la tabla bitacora
+    ip: ipOrigen,
     fecha_hora: new Date().toISOString(),
-  }as any )
+  } as any)
 
   if (error) {
     console.error('Error al registrar en bitácora:', error)

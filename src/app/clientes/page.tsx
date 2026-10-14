@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   listarClientesAction,
   procesarRegistroCliente,
+  procesarActualizacionCliente,
   validarDocumentoUnico,
   ClienteEntity,
 } from "@/app/actions/clientes";
@@ -30,7 +31,18 @@ export default function GestionarClientesPage() {
   const [documento, setDocumento] = useState("");
   const [nombreRazonSocial, setNombreRazonSocial] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [telefonoAlternativo, setTelefonoAlternativo] = useState("");
   const [correo, setCorreo] = useState("");
+
+  // ── Estado: Modificación de cliente existente (CU07) ─────────────────────
+  const [clienteAEditar, setClienteAEditar] = useState<ClienteEntity | null>(null);
+  const [editTipoCliente, setEditTipoCliente] = useState<"NATURAL" | "JURIDICO">("NATURAL");
+  const [editDocumento, setEditDocumento] = useState("");
+  const [editNombreRazonSocial, setEditNombreRazonSocial] = useState("");
+  const [editTelefono, setEditTelefono] = useState("");
+  const [editTelefonoAlternativo, setEditTelefonoAlternativo] = useState("");
+  const [editCorreo, setEditCorreo] = useState("");
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   // ── Campos de estado (Diagrama): datos del establecimiento ───────────────
   const [nombreEstablecimiento, setNombreEstablecimiento] = useState("");
@@ -96,6 +108,7 @@ export default function GestionarClientesPage() {
     setDocumento("");
     setNombreRazonSocial("");
     setTelefono("");
+    setTelefonoAlternativo("");
     setCorreo("");
     setNombreEstablecimiento("");
     setTipoInmueble("");
@@ -109,7 +122,7 @@ export default function GestionarClientesPage() {
 
   /** Captura los inputs del cliente (paso 1). */
   const ingresarDatosCliente = (
-    campo: "tipoCliente" | "documento" | "nombreRazonSocial" | "telefono" | "correo",
+    campo: "tipoCliente" | "documento" | "nombreRazonSocial" | "telefono" | "telefonoAlternativo" | "correo",
     valor: string
   ) => {
     switch (campo) {
@@ -124,6 +137,9 @@ export default function GestionarClientesPage() {
         break;
       case "telefono":
         setTelefono(valor);
+        break;
+      case "telefonoAlternativo":
+        setTelefonoAlternativo(valor);
         break;
       case "correo":
         setCorreo(valor);
@@ -203,6 +219,7 @@ export default function GestionarClientesPage() {
       documento,
       nombreRazonSocial,
       telefono,
+      telefonoAlternativo,
       correo,
       nombreEstablecimiento,
       tipoInmueble,
@@ -218,6 +235,62 @@ export default function GestionarClientesPage() {
       setPasoRegistro("lista");
     } else {
       mostrarError(resp.mensaje);
+    }
+  };
+
+  /** Métodos para edición de cliente (CU07) */
+  const abrirEdicionCliente = (c: ClienteEntity) => {
+    setClienteAEditar(c);
+    setEditTipoCliente(c.tipo_cliente === "JURIDICO" ? "JURIDICO" : "NATURAL");
+    setEditDocumento(c.documento_identidad || "");
+    setEditNombreRazonSocial(c.nombre);
+    setEditTelefono(c.telefono || "");
+    setEditTelefonoAlternativo(c.telefono_alternativo || "");
+    setEditCorreo(c.correo || "");
+    setLblMensajeError(null);
+  };
+
+  const cerrarEdicionCliente = () => {
+    setClienteAEditar(null);
+  };
+
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clienteAEditar) return;
+
+    if (!editNombreRazonSocial.trim()) {
+      mostrarError("Ingresa el nombre o razón social del cliente.");
+      return;
+    }
+
+    setGuardandoEdicion(true);
+    setLblMensajeError(null);
+    try {
+      const resp = await procesarActualizacionCliente({
+        id: clienteAEditar.id,
+        tipoCliente: editTipoCliente,
+        documento: editDocumento,
+        nombreRazonSocial: editNombreRazonSocial,
+        telefono: editTelefono,
+        telefonoAlternativo: editTelefonoAlternativo,
+        correo: editCorreo,
+      });
+
+      if (resp.ok && resp.data) {
+        mostrarMensajeExito(resp.mensaje);
+        const cliActualizado = resp.data.cliente;
+        setClientes((prev) =>
+          prev.map((c) => (c.id === cliActualizado.id ? cliActualizado : c))
+        );
+        setFicha((prev) => (prev?.id === cliActualizado.id ? cliActualizado : prev));
+        cerrarEdicionCliente();
+      } else {
+        mostrarError(resp.mensaje);
+      }
+    } catch {
+      mostrarError("Error al procesar la actualización del cliente.");
+    } finally {
+      setGuardandoEdicion(false);
     }
   };
 
@@ -326,7 +399,7 @@ export default function GestionarClientesPage() {
                       className={inputClase}
                     />
                   </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <label className={etiquetaClase}>
                       {tipoCliente === "JURIDICO" ? "Razón Social *" : "Nombre Completo *"}
                     </label>
@@ -350,6 +423,16 @@ export default function GestionarClientesPage() {
                       placeholder="Ej. 72010005"
                       value={telefono}
                       onChange={(e) => ingresarDatosCliente("telefono", e.target.value)}
+                      className={inputClase}
+                    />
+                  </div>
+                  <div>
+                    <label className={etiquetaClase}>Teléfono Alternativo (opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. 71002233 / 33445566"
+                      value={telefonoAlternativo}
+                      onChange={(e) => ingresarDatosCliente("telefonoAlternativo", e.target.value)}
                       className={inputClase}
                     />
                   </div>
@@ -502,7 +585,7 @@ export default function GestionarClientesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-500">Correo</p>
                   <p className="font-medium text-slate-900 truncate">{ficha.correo || "—"}</p>
@@ -510,6 +593,10 @@ export default function GestionarClientesPage() {
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-500">Teléfono</p>
                   <p className="font-medium text-slate-900">{ficha.telefono || "—"}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-500">Teléfono Alternativo</p>
+                  <p className="font-medium text-slate-900">{ficha.telefono_alternativo || "—"}</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-semibold text-slate-500">Registrado</p>
@@ -613,7 +700,10 @@ export default function GestionarClientesPage() {
                       <td className="p-4 text-slate-600">{c.documento_identidad || "—"}</td>
                       <td className="p-4 text-slate-500">
                         <p>{c.correo || "—"}</p>
-                        <p className="text-xs">{c.telefono || ""}</p>
+                        <p className="text-xs font-medium text-slate-700">{c.telefono || ""}</p>
+                        {c.telefono_alternativo && (
+                          <p className="text-[11px] text-slate-400">Alt: {c.telefono_alternativo}</p>
+                        )}
                       </td>
                       <td className="p-4 text-slate-600">
                         {c.establecimientos.length > 0 ? (
@@ -629,13 +719,22 @@ export default function GestionarClientesPage() {
                         )}
                       </td>
                       <td className="p-4 text-center">
-                        <button
-                          onClick={() => mostrarFichaCliente(c)}
-                          className="p-1.5 text-slate-400 hover:text-lime-700 rounded-lg hover:bg-lime-50 transition-all cursor-pointer"
-                          title="Ver ficha del cliente"
-                        >
-                          👁
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => mostrarFichaCliente(c)}
+                            className="p-1.5 text-slate-400 hover:text-lime-700 rounded-lg hover:bg-lime-50 transition-all cursor-pointer"
+                            title="Ver ficha del cliente"
+                          >
+                            👁
+                          </button>
+                          <button
+                            onClick={() => abrirEdicionCliente(c)}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-all cursor-pointer"
+                            title="Editar datos del cliente"
+                          >
+                            ✏️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -645,6 +744,122 @@ export default function GestionarClientesPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Modal de Edición de Cliente (CU07) ─────────────────────────── */}
+      {clienteAEditar && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
+        >
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Editar Datos del Cliente</h3>
+                <p className="text-xs text-slate-500">ID #{clienteAEditar.id} · Modificación de datos y contacto</p>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarEdicionCliente}
+                className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardarEdicion} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={etiquetaClase}>Tipo de Cliente *</label>
+                  <select
+                    value={editTipoCliente}
+                    onChange={(e) => setEditTipoCliente(e.target.value as "NATURAL" | "JURIDICO")}
+                    className={inputClase}
+                  >
+                    <option value="NATURAL">Persona Natural</option>
+                    <option value="JURIDICO">Persona Jurídica (Empresa)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={etiquetaClase}>Documento de Identidad / NIT</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. 4455667 / 1024567029"
+                    value={editDocumento}
+                    onChange={(e) => setEditDocumento(e.target.value)}
+                    className={inputClase}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={etiquetaClase}>
+                    {editTipoCliente === "JURIDICO" ? "Razón Social *" : "Nombre Completo *"}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={
+                      editTipoCliente === "JURIDICO"
+                        ? "Ej. Seguridad Garnet S.R.L."
+                        : "Ej. Roberto Salazar Roca"
+                    }
+                    value={editNombreRazonSocial}
+                    onChange={(e) => setEditNombreRazonSocial(e.target.value)}
+                    className={inputClase}
+                  />
+                </div>
+                <div>
+                  <label className={etiquetaClase}>Teléfono</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. 72010005"
+                    value={editTelefono}
+                    onChange={(e) => setEditTelefono(e.target.value)}
+                    className={inputClase}
+                  />
+                </div>
+                <div>
+                  <label className={etiquetaClase}>Teléfono Alternativo (opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. 71002233 / 33445566"
+                    value={editTelefonoAlternativo}
+                    onChange={(e) => setEditTelefonoAlternativo(e.target.value)}
+                    className={inputClase}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={etiquetaClase}>Correo Electrónico</label>
+                  <input
+                    type="email"
+                    placeholder="cliente@empresa.com"
+                    value={editCorreo}
+                    onChange={(e) => setEditCorreo(e.target.value)}
+                    className={inputClase}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={cerrarEdicionCliente}
+                  disabled={guardandoEdicion}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoEdicion}
+                  className="px-5 py-2 text-sm font-semibold bg-lime-400 hover:bg-lime-300 text-slate-900 rounded-xl shadow-sm shadow-lime-200/60 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {guardandoEdicion ? "Guardando..." : "Guardar Cambios"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

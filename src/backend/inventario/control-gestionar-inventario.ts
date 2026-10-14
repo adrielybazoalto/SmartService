@@ -1,5 +1,6 @@
 import type { Db } from '@/lib/supabase/types'
 import { registrarEvento } from '@/backend/bitacora'
+import { obtenerIpOrigen } from '@/lib/ip'
 import { ErrorInventario, traducirErrorBD } from './errores'
 import {
   aNumero,
@@ -79,9 +80,10 @@ function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
  * no revierte la operación ya confirmada. (Los ajustes e inventario inicial
  * registran su evento DENTRO de la transacción SQL.)
  */
-async function auditar(db: Db, usuarioId: number, accion: string, descripcion: string): Promise<void> {
+async function auditar(db: Db, usuarioId: number, accion: string, descripcion: string, ip?: string | null): Promise<void> {
   try {
-    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion })
+    const ipOrigen = (ip && ip.trim()) ? ip.trim() : (await obtenerIpOrigen())
+    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion }, ipOrigen)
   } catch (e) {
     console.error(`[CU16] No se pudo registrar ${accion} en la bitácora:`, e)
   }
