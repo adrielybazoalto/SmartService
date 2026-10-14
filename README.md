@@ -41,19 +41,23 @@ npm run lint    # eslint
 
 Supabase se usa **solo como PostgreSQL**; la autenticación vive en la
 aplicación (bcryptjs + JWT, ver [Autenticación](#autenticación)). Los scripts
-están en la raíz del repo y se ejecutan en **Supabase Dashboard → SQL Editor**,
-en este orden:
+están en la carpeta [`db/`](db/README.md) y se ejecutan en **Supabase Dashboard
+→ SQL Editor**, en este orden:
 
-1. **`schema.sql`** — reset total del esquema (`DROP SCHEMA public CASCADE`) y
-   recreación de las **32 tablas** con constraints e índices. ⚠️ Borra los datos
-   existentes: úsalo solo para construir desde cero.
-2. **`seed.sql`** — permisos (`GRANT` de `service_role` para la API REST),
+1. **`db/schema.sql`** — reset total del esquema (`DROP SCHEMA public CASCADE`)
+   y recreación de las **32 tablas** con constraints e índices. ⚠️ Borra los
+   datos existentes: úsalo solo para construir desde cero.
+2. **`db/seed.sql`** — permisos (`GRANT` de `service_role` para la API REST),
    3 roles, 8 módulos, 5 acciones, matriz RBAC completa y 6 usuarios. Es
    **idempotente** (`ON CONFLICT DO NOTHING`): puede re-ejecutarse para
    restaurar permisos o datos sin romper lo existente.
 
+> Las migraciones incrementales están en `db/migrations/` (orden y detalles en
+> [`db/README.md`](db/README.md)); `db/legacy/` y `db/diagnostics/` conservan
+> los scripts del modelo anterior y las consultas de revisión.
+>
 > Si ya tienes las tablas creadas (BD migrada) y solo necesitas permisos/datos,
-> ejecuta únicamente `seed.sql`.
+> ejecuta únicamente `db/seed.sql`.
 
 ### Credenciales iniciales
 
@@ -68,13 +72,14 @@ Los 6 usuarios del seed comparten la contraseña temporal **`Admin1234!`**
 
 > La API REST se consume únicamente con la **service role key** (server-only);
 > por eso el seed concede permisos a `service_role`. La migración
-> `auth_local.sql` ya no es necesaria en instalaciones nuevas (el reset de
-> `schema.sql` incluye esa estructura) y se conserva solo para BDs creadas con
-> el esquema anterior.
+> `db/legacy/auth_local.sql` ya no es necesaria en instalaciones nuevas (el
+> reset de `db/schema.sql` incluye esa estructura) y se conserva solo para BDs
+> creadas con el esquema anterior.
 
 ## Estructura
 
 ```
+db/              # scripts SQL (schema, seed, migraciones, legado, diagnósticos)
 src/
 ├── app/          # rutas (App Router) + Server Actions en actions/
 ├── backend/      # lógica de negocio por dominios (server-only)
@@ -107,7 +112,7 @@ principal; cada paquete se habilita cuando sus casos de uso tienen pantalla.
 El login es **100% de la aplicación** (Supabase se usa solo como base de
 datos): las contraseñas se guardan como **hash bcrypt (bcryptjs)** en
 `usuario.contrasena` y la sesión es una **cookie JWT firmada** con
-`AUTH_SECRET` (`src/lib/session.ts`). El `seed.sql` crea los usuarios iniciales
+`AUTH_SECRET` (`src/lib/session.ts`). El `db/seed.sql` crea los usuarios iniciales
 con contraseña temporal `Admin1234!`. Ver `src/backend/README.md` para el
 detalle.
 

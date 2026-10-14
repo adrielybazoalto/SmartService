@@ -22,7 +22,8 @@ npm run test:bd
 Ambos terminan con código `0` si todo pasa y `1` si algo falla. La salida lista
 cada prueba como `PASA` / `FALLA` y un total.
 
-`sintaxis.mjs` también acepta archivos concretos (rutas relativas a la raíz):
+`sintaxis.mjs` también acepta archivos concretos (nombre del archivo —se busca
+en `db/` y sus subcarpetas— o ruta relativa a la raíz):
 
 ```bash
 node pruebas/bd/sintaxis.mjs migracion_cu15_compras.sql
@@ -47,7 +48,7 @@ No forman parte del build de Next.js ni del despliegue.
 - **No modifican Supabase** ni se conectan a ninguna red: no importan
   supabase-js, no leen `.env`/`.env.local` ni ninguna clave.
 - **No usan datos reales:** los datos son ficticios y se crean en cada ejecución.
-- **No modifican archivos:** solo leen los `.sql` de la raíz del repositorio.
+- **No modifican archivos:** solo leen los `.sql` de la carpeta `db/` del repositorio.
 - La única variable de entorno que usan es `SMARTSERVICE_RAIZ` (opcional), para
   apuntar a otra copia del repositorio; por defecto, la raíz de este.
 

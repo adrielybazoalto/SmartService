@@ -20,13 +20,21 @@
 // Ejecutar desde la raíz:  node pruebas/integracion/cu15-cu16-integracion.prueba.mjs
 // ============================================================
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 
 const RAIZ = fileURLToPath(new URL('../../', import.meta.url))
-const leer = (archivo) => readFileSync(join(RAIZ, archivo), 'utf8')
+// Los .sql viven en db/ (raíz, seeds, migrations, legacy, diagnostics).
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics']
+const leer = (archivo) => {
+  for (const dir of DIRS_SQL) {
+    const ruta = join(RAIZ, dir, archivo)
+    if (existsSync(ruta)) return readFileSync(ruta, 'utf8')
+  }
+  throw new Error(`No se encontró el archivo SQL: ${archivo}`)
+}
 /** Archivo de otra rama (solo lectura). null si la rama no está disponible. */
 function deRama(rama, archivo) {
   try {
