@@ -172,3 +172,40 @@ export const PAQUETES: PaqueteNav[] = [
     items: [],
   },
 ]
+
+// ---------------------------------------------------------------------------
+// Catálogo de módulos RBAC — DERIVADO de PAQUETES (única fuente de verdad).
+//
+// `MODULOS` es la vista que consume el RBAC (lib/permisos.ts): una entrada por
+// ítem con clave de permiso, en el orden de PAQUETES. Se derivan solo los
+// ítems de paquetes HABILITADOS y con clave no vacía (excluye "Inicio", que no
+// aplica RBAC, y los paquetes P3/P4 aún sin pantallas). Así, habilitar un
+// paquete en PAQUETES actualiza el menú, el panel y el RBAC a la vez.
+// ---------------------------------------------------------------------------
+
+/** Módulo registrado en el catálogo RBAC (ruta con su clave de permiso). */
+export interface ModuloRegistrado {
+  /** Clave del permiso en PERMISO.nombre (p. ej. 'USUARIOS'). */
+  clave: string
+  ruta: string
+  etiqueta: string
+  /** Breve descripción mostrada en las tarjetas del panel principal. */
+  descripcion: string
+}
+
+export const MODULOS: ModuloRegistrado[] = PAQUETES.filter(
+  (paquete) => paquete.habilitado,
+).flatMap((paquete) =>
+  paquete.items
+    .filter((item) => item.clave !== '')
+    .map((item) => ({
+      clave: item.clave,
+      ruta: item.ruta,
+      etiqueta: item.etiqueta,
+      descripcion: item.descripcion ?? '',
+    })),
+)
+
+export function moduloPorRuta(ruta: string): ModuloRegistrado | undefined {
+  return MODULOS.find((m) => m.ruta === ruta)
+}
