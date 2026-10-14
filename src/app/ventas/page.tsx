@@ -306,7 +306,7 @@ export default function VentasPage() {
                         <thead>
                           <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-slate-400">
                             <th className="py-2 pr-4">Caja</th>
-                            <th className="py-2 pr-4">Usuario</th>
+                            <th className="py-2 pr-4">Abrió y cerró</th>
                             <th className="py-2 pr-4">Apertura</th>
                             <th className="py-2 pr-4">Cierre</th>
                             <th className="py-2 pr-4 text-right">Esperado</th>
@@ -318,7 +318,7 @@ export default function VentasPage() {
                           {turnos.map((t) => (
                             <tr key={t.id} className="border-b border-gray-50 last:border-0">
                               <td className="py-3 pr-4 font-mono font-semibold text-slate-900">#{t.id}</td>
-                              <td className="py-3 pr-4 text-slate-700">Usuario #{t.usuario_id}</td>
+                              <td className="py-3 pr-4 text-slate-700">{t.usuario_nombre ?? `Usuario #${t.usuario_id}`}</td>
                               <td className="py-3 pr-4 text-slate-500">{fecha(t.fecha_apertura)}</td>
                               <td className="py-3 pr-4 text-slate-500">{fecha(t.fecha_cierre)}</td>
                               <td className="py-3 pr-4 text-right text-slate-700">{bs(t.monto_final_sistema ?? 0)}</td>
@@ -340,7 +340,7 @@ export default function VentasPage() {
                             <Diferencia valor={t.monto_diferencia ?? 0} />
                           </div>
                           <p className="text-xs text-slate-500">
-                            Usuario #{t.usuario_id} · {fecha(t.fecha_cierre)}
+                            {t.usuario_nombre ?? `Usuario #${t.usuario_id}`} · {fecha(t.fecha_cierre)}
                           </p>
                           <p className="mt-1 text-xs text-slate-600">
                             Esperado {bs(t.monto_final_sistema ?? 0)} · Contado {bs(t.monto_final_real ?? 0)}
