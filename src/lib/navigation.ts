@@ -9,8 +9,8 @@
  * P1: SEGURIDAD Y GESTIÓN DE ACCESOS → habilitado
  *     (CU01, CU03–CU06; CU02 es público).
  * P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS → habilitado
- *     (CU07 clientes, CU09 ventas, CU14 proveedores, CU15 compras,
- *      CU16 inventario, CU17 servicios).
+ *     (CU07 clientes, CU08 cotizaciones, CU09 ventas, CU14 proveedores,
+ *      CU15 compras, CU16 inventario, CU17 servicios).
  * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → deshabilitado
  *     (CU10–CU13, aún sin pantallas).
  * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → deshabilitado
@@ -108,6 +108,14 @@ export const PAQUETES: PaqueteNav[] = [
         clave: 'CLIENTES',
         cu: 'CU07',
         descripcion: 'Registro y consulta de clientes con sus establecimientos.',
+      },
+      {
+        id: 'cotizaciones',
+        etiqueta: 'Cotizaciones (CU08)',
+        ruta: '/cotizaciones',
+        clave: 'COTIZACIONES',
+        cu: 'CU08',
+        descripcion: 'Gestión de cotizaciones, proformas y presupuestos para clientes.',
       },
       {
         id: 'ventas',
