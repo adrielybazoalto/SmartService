@@ -29,7 +29,12 @@ export const MODULOS: ModuloRegistrado[] = [
   { clave: 'USUARIOS', ruta: '/usuarios', etiqueta: 'Usuarios', descripcion: 'Gestión de usuarios del sistema' },
   { clave: 'ROLES', ruta: '/roles', etiqueta: 'Roles', descripcion: 'Roles y matriz de permisos' },
   { clave: 'BITACORA', ruta: '/bitacora', etiqueta: 'Bitácora', descripcion: 'Auditoría de eventos y accesos' },
+  { clave: 'CLIENTES', ruta: '/clientes', etiqueta: 'Clientes', descripcion: 'Gestión de clientes y establecimientos' },
   { clave: 'COTIZACIONES', ruta: '/cotizaciones', etiqueta: 'Cotizaciones', descripcion: 'Cotizaciones y servicios' },
+  { clave: 'SERVICIOS', ruta: '/servicios', etiqueta: 'Servicios', descripcion: 'Catálogo de servicios técnicos y tarifas' },
+  { clave: 'PROVEEDORES', ruta: '/proveedores', etiqueta: 'Proveedores', descripcion: 'Gestión de proveedores y catálogo de mayoristas' },
+  { clave: 'COMPRAS', ruta: '/compras', etiqueta: 'Compras', descripcion: 'Registro de compras de equipos e insumos' },
+  { clave: 'INVENTARIO', ruta: '/inventario', etiqueta: 'Inventario', descripcion: 'Stock, movimientos de kárdex y ajustes' },
   { clave: 'ORDENES_TRABAJO', ruta: '/ordenes-trabajo', etiqueta: 'Órdenes de trabajo', descripcion: 'Órdenes de trabajo y asignaciones' },
   { clave: 'CAJA', ruta: '/caja', etiqueta: 'Caja', descripcion: 'Control y arqueo de caja' },
   { clave: 'VENTAS', ruta: '/ventas', etiqueta: 'Ventas', descripcion: 'Registro de ventas' },
@@ -58,15 +63,6 @@ export const getPermisosDeRol = cache(async (rolId: number): Promise<string[]> =
     .map((fila) => fila.permiso?.nombre)
     .filter((nombre): nombre is string => Boolean(nombre))
 })
-
-/** Módulos que el usuario autenticado tiene permitidos (Nivel 1: navbar + panel). */
-export async function getModulosPermitidos(): Promise<ModuloRegistrado[]> {
-  const usuario = await getCurrentUser()
-  if (!usuario) return []
-
-  const claves = await getPermisosDeRol(usuario.rol_id)
-  return MODULOS.filter((m) => claves.includes(m.clave))
-}
 
 /**
  * Nivel 2 — Verificación de acceso por permiso: ¿el usuario autenticado tiene

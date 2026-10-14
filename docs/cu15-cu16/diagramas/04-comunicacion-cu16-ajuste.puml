@@ -1,0 +1,25 @@
+@startuml 04-comunicacion-cu16-ajuste
+' 3.2.1 Diagrama de Comunicación — CU16 subflujo: ajuste por conteo físico
+' Los mensajes 3.1 a 3.2 ocurren en UNA transacción dentro de fn_registrar_ajuste.
+left to right direction
+skinparam shadowing false
+
+actor "Administrador" as Administrador
+boundary "IU_Inventario\n(/inventario)" as IUI
+boundary "IU_FormularioAjuste" as IUA
+control "ControlKardex" as CK
+control "NúcleoKárdex\nprivate.fn_kardex_aplicar" as NK
+entity "Producto" as PRO
+entity "MovimientoKardex" as MK
+entity "Bitácora" as BIT
+
+Administrador -- IUI : "1: seleccionarAjuste(producto)"
+IUI -- IUA : "1.1: mostrarFormulario(stockEnSistema)"
+Administrador -- IUA : "2: ingresarConteo(stockContado, justificación)"
+IUA -- IUA : "2.1: calcularDiferencia()"
+IUA -- CK : "3: registrarAjuste(productoId, stockContado, justificación)"
+CK -- NK : "3.1: aplicarAjuste(AJUSTE_POSITIVO | AJUSTE_NEGATIVO, |diferencia|)"
+NK -- PRO : "3.1.1: bloquearYActualizarStock()"
+NK -- MK : "3.1.2: insertarMovimiento(stockAnterior, stockResultante, justificación)"
+CK -- BIT : "3.2: registrarEvento(AJUSTE_INVENTARIO)"
+@enduml

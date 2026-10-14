@@ -1,12 +1,23 @@
 /**
- * CONFIGURACIÓN DE NAVEGACIÓN POR PAQUETES (Ciclo 1 — solo P1 habilitado).
+ * CONFIGURACIÓN DE NAVEGACIÓN POR PAQUETES (Ciclo 2 — sistema unificado).
  *
  * Única fuente de verdad del alcance del sistema: el Sidebar y el Dashboard
  * se construyen a partir de este arreglo. Para habilitar un paquete en un
  * ciclo futuro solo hay que cambiar `habilitado: true` (y agregar sus items).
  *
- * Los paquetes deshabilitados (P2, P3) NO tienen items ni rutas: no debe
- * existir ninguna página accesible para ellos en este ciclo.
+ * Estructura oficial de 4 paquetes funcionales:
+ * P1: SEGURIDAD Y GESTIÓN DE ACCESOS → habilitado
+ *     (CU01, CU03–CU06; CU02 es público).
+ * P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS → habilitado
+ *     (CU07 clientes, CU08 cotizaciones, CU09 ventas, CU14 proveedores,
+ *      CU15 compras, CU16 inventario, CU17 servicios).
+ * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → deshabilitado
+ *     (CU10–CU13, aún sin pantallas).
+ * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → deshabilitado
+ *     (CU18–CU20, aún sin pantallas).
+ *
+ * La visibilidad de cada ítem además depende del permiso activo del rol en
+ * la BD (PERMISO ⋈ ROL_PERMISO, ver lib/permisos.ts).
  */
 
 export interface ItemNav {
@@ -21,16 +32,16 @@ export interface ItemNav {
    * Cadena vacía = siempre visible (p. ej. Inicio).
    */
   clave: string
-  /** Caso de uso asociado (CU01…CU06), si aplica. */
+  /** Caso de uso asociado (CU01…CU20), si aplica. */
   cu?: string
   /** Breve descripción mostrada en las tarjetas del Dashboard. */
   descripcion?: string
 }
 
 export interface PaqueteNav {
-  /** Identificador del paquete (P1…P3). */
+  /** Identificador del paquete (P1…P4). */
   id: string
-  /** Nombre del paquete (p. ej. 'SEGURIDAD Y ACCESOS'). */
+  /** Nombre del paquete (p. ej. 'SEGURIDAD Y GESTIÓN DE ACCESOS'). */
   nombre: string
   /** true = se muestra y navega; false = ítem bloqueado sin enlace. */
   habilitado: boolean
@@ -40,7 +51,7 @@ export interface PaqueteNav {
 export const PAQUETES: PaqueteNav[] = [
   {
     id: 'P1',
-    nombre: 'SEGURIDAD Y ACCESOS',
+    nombre: 'SEGURIDAD Y GESTIÓN DE ACCESOS',
     habilitado: true,
     items: [
       {
@@ -87,13 +98,76 @@ export const PAQUETES: PaqueteNav[] = [
   },
   {
     id: 'P2',
-    nombre: 'GESTIÓN DE PERSONAL TÉCNICO',
+    nombre: 'GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS',
+    habilitado: true,
+    items: [
+      {
+        id: 'clientes',
+        etiqueta: 'Clientes y Establecimientos (CU07)',
+        ruta: '/clientes',
+        clave: 'CLIENTES',
+        cu: 'CU07',
+        descripcion: 'Registro y consulta de clientes con sus establecimientos.',
+      },
+      {
+        id: 'cotizaciones',
+        etiqueta: 'Cotizaciones (CU08)',
+        ruta: '/cotizaciones',
+        clave: 'COTIZACIONES',
+        cu: 'CU08',
+        descripcion: 'Gestión de cotizaciones, proformas y presupuestos para clientes.',
+      },
+      {
+        id: 'ventas',
+        etiqueta: 'Ventas y Caja (CU09)',
+        ruta: '/ventas',
+        clave: 'VENTAS',
+        cu: 'CU09',
+        descripcion: 'Registro de ventas en mostrador, turnos y arqueo de caja.',
+      },
+      {
+        id: 'proveedores',
+        etiqueta: 'Proveedores y Mayoristas (CU14)',
+        ruta: '/proveedores',
+        clave: 'PROVEEDORES',
+        cu: 'CU14',
+        descripcion: 'Proveedores, catálogo de mayoristas y comparación de precios.',
+      },
+      {
+        id: 'compras',
+        etiqueta: 'Compras de Equipos e Insumos (CU15)',
+        ruta: '/compras',
+        clave: 'COMPRAS',
+        cu: 'CU15',
+        descripcion: 'Registro de compras a proveedores con su detalle de productos.',
+      },
+      {
+        id: 'inventario',
+        etiqueta: 'Inventario y Kárdex (CU16)',
+        ruta: '/inventario',
+        clave: 'INVENTARIO',
+        cu: 'CU16',
+        descripcion: 'Stock, movimientos de kárdex, ajustes e inventario inicial.',
+      },
+      {
+        id: 'servicios',
+        etiqueta: 'Catálogo de Servicios (CU17)',
+        ruta: '/servicios',
+        clave: 'SERVICIOS',
+        cu: 'CU17',
+        descripcion: 'Catálogo de servicios técnicos y tarifas por hora.',
+      },
+    ],
+  },
+  {
+    id: 'P3',
+    nombre: 'PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO',
     habilitado: false,
     items: [],
   },
   {
-    id: 'P3',
-    nombre: 'CLIENTES, VENTAS Y COTIZACIONES',
+    id: 'P4',
+    nombre: 'POST-VENTA, ALERTAS Y REPORTES GERENCIALES',
     habilitado: false,
     items: [],
   },

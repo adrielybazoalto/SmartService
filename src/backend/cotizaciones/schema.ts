@@ -17,7 +17,7 @@ export const crearCotizacionSchema = z.object({
   cliente_id: z.number().int().positive('Debe seleccionar un cliente'),
   establecimiento_id: z.number().int().positive().nullable().optional(),
   usuario_id: z.number().int().positive(),
-  numero_cotizacion: z.string().min(1, 'El número de cotización es obligatorio').max(50),
+  numero_cotizacion: z.string().min(1, 'El número de cotización es obligatorio').max(50).optional(),
   fecha_emision: z.string().date('Fecha inválida').optional(),
   fecha_vencimiento: z.string().date('Fecha de vencimiento inválida'),
   estado: z.enum(ESTADO_COTIZACION).default('PENDIENTE'),

@@ -35,6 +35,27 @@ export async function getClientePorId(db: Db, id: number): Promise<Cliente> {
   return data
 }
 
+/**
+ * Verifica si ya existe un cliente con ese documento de identidad (CU07).
+ * Devuelve `null` cuando el documento no está registrado o viene vacío.
+ * La unicidad también está garantizada por el UNIQUE de `documento_identidad`.
+ */
+export async function verificarDocumento(
+  db: Db,
+  documento_identidad: string,
+): Promise<Cliente | null> {
+  const documento = documento_identidad.trim()
+  if (!documento) return null
+
+  const { data, error } = await db
+    .from('cliente')
+    .select('*')
+    .eq('documento_identidad', documento)
+    .maybeSingle()
+  if (error) throw new Error(`No se pudo verificar el documento: ${error.message}`)
+  return data
+}
+
 export async function crearCliente(db: Db, input: CrearClienteInput): Promise<Cliente> {
   const parsed = crearClienteSchema.parse(input)
   const { data, error } = await db

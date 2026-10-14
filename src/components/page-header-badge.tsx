@@ -4,7 +4,7 @@ import { PAQUETES } from '@/lib/navigation'
  * Etiqueta de paquete y caso de uso para las cabeceras de pantalla.
  *
  * Renderiza, sobre el título de cada página, una insignia del estilo:
- *   P1: SEGURIDAD Y ACCESOS • CU03: ADMINISTRAR USUARIOS
+ *   P1: SEGURIDAD Y GESTIÓN DE ACCESOS • CU03: ADMINISTRAR USUARIOS
  * El nombre del paquete se resuelve desde `lib/navigation.ts` (única fuente
  * de verdad), por lo que solo se pasa el id del paquete.
  */
