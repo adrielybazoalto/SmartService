@@ -36,7 +36,7 @@
 | Duración de la sesión | ✅ `7` días (dos lugares) | `src/lib/session.ts:5` `MAX_AGE_SECONDS` y `:31` `setExpirationTime('7d')` | Baja | Servidor |
 | Rutas públicas | ✅ `['/login', '/recuperar']` | `src/proxy.ts:9` `RUTAS_PUBLICAS` | Baja | Proxy |
 | Nombre de la cookie | ✅ `'sesion'` (dos lugares) | `src/lib/session.ts:4`, `src/proxy.ts:7` | Baja (deben coincidir) | Servidor + proxy |
-| Paquetes visibles | ✅ P1 habilitado, P2 y P3 no | `src/lib/navigation.ts:44,91,97` | Baja (activar sin páginas daría 404) | Frontend |
+| Paquetes visibles | ✅ P1 y P2 habilitados; P3 y P4 no | `src/lib/navigation.ts` | Baja (activar sin páginas daría 404) | Frontend |
 | Matriz de permisos | ✅ en la BD (`rol_permiso`) | Pantalla `/roles`; semilla `seed.sql:133-150` | Muy baja | BD |
 | Rol por defecto en «Nuevo usuario» | ✅ primer rol de la lista, o 3 | `src/app/usuarios/page.tsx:36,104` | Muy baja | Frontend |
 | Duración de los mensajes en `/usuarios` | ✅ 3500 y 4000 ms | `src/app/usuarios/page.tsx:45,50` | Muy baja | Frontend |

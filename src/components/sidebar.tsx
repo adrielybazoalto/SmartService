@@ -11,9 +11,10 @@ import { BadgeRol } from '@/components/badge-rol'
  * LAYOUT GLOBAL (Sidebar izquierda + contenido) — tema claro "PULSE".
  * La navegación se agrupa por PAQUETES (ver lib/navigation.ts):
  *
- *   P1: SEGURIDAD Y ACCESOS  → habilitado; muestra SOLO los ítems cuyo
- *                              permiso está activo en ROL_PERMISO (BD).
- *   P2 / P3                  → paquetes deshabilitados en este ciclo:
+ *   P1: SEGURIDAD Y GESTIÓN DE ACCESOS → habilitado; muestra SOLO los ítems
+ *                              cuyo permiso está activo en ROL_PERMISO (BD).
+ *   P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS → habilitado.
+ *   P3 / P4                  → paquetes deshabilitados en este ciclo:
  *                              ítem NO clicable (opacity-50, cursor-not-allowed,
  *                              pointer-events-none, aria-disabled), sin rutas.
  *

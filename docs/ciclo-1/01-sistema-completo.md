@@ -140,10 +140,15 @@ Esos ocho tienen servicios escritos, pero **ninguna página ni acción los usa**
 | ⚠️ Parciales | Recuperación (sin correo real), roles (sin crear rol y sin permisos por acción), bitácora (sin detalle ni IP), «Recordarme» (casilla sin efecto) |
 | ❌ Ausentes (ciclos 2 y siguientes) | Clientes, cotizaciones y PDF, ventas/caja, jornadas y bloqueos de técnicos, órdenes, notas de servicio, proveedores y compras, kárdex, tickets, alertas, reportes, Stripe, OpenAI |
 
-La navegación refleja esto en `src/lib/navigation.ts`:
+La navegación refleja esto en `src/lib/navigation.ts`, organizada en la
+**estructura oficial de 4 paquetes funcionales**:
 
-- `P1` está habilitado.
-- `P2` («Gestión de Personal Técnico») y `P3` («Clientes, Ventas y Cotizaciones») están `habilitado: false` y sin ítems (líneas 88–99).
+| Paquete | Nombre | Casos de uso | Estado |
+|---|---|---|---|
+| P1 | Seguridad y Gestión de Accesos | CU01–CU06 | ✅ habilitado |
+| P2 | Gestión Comercial, Clientes, Catálogo y Ventas | CU07, CU08, CU09, CU14, CU15, CU16, CU17 | ✅ habilitado |
+| P3 | Personal Técnico y Logística de Campo | CU10–CU13 | ⛔ `habilitado: false` (sin pantallas) |
+| P4 | Post-venta, Alertas y Reportes Gerenciales | CU18–CU20 | ⛔ `habilitado: false` (sin pantallas) |
 
 ## 8. Ejecución local y despliegue (solo lo que tiene evidencia)
 

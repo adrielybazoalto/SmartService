@@ -10,7 +10,7 @@
 | Flujo de trabajo PUDS | Artefacto en el PDF | Artefacto en el repositorio |
 |---|---|---|
 | Requisitos | RF01–RF05 (p.18), RNF (p.24-27), CU01–CU06 detallados (p.104-112), prototipos (p.113) | — |
-| Análisis | Paquetes (p.120-121), comunicación (p.128), clases (p.131), paquetes (p.134-136) | `src/lib/navigation.ts` (P1–P3), nombres de clases de control en `src/backend/recuperar/service.ts:36` y `src/lib/sesiones.ts:12` |
+| Análisis | Paquetes (p.120-121), comunicación (p.128), clases (p.131), paquetes (p.134-136) | `src/lib/navigation.ts` (P1–P4), nombres de clases de control en `src/backend/recuperar/service.ts:36` y `src/lib/sesiones.ts:12` |
 | Diseño | Datos lógico y físico (p.138-191), procedimientos y triggers (p.288-295) | `schema.sql`, migraciones, `src/lib/supabase/database.types.ts` |
 | Implementación | — | `src/app/**`, `src/backend/**`, `src/lib/**` |
 | Pruebas | «unitarias y de caja negra» (p.17) | ❌ Ninguna automatizada |
@@ -69,7 +69,7 @@
 | CU04: «Nuevo Rol»; el administrador no pierde permisos (p.108) | — | Sin «Nuevo Rol»; el administrador puede perder permisos | Brecha real |
 | CU05: correo editable; «include» CU02 (p.110, p.118) | — | Correo de solo lectura; flujo propio | Diferencia de diseño |
 | CU06: nombre de usuario y detalle (p.112-113) | IP, entrada y salida (PDF-A p.19) | ID de usuario, sin IP, sin detalle | Brecha real |
-| Paquetes: **4** en 2.5.1 (p.117) y **6** en 3.1 (p.120) | «Paquete: Administración de usuarios» (PDF-A p.18) | 3 en `navigation.ts` (P1–P3), con los nombres de 3.1 | El PDF es incoherente consigo mismo; el código sigue la versión de 6 paquetes solo hasta P3 |
+| Paquetes: **4** en 2.5.1 (p.117) y **6** en 3.1 (p.120) | «Paquete: Administración de usuarios» (PDF-A p.18) | 4 en `navigation.ts` (P1–P4), con la **distribución oficial de 4 paquetes funcionales** | Se adopta la versión de 4 paquetes; P3 y P4 quedan deshabilitados hasta implementar sus CU |
 | «19 casos de uso», pero lista 20 (p.99) | «Realizar los 30» (PDF-A p.19) | CU01–CU06 | Corregir el texto del PDF |
 | Stack Next.js | Marco teórico con **PHP 8 / Laravel 11** (PDF-A p.15, sugerencia generada) | Next.js 16 | **No mencionar Laravel.** No existe en el proyecto |
 | Pruebas unitarias y de caja negra (p.17) | — | Ninguna | Decir que las pruebas fueron manuales |

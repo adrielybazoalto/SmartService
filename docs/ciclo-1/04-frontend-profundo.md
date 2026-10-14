@@ -134,18 +134,18 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 
 ### `src/components/sidebar.tsx`
 - **Qué hace:** recorre `PAQUETES`.
-  - En P1, muestra solo los ítems cuya `clave` está en `getPermisosDeRol()`, o con clave vacía (Inicio).
-  - P2 y P3 se muestran como bloques no clicables: `pointer-events-none`, `aria-disabled`, sin `href`.
+  - En los paquetes habilitados (P1 y P2), muestra solo los ítems cuya `clave` está en `getPermisosDeRol()`, o con clave vacía (Inicio).
+  - P3 y P4 se muestran como bloques no clicables: `pointer-events-none`, `aria-disabled`, sin `href`.
 - **Pregunta:** «¿Ocultar el menú es la seguridad?»
 - **Respuesta corta:** No. El menú es comodidad; la seguridad está en el layout y la acción de cada módulo.
 - **Técnica:** `src/app/usuarios/layout.tsx` ejecuta `requerirAccesoModulo`, y cada Server Action ejecuta `tienePermisoModulo`.
 
 ### `src/app/page.tsx` (dashboard)
-- **Qué hace:** muestra el saludo, el rol y las tarjetas de P1 filtradas por permiso.
+- **Qué hace:** muestra el saludo, el rol y las tarjetas de los paquetes habilitados (P1 y P2) filtradas por permiso.
   - Con `?aviso=sin_permiso` muestra «No tiene permisos para acceder a este módulo.» (L22, L43).
   - Si el rol no tiene módulos, muestra «No tienes módulos asignados a tu rol.»
 - **Pregunta:** «¿Qué ve un técnico al entrar?»
-- **Respuesta:** Con el seed, solo la tarjeta «Mi Perfil (CU05)». De los permisos del técnico, el único que pertenece a P1 es `PERFIL` (seed.sql:146-148), y las tarjetas excluyen Inicio. `COTIZACIONES` y `ORDENES_TRABAJO` no tienen tarjeta porque pertenecen a paquetes deshabilitados.
+- **Respuesta:** Con el seed, solo la tarjeta «Mi Perfil (CU05)». De los permisos del técnico, el único que pertenece a P1 es `PERFIL` (seed.sql:146-148), y las tarjetas excluyen Inicio. `COTIZACIONES` y `ORDENES_TRABAJO` no tienen tarjeta porque sus casos de uso (CU08 y CU10–CU13) aún no tienen ítem en `navigation.ts`.
 
 ### `src/app/login/login-form.tsx`
 - **Pregunta:** «¿Qué hace la casilla Recordarme?»

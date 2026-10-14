@@ -25,7 +25,7 @@
 |---|---|---|---|---|---|---|
 | 1 | Problema | SgarNet tiene la información dispersa | PDF-P p.11-16 | — | Ser breve | «¿Cuál es el problema principal?» |
 | 2 | Objetivo | Sistema web para recursos, ventas y mantenimientos | PDF-P p.16 | — | — | — |
-| 3 | Iteración / PUDS | Ciclo 1 = P1 Seguridad; CU priorizados por riesgo y dependencia | PDF-P p.100-103, p.117 | `src/lib/navigation.ts` (P1 activo, P2 y P3 bloqueados) | Mostrar el Sidebar con los paquetes bloqueados | «¿Por qué estos CU primero?» (B2) |
+| 3 | Iteración / PUDS | Ciclo 1 = P1 Seguridad (CU01–CU06); paquetes oficiales P1–P4 | PDF-P p.100-103, p.117 | `src/lib/navigation.ts` (P1 y P2 activos, P3 y P4 bloqueados) | Mostrar el Sidebar con los paquetes bloqueados | «¿Por qué estos CU primero?» (B2) |
 | 4 | CU | 6 CU y sus relaciones (extend/include) | PDF-P p.104-112, p.118 | — | Reconocer las diferencias con el código ([07 §4](07-trazabilidad.md#4-contradicciones-entre-fuentes)) | B3 |
 | 5 | Pantalla | Login, dashboard y menú por rol | `/login`, `/` | `src/app/login/login-form.tsx` | Mostrar dos roles distintos | D2 |
 | 6 | Flujo del frontend | Formulario → Server Action; Client frente a Server Components | DevTools → Network: el POST de la acción | `login-form.tsx:19,62` | La validación visual no es la seguridad | D1, D5 |
