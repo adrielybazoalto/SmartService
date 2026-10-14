@@ -18,7 +18,7 @@
 // Ejecutar desde la raíz:  node pruebas/compras/cu15-backend.prueba.mjs
 // ============================================================
 import '../inventario/cargador-ts.mjs'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 
 const S = await import('@/backend/compras/schema')
@@ -497,7 +497,14 @@ await sim('CU16: el kárdex muestra el documento con el formato que deja la comp
 
 // ============================ 8. Integración backend → función SQL REAL (PGlite)
 const RAIZ = new URL('../../', import.meta.url)
-const leer = (archivo) => readFileSync(new URL(archivo, RAIZ), 'utf8')
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics']
+const leer = (archivo) => {
+  for (const dir of DIRS_SQL) {
+    const ruta = new URL(`${dir}/${archivo}`, RAIZ)
+    if (existsSync(ruta)) return readFileSync(ruta, 'utf8')
+  }
+  throw new Error(`No se encontró el archivo SQL: ${archivo}`)
+}
 
 async function nuevaBD() {
   const pg = new PGlite()
