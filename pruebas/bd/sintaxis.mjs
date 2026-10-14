@@ -8,7 +8,7 @@
 //
 // Ejecutar desde la raíz:  node pruebas/bd/sintaxis.mjs [archivo.sql ...]
 // ============================================================
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadModule, parseSync, parsePlPgSQLSync } from 'libpg-query';
@@ -18,11 +18,21 @@ const ARCHIVOS = process.argv.slice(2).length > 0
   ? process.argv.slice(2)
   : ['diagnostico_cu15_cu16.sql', 'migracion_cu16_inventario.sql', 'migracion_cu15_compras.sql'];
 
+// Los .sql viven en db/ (raíz, seeds, migrations, legacy, diagnostics).
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics'];
+const leerSql = (archivo) => {
+  for (const dir of DIRS_SQL) {
+    const ruta = join(RAIZ, dir, archivo);
+    if (existsSync(ruta)) return readFileSync(ruta, 'utf8');
+  }
+  throw new Error(`No se encontró el archivo SQL: ${archivo}`);
+};
+
 await loadModule();
 let errores = 0;
 
 for (const archivo of ARCHIVOS) {
-  const sql = readFileSync(join(RAIZ, archivo), 'utf8');
+  const sql = leerSql(archivo);
   // stmt_location / stmt_len son posiciones en BYTES UTF-8.
   const bytes = Buffer.from(sql, 'utf8');
   console.log(`=== ${archivo}`);
