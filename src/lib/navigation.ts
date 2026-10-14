@@ -5,11 +5,16 @@
  * se construyen a partir de este arreglo. Para habilitar un paquete en un
  * ciclo futuro solo hay que cambiar `habilitado: true` (y agregar sus items).
  *
- * P1: SEGURIDAD Y ACCESOS → habilitado (CU01, CU03–CU06).
+ * Estructura oficial de 4 paquetes funcionales:
+ * P1: SEGURIDAD Y GESTIÓN DE ACCESOS → habilitado
+ *     (CU01, CU03–CU06; CU02 es público).
  * P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS → habilitado
  *     (CU07 clientes, CU09 ventas, CU14 proveedores, CU15 compras,
- *      CU16 inventario).
- * P3: SERVICIOS TÉCNICOS Y TARIFAS → habilitado (CU17 servicios).
+ *      CU16 inventario, CU17 servicios).
+ * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → deshabilitado
+ *     (CU10–CU13, aún sin pantallas).
+ * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → deshabilitado
+ *     (CU18–CU20, aún sin pantallas).
  *
  * La visibilidad de cada ítem además depende del permiso activo del rol en
  * la BD (PERMISO ⋈ ROL_PERMISO, ver lib/permisos.ts).
@@ -27,16 +32,16 @@ export interface ItemNav {
    * Cadena vacía = siempre visible (p. ej. Inicio).
    */
   clave: string
-  /** Caso de uso asociado (CU01…CU06), si aplica. */
+  /** Caso de uso asociado (CU01…CU20), si aplica. */
   cu?: string
   /** Breve descripción mostrada en las tarjetas del Dashboard. */
   descripcion?: string
 }
 
 export interface PaqueteNav {
-  /** Identificador del paquete (P1…P3). */
+  /** Identificador del paquete (P1…P4). */
   id: string
-  /** Nombre del paquete (p. ej. 'SEGURIDAD Y ACCESOS'). */
+  /** Nombre del paquete (p. ej. 'SEGURIDAD Y GESTIÓN DE ACCESOS'). */
   nombre: string
   /** true = se muestra y navega; false = ítem bloqueado sin enlace. */
   habilitado: boolean
@@ -46,7 +51,7 @@ export interface PaqueteNav {
 export const PAQUETES: PaqueteNav[] = [
   {
     id: 'P1',
-    nombre: 'SEGURIDAD Y ACCESOS',
+    nombre: 'SEGURIDAD Y GESTIÓN DE ACCESOS',
     habilitado: true,
     items: [
       {
@@ -136,13 +141,6 @@ export const PAQUETES: PaqueteNav[] = [
         cu: 'CU16',
         descripcion: 'Stock, movimientos de kárdex, ajustes e inventario inicial.',
       },
-    ],
-  },
-  {
-    id: 'P3',
-    nombre: 'SERVICIOS TÉCNICOS Y TARIFAS',
-    habilitado: true,
-    items: [
       {
         id: 'servicios',
         etiqueta: 'Catálogo de Servicios (CU17)',
@@ -152,5 +150,17 @@ export const PAQUETES: PaqueteNav[] = [
         descripcion: 'Catálogo de servicios técnicos y tarifas por hora.',
       },
     ],
+  },
+  {
+    id: 'P3',
+    nombre: 'PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO',
+    habilitado: false,
+    items: [],
+  },
+  {
+    id: 'P4',
+    nombre: 'POST-VENTA, ALERTAS Y REPORTES GERENCIALES',
+    habilitado: false,
+    items: [],
   },
 ]

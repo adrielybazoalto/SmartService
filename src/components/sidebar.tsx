@@ -2,20 +2,23 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { getCurrentUser } from '@/lib/auth'
 import { getPermisosDeRol } from '@/lib/permisos'
-import { PAQUETES } from '@/lib/navigation'
 import { logoutAction } from '@/app/actions/auth'
-import { EnlaceSidebar } from '@/components/sidebar-enlace'
+import { NavegacionPaquetes } from '@/components/sidebar-nav'
 import { BadgeRol } from '@/components/badge-rol'
+import { PaqueteSeleccionadoProvider } from '@/components/paquete-seleccionado'
 
 /**
  * LAYOUT GLOBAL (Sidebar izquierda + contenido) — tema claro "PULSE".
- * La navegación se agrupa por PAQUETES (ver lib/navigation.ts):
+ * La navegación por paquetes (ver lib/navigation.ts) se delega en
+ * `NavegacionPaquetes`, un Client Component en formato acordeón:
  *
- *   P1: SEGURIDAD Y ACCESOS  → habilitado; muestra SOLO los ítems cuyo
- *                              permiso está activo en ROL_PERMISO (BD).
- *   P2 / P3                  → paquetes deshabilitados en este ciclo:
- *                              ítem NO clicable (opacity-50, cursor-not-allowed,
- *                              pointer-events-none, aria-disabled), sin rutas.
+ *   P1 / P2 → paquetes habilitados; muestran SOLO los ítems cuyo permiso
+ *             está activo en ROL_PERMISO (BD).
+ *   P3 / P4 → paquetes deshabilitados en este ciclo: al desplegarlos indican
+ *             «Bloqueado · sin permisos», sin enlaces.
+ *
+ * `PaqueteSeleccionadoProvider` envuelve el layout para compartir el paquete
+ * seleccionado entre el Sidebar y las tarjetas del Dashboard (panel-modulos).
  *
  * Sin sesión activa se devuelve la página tal cual (login, recuperar).
  */
@@ -26,7 +29,8 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
   const permisos = await getPermisosDeRol(usuario.rol_id)
 
   return (
-    <div className="flex min-h-screen bg-[#F4F5F7] text-slate-900">
+    <PaqueteSeleccionadoProvider>
+      <div className="flex min-h-screen bg-[#F4F5F7] text-slate-900">
       {/* ── Barra Lateral Izquierda (fija) ─────────────────────────── */}
       <aside className="sticky top-0 flex h-screen w-64 flex-col justify-between border-r border-slate-200/80 bg-white p-4">
         {/* Sección superior: logo y navegación por paquetes */}
@@ -35,56 +39,7 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
             SmartService
           </Link>
 
-          <nav className="space-y-4" aria-label="Navegación principal">
-            {PAQUETES.map((paquete) => (
-              <div key={paquete.id}>
-                {paquete.habilitado ? (
-                  <>
-                    <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      {paquete.id} · {paquete.nombre}
-                    </p>
-                    <div className="space-y-1">
-                      {paquete.items
-                        .filter((item) => item.clave === '' || permisos.includes(item.clave))
-                        .map((item) => (
-                          <EnlaceSidebar
-                            key={item.id}
-                            ruta={item.ruta}
-                            etiqueta={item.etiqueta}
-                            clave={item.clave || 'INICIO'}
-                          />
-                        ))}
-                    </div>
-                  </>
-                ) : (
-                  /* Paquete deshabilitado: solo el nombre, sin ruta ni enlace */
-                  <div
-                    aria-disabled="true"
-                    className="flex cursor-not-allowed select-none items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 opacity-50 pointer-events-none"
-                    title="Disponible en un próximo ciclo"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-5 w-5 shrink-0"
-                      aria-hidden="true"
-                    >
-                      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                    <span className="truncate">
-                      {paquete.id} · {paquete.nombre}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
+          <NavegacionPaquetes permisos={permisos} />
         </div>
 
         {/* Sección inferior: usuario, rol y cerrar sesión */}
@@ -127,6 +82,7 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
 
       {/* ── Área de contenido principal ────────────────────────────── */}
       <main className="min-w-0 flex-1">{children}</main>
-    </div>
+      </div>
+    </PaqueteSeleccionadoProvider>
   )
 }

@@ -76,8 +76,8 @@
 - 🔧 `src/backend/recuperar/service.ts:36` · `src/lib/sesiones.ts:12`. Los diagramas del PDF (p.131-133) son imágenes: ❔ no se puede verificar su correspondencia exacta.
 
 **B5. ¿Cómo se organiza en paquetes?**
-- 🗣️ P1 Seguridad y Accesos está activo; P2 y P3 aparecen bloqueados hasta los siguientes ciclos.
-- 🔧 `src/lib/navigation.ts:40-100`. El PDF tiene 4 paquetes en p.117 y 6 en p.120; el código sigue los nombres de la versión de 6.
+- 🗣️ El sistema tiene **4 paquetes funcionales**: P1 Seguridad y Gestión de Accesos (CU01–CU06), P2 Gestión Comercial, Clientes, Catálogo y Ventas (CU07, CU08, CU09, CU14–CU17), P3 Personal Técnico y Logística de Campo (CU10–CU13) y P4 Post-venta, Alertas y Reportes Gerenciales (CU18–CU20). P1 y P2 están habilitados; P3 y P4 se muestran bloqueados hasta implementar sus casos de uso.
+- 🔧 `src/lib/navigation.ts` (P1–P4). El PDF trae 4 paquetes en p.117 y 6 en p.120; se adoptó la distribución oficial de 4 paquetes.
 
 ## C. Casos de uso
 

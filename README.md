@@ -89,6 +89,19 @@ src/
     └── openai.ts
 ```
 
+## Paquetes funcionales
+
+El alcance del sistema se organiza en **4 paquetes funcionales oficiales**.
+`src/lib/navigation.ts` es la única fuente de verdad del menú y del panel
+principal; cada paquete se habilita cuando sus casos de uso tienen pantalla.
+
+| Paquete | Nombre | Casos de uso | Estado |
+| --- | --- | --- | --- |
+| P1 | Seguridad y Gestión de Accesos | CU01–CU06 | ✅ habilitado |
+| P2 | Gestión Comercial, Clientes, Catálogo y Ventas | CU07, CU08, CU09, CU14, CU15, CU16, CU17 | ✅ habilitado (CU08 pendiente) |
+| P3 | Personal Técnico y Logística de Campo | CU10–CU13 | ⛔ sin pantallas |
+| P4 | Post-venta, Alertas y Reportes Gerenciales | CU18–CU20 | ⛔ sin pantallas |
+
 ## Autenticación
 
 El login es **100% de la aplicación** (Supabase se usa solo como base de

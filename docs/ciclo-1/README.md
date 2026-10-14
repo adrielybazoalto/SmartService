@@ -1,7 +1,7 @@
 # Ciclo 1 de SMARTSERVICE: ruta de estudio para la defensa
 
 > **Fecha de inspección:** 2026-09-29 · **Rama:** `dev-jorge` · **Commit inspeccionado:** `cf0b5a0`
-> **Alcance:** paquete P1 «Seguridad y Accesos», con los casos de uso CU01 a CU06.
+> **Alcance:** paquete P1 «Seguridad y Gestión de Accesos», con los casos de uso CU01 a CU06.
 > **Regla de esta carpeta:** son documentos de estudio. No se modificó código, SQL, configuración ni datos.
 
 ## Estado de avance de la documentación

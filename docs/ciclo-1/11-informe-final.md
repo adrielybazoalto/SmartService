@@ -25,7 +25,7 @@ Los seis CU tienen pantalla y lógica de servidor funcional. Las diferencias pri
 | Política de contraseña (8 caracteres, mayúscula, minúscula, número, especial) | «Recordarme» sin efecto | Cambio obligatorio de la contraseña inicial |
 | Hash bcrypt en todos los puntos de escritura | `/perfil` no comprueba el permiso `PERFIL` | Procedimientos y triggers del PDF |
 | Recuperación: token SHA-256, 15 min, uso único, invalida sesiones | Bitácora no inmutable en la BD | Pruebas automatizadas |
-| CRUD de usuarios (sin borrado), protecciones del administrador | Transacciones (RNF11) | Módulos P2 y siguientes (clientes, ventas, órdenes…) |
+| CRUD de usuarios (sin borrado), protecciones del administrador | Transacciones (RNF11) | Módulos P3 y P4 (órdenes de trabajo, notas de servicio, tickets, alertas, reportes…) |
 | Matriz rol → módulo editable, menú dinámico | Tipos TypeScript escritos a mano | Stripe y OpenAI (instalados, sin uso) |
 | Perfil (nombre, teléfono) y cambio de contraseña | | |
 | Bitácora con filtros por fecha, usuario y acción | | |
@@ -84,7 +84,7 @@ Detalle en [08-cambios-defensa.md](08-cambios-defensa.md).
 | `src/lib/password.ts` | Política de contraseña + bcrypt de costo 10 |
 | `src/lib/permisos.ts` | RBAC desde `rol_permiso`; *fail-closed*; `requerirAccesoModulo` |
 | `src/lib/bloqueo-cu01.ts` | 3 intentos, 1 minuto |
-| `src/lib/navigation.ts` | Paquetes P1 (activo), P2 y P3 (bloqueados) |
+| `src/lib/navigation.ts` | Paquetes oficiales P1–P4: P1 y P2 (activos), P3 y P4 (bloqueados) |
 | `src/app/actions/auth.ts` | `loginAction` / `logoutAction` |
 | `src/app/actions/usuarios.ts` | CU03 con sus guardias |
 | `src/app/actions/roles.ts` | CU04: leer y guardar la matriz |
