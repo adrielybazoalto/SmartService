@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 import { PAQUETES } from '@/lib/navigation'
 import { TarjetaModulo } from '@/components/tarjeta-modulo'
 import { TODOS, usePaqueteSeleccionado } from '@/components/paquete-seleccionado'
@@ -16,101 +15,72 @@ export interface ModuloConPaquete {
 }
 
 /**
- * Panel de tarjetas del Dashboard con pestañas de filtrado por paquete.
+ * Tarjetas del Dashboard según el paquete seleccionado en el Sidebar.
  *
- * La selección (Todos, P1…P4) se lee del estado compartido
- * `usePaqueteSeleccionado`, por lo que también reacciona a lo que se pulse en
- * el menú lateral. Los paquetes deshabilitados (P3/P4) muestran un estado de
+ * - Un paquete concreto (P1…P4): solo sus módulos.
+ * - `TODOS` («Todos los módulos»): todos los módulos, **agrupados** por paquete.
+ *
+ * La selección se lee del estado compartido `usePaqueteSeleccionado`, que el
+ * menú lateral actualiza al pulsar una cabecera de paquete o «Todos los
+ * módulos». Los paquetes deshabilitados (P3/P4) muestran un estado de
  * «próximamente» en lugar de tarjetas.
  */
 export function PanelModulos({ modulos }: { modulos: ModuloConPaquete[] }) {
-  const { seleccionado, seleccionar } = usePaqueteSeleccionado()
+  const { seleccionado } = usePaqueteSeleccionado()
 
-  const filtrados =
-    seleccionado === TODOS
-      ? modulos
-      : modulos.filter((m) => m.paqueteId === seleccionado)
+  const paqueteSeleccionado = PAQUETES.find((p) => p.id === seleccionado)
+  const deshabilitado =
+    seleccionado !== TODOS && paqueteSeleccionado?.habilitado === false
 
-  const paquete = PAQUETES.find((p) => p.id === seleccionado)
+  if (deshabilitado) {
+    return (
+      <EstadoVacio
+        seleccionado={seleccionado}
+        nombrePaquete={paqueteSeleccionado?.nombre}
+        habilitado={false}
+      />
+    )
+  }
 
-  return (
-    <section className="flex flex-col gap-6">
-      <div
-        role="tablist"
-        aria-label="Filtrar módulos por paquete funcional"
-        className="flex flex-wrap gap-2"
-      >
-        <BotonTab activo={seleccionado === TODOS} onClick={() => seleccionar(TODOS)}>
-          Todos
-        </BotonTab>
-        {PAQUETES.map((p) => (
-          <BotonTab
-            key={p.id}
-            activo={seleccionado === p.id}
-            title={p.nombre}
-            onClick={() => seleccionar(p.id)}
-          >
-            {p.id}
-          </BotonTab>
-        ))}
-      </div>
-
-      {paquete && (
-        <p className="text-sm text-slate-500">
-          <span className="font-semibold text-slate-700">
-            {paquete.id} · {paquete.nombre}
-          </span>
-          {!paquete.habilitado && ' — próximamente'}
-        </p>
-      )}
-
-      {filtrados.length > 0 ? (
-        <div
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          aria-label="Módulos disponibles"
-        >
-          {filtrados.map((modulo) => (
-            <TarjetaModulo key={modulo.ruta} modulo={modulo} />
-          ))}
-        </div>
-      ) : (
-        <EstadoVacio
-          seleccionado={seleccionado}
-          nombrePaquete={paquete?.nombre}
-          habilitado={paquete?.habilitado}
-        />
-      )}
-    </section>
+  const visibles = PAQUETES.filter(
+    (p) => seleccionado === TODOS || p.id === seleccionado,
   )
-}
 
-/** Pestaña de filtrado por paquete. */
-function BotonTab({
-  activo,
-  onClick,
-  title,
-  children,
-}: {
-  activo: boolean
-  onClick: () => void
-  title?: string
-  children: ReactNode
-}) {
+  const grupos = visibles
+    .map((paquete) => ({
+      paquete,
+      items: modulos.filter((m) => m.paqueteId === paquete.id),
+    }))
+    .filter((grupo) => grupo.items.length > 0)
+
+  if (grupos.length === 0) {
+    return (
+      <EstadoVacio
+        seleccionado={seleccionado}
+        nombrePaquete={paqueteSeleccionado?.nombre}
+        habilitado={paqueteSeleccionado?.habilitado}
+      />
+    )
+  }
+
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={activo}
-      title={title}
-      onClick={onClick}
-      className={`cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-        activo
-          ? 'border-lime-300 bg-lime-100 text-lime-800'
-          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-      }`}
-    >
-      {children}
-    </button>
+    <section className="flex flex-col gap-8">
+      {grupos.map(({ paquete, items }) => (
+        <div key={paquete.id} className="flex flex-col gap-4">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500">
+            {paquete.id} · {paquete.nombre}
+          </h2>
+          <div
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            aria-label={`Módulos de ${paquete.nombre}`}
+          >
+            {items.map((modulo) => (
+              <TarjetaModulo key={modulo.ruta} modulo={modulo} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
   )
 }
 

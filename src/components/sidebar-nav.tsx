@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { PAQUETES } from '@/lib/navigation'
 import { EnlaceSidebar } from '@/components/sidebar-enlace'
-import { usePaqueteSeleccionado } from '@/components/paquete-seleccionado'
+import { TODOS, usePaqueteSeleccionado } from '@/components/paquete-seleccionado'
 
 /**
  * Navegación lateral por paquetes funcionales en formato acordeón.
@@ -14,10 +14,11 @@ import { usePaqueteSeleccionado } from '@/components/paquete-seleccionado'
  * contiene la ruta activa se muestra abierto por defecto (y P1 si la ruta no
  * pertenece a ninguno); el usuario puede abrir/cerrar cualquier paquete.
  *
- * Además, la cabecera comparte su selección con la vista principal: al pulsar
- * un paquete se actualiza `usePaqueteSeleccionado`, el mismo estado que usan
- * las pestañas y las tarjetas del Dashboard (`panel-modulos.tsx`). El paquete
- * seleccionado queda resaltado y se abre automáticamente.
+ * Además, cada cabecera comparte su selección con la vista principal: al
+ * pulsar un paquete se actualiza `usePaqueteSeleccionado`, el mismo estado que
+ * consume el Dashboard (`panel-modulos.tsx`). El paquete seleccionado queda
+ * resaltado y se abre automáticamente. Al final de la lista se añade «Todos
+ * los módulos», que selecciona el paquete especial `TODOS` (todo agrupado).
  *
  * Seguridad: un paquete deshabilitado (P3/P4) o un paquete habilitado sin
  * módulos permitidos para el rol muestran una indicación de bloqueo / sin
@@ -54,6 +55,7 @@ export function NavegacionPaquetes({ permisos }: { permisos: string[] }) {
               }}
               aria-expanded={abierto}
               aria-controls={`paquete-${paquete.id}`}
+              aria-current={esSeleccionado ? 'true' : undefined}
               className={`group flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
                 esSeleccionado ? 'bg-lime-50' : 'hover:bg-slate-100'
               }`}
@@ -99,6 +101,23 @@ export function NavegacionPaquetes({ permisos }: { permisos: string[] }) {
           </div>
         )
       })}
+
+      {/* Entrada especial: muestra los módulos de todos los paquetes agrupados */}
+      <div className="border-t border-slate-200/80 pt-2">
+        <button
+          type="button"
+          onClick={() => seleccionar(TODOS)}
+          aria-current={seleccionado === TODOS ? 'true' : undefined}
+          className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+            seleccionado === TODOS
+              ? 'bg-[#BDEB9D] font-semibold text-slate-900'
+              : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+        >
+          <IconoCuadricula className="h-5 w-5 shrink-0" />
+          <span className="truncate">Todos los módulos</span>
+        </button>
+      </div>
     </nav>
   )
 }
@@ -133,6 +152,28 @@ function Flecha({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
+/** Icono de cuadrícula (cuatro cuadritos) para «Todos los módulos». */
+function IconoCuadricula({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect width="7" height="7" x="3" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="14" rx="1" />
+      <rect width="7" height="7" x="3" y="14" rx="1" />
     </svg>
   )
 }

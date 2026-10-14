@@ -39,7 +39,7 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 | `Home` (`src/app/page.tsx`) | Server | Filtra los módulos por permiso en el servidor; el filtrado por paquete lo hace `PanelModulos` (Client) con el estado compartido |
 | `NavegacionPaquetes` (`src/components/sidebar-nav.tsx`) | Client | Acordeón por paquete (estado de apertura) y comparte la selección con el Dashboard vía contexto |
 | `PaqueteSeleccionadoProvider` (`src/components/paquete-seleccionado.tsx`) | Client | Contexto con el paquete seleccionado, montado en el layout para que Sidebar y Dashboard lean/escriban lo mismo |
-| `PanelModulos` (`src/components/panel-modulos.tsx`) | Client | Pestañas Todos/P1–P4 y grid de tarjetas filtradas por la selección compartida |
+| `PanelModulos` (`src/components/panel-modulos.tsx`) | Client | Renderiza las tarjetas filtradas por la selección del Sidebar (un paquete) o agrupadas (Todos los módulos) |
 | `LoginForm`, `RecuperarForm`, `PerfilForm` | Client | Usan `useActionState` (estado, errores, botón «pendiente») y `useState` (mostrar contraseña) |
 | `AdministrarUsuariosPage` | Client | Tabla con filtros locales, modal y *toggles*. Obtiene los datos llamando a Server Actions desde `useEffect` |
 | `RolesPage` | Client | Interruptores y selección de rol con estado local; guarda con una Server Action |
@@ -146,9 +146,10 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 - **Técnica:** `src/app/usuarios/layout.tsx` ejecuta `requerirAccesoModulo`, y cada Server Action ejecuta `tienePermisoModulo`.
 
 ### `src/app/page.tsx` (dashboard)
-- **Qué hace:** muestra el saludo, el rol y las tarjetas de los módulos de los paquetes habilitados (P1 y P2) filtradas por permiso. El grid y las pestañas de filtrado por paquete viven en `PanelModulos` (`src/components/panel-modulos.tsx`).
+- **Qué hace:** muestra el saludo, el rol y las tarjetas de los módulos de los paquetes habilitados (P1 y P2) filtradas por permiso. El grid lo renderiza `PanelModulos` (`src/components/panel-modulos.tsx`).
   - Con `?aviso=sin_permiso` muestra «No tiene permisos para acceder a este módulo.»
-  - Las pestañas **Todos / P1–P4** filtran las tarjetas; la selección se comparte con el Sidebar mediante `usePaqueteSeleccionado` (`src/components/paquete-seleccionado.tsx`): pulsar una cabecera de paquete en el menú también filtra el Dashboard.
+  - El paquete mostrado se elige **desde el Sidebar** (P1–P4 o «Todos los módulos»), vía el estado compartido `usePaqueteSeleccionado` (`src/components/paquete-seleccionado.tsx`). No hay pestañas en el Dashboard.
+  - Con «Todos los módulos» se muestran las tarjetas de todos los módulos, **agrupadas** por paquete.
   - P3 y P4 no tienen módulos: al seleccionarlos se muestra «estará disponible próximamente».
   - Si el rol no tiene módulos, muestra «No tienes módulos asignados a tu rol.»
 - **Pregunta:** «¿Qué ve un técnico al entrar?»
