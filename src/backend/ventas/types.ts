@@ -44,10 +44,8 @@ export interface Caja {
   monto_final_real: number | null;
   /** monto_final_real − monto_final_sistema (+ sobrante / − faltante) */
   monto_diferencia?: number | null;
-   observacion?: string | null;
+  observacion?: string | null;
   estado: EstadoCaja | string;
-  /** Nombre del usuario que abrió y cerró el turno (solo en la consulta de turnos) */
-  usuario_nombre?: string | null;
 }
 
 /** Tabla VENTA */
@@ -107,13 +105,11 @@ export interface Bitacora {
 
 /** cajaDTO → procesarAperturaOArqueo(). `ip` se guarda en bitacora.ip. */
 export type CajaDTO =
-  | { tipo: 'APERTURA'; usuarioId: number; montoInicial: number; ip?: string | null; usuarioNombre?: string | null }
+  | { tipo: 'APERTURA'; usuarioId: number; montoInicial: number; ip?: string | null }
   | {
       tipo: 'ARQUEO';
       usuarioId: number;
       ip?: string | null;
-      /** Nombre del usuario de la sesión, para la descripción de la bitácora */
-      usuarioNombre?: string | null;
       montoReal: number;
       observacion?: string;
       /** Caja a cerrar; si se indica y es de otro usuario, se rechaza */

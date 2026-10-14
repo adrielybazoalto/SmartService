@@ -140,14 +140,9 @@ export async function abrirCaja(
     const monto = typeof montoInicial === 'object' ? montoInicial?.monto_inicial : montoInicial;
     if (!numeroValido(monto)) return { ok: false, error: 'Ingrese un fondo inicial válido' };
 
-   const { db, usuarioId, ip, nombre } = await contexto();
-    const resultado = await procesarAperturaOArqueo(db, {
-      tipo: 'APERTURA',
-      usuarioId,
-      montoInicial: monto,
-      ip,
-      usuarioNombre: nombre,
-    }); revalidatePath('/ventas');
+    const { db, usuarioId, ip } = await contexto();
+    const resultado = await procesarAperturaOArqueo(db, { tipo: 'APERTURA', usuarioId, montoInicial: monto, ip });
+    revalidatePath('/ventas');
     return exito(resultado, `Caja #${resultado.caja.id} abierta`);
   } catch (e) {
     return falla(e, 'Error al abrir caja');
@@ -177,12 +172,11 @@ export async function cerrarCaja(params: {
     const monto = params?.montoReal ?? params?.monto_final_real;
     if (!numeroValido(monto)) return { ok: false, error: 'Ingrese el efectivo contado' };
 
-    const { db, usuarioId, ip, nombre } = await contexto();
+    const { db, usuarioId, ip } = await contexto();
     const resultado = await procesarAperturaOArqueo(db, {
       tipo: 'ARQUEO',
       usuarioId,
       ip,
-      usuarioNombre: nombre,
       montoReal: monto,
       observacion: params.observacion,
       cajaId: params.cajaId,
