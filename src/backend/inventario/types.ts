@@ -35,6 +35,9 @@ export interface ProductoInventarioDTO {
   activo: boolean
   /** stock disponible <= stock mínimo (RF16). */
   critico: boolean
+  /** URL o ruta de la imagen del producto (si tiene). */
+  imagenUrl: string | null
+  url_imagen?: string | null
 }
 
 export interface MovimientoKardexDTO {

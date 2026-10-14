@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useState, useTransition, type FormEvent } from 'react'
 import type { z } from 'zod'
 import {
   desactivarProductoAction,
@@ -88,6 +88,7 @@ interface ValoresProducto {
   precio_compra_actual: string
   margen_ganancia: string
   stock_minimo: string
+  url_imagen: string
 }
 
 function valoresDe(p: ProductoInventarioDTO | null): ValoresProducto {
@@ -100,7 +101,49 @@ function valoresDe(p: ProductoInventarioDTO | null): ValoresProducto {
     precio_compra_actual: p ? p.precioCompraActual.toFixed(2) : '',
     margen_ganancia: p ? p.margenGanancia.toFixed(2) : '',
     stock_minimo: p ? String(p.stockMinimo) : '',
+    url_imagen: p?.imagenUrl ?? p?.url_imagen ?? '',
   }
+}
+
+function VistaPreviaImagen({ url }: { url: string }) {
+  const [errorCarga, setErrorCarga] = useState(false)
+
+  useEffect(() => {
+    setErrorCarga(false)
+  }, [url])
+
+  if (errorCarga) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-2.5">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-base text-amber-600">
+          ⚠️
+        </div>
+        <div className="min-w-0 text-xs">
+          <p className="font-semibold text-amber-800">No se pudo cargar la imagen</p>
+          <p className="text-[11px] text-amber-700 leading-tight mt-0.5">
+            Asegúrate de ingresar un enlace directo a la imagen (.jpg, .png, .webp) o utiliza «Adjuntar» para cargar el archivo.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2">
+      <img
+        src={url}
+        alt="Vista previa"
+        className="h-16 w-16 shrink-0 rounded-lg object-cover border border-slate-200 bg-white"
+        onError={() => setErrorCarga(true)}
+      />
+      <div className="min-w-0 text-xs text-slate-500">
+        <p className="font-semibold text-slate-700">Vista previa</p>
+        <p className="truncate text-[11px] text-slate-400">
+          {url.startsWith('data:') ? 'Imagen local cargada' : url}
+        </p>
+      </div>
+    </div>
+  )
 }
 
 export function FormularioProducto({
@@ -113,12 +156,12 @@ export function FormularioProducto({
   producto: ProductoInventarioDTO | null
   categorias: CategoriaDTO[]
   onCerrar: () => void
-  onExito: (mensaje: string) => void
+  onExito: (mensaje: string, producto?: ProductoInventarioDTO) => void
 }) {
   const edicion = producto !== null
   const iniciales = valoresDe(producto)
   const [v, setV] = useState<ValoresProducto>(iniciales)
-  const { pendiente, errores, errorServidor, enviar } = useEnvio<ProductoInventarioDTO>((m) => onExito(m))
+  const { pendiente, errores, errorServidor, enviar } = useEnvio<ProductoInventarioDTO>((m, data) => onExito(m, data))
   const cambiar = (campo: keyof ValoresProducto) => (e: { target: { value: string } }) =>
     setV((anterior) => ({ ...anterior, [campo]: e.target.value }))
 
@@ -142,6 +185,7 @@ export function FormularioProducto({
         ...(v.precio_compra_actual.trim() && { precio_compra_actual: v.precio_compra_actual }),
         ...(v.margen_ganancia.trim() && { margen_ganancia: v.margen_ganancia }),
         ...(v.stock_minimo.trim() && { stock_minimo: v.stock_minimo }),
+        ...(v.url_imagen.trim() && { url_imagen: v.url_imagen.trim() }),
       }
       enviar(registrarProductoSchema.safeParse(entrada), () => registrarProductoAction(entrada))
       return
@@ -158,6 +202,7 @@ export function FormularioProducto({
       ...(cambio('precio_compra_actual') && { precio_compra_actual: v.precio_compra_actual }),
       ...(cambio('margen_ganancia') && { margen_ganancia: v.margen_ganancia }),
       ...(cambio('stock_minimo') && { stock_minimo: v.stock_minimo }),
+      ...(cambio('url_imagen') && { url_imagen: v.url_imagen.trim() || null }),
     }
     enviar(modificarProductoSchema.safeParse(entrada), () => modificarProductoAction(entrada))
   }
@@ -203,6 +248,54 @@ export function FormularioProducto({
 
         <Campo etiqueta="Descripción técnica" htmlFor="descripcion_tecnica" error={errores.descripcion_tecnica}>
           <textarea id="descripcion_tecnica" value={v.descripcion_tecnica} onChange={cambiar('descripcion_tecnica')} rows={2} maxLength={2000} className="campo-input" {...describir('descripcion_tecnica', errores)} />
+        </Campo>
+
+        <Campo etiqueta="Imagen del producto" htmlFor="url_imagen" error={errores.url_imagen} ayuda="Ingresa un enlace directo a la imagen (.jpg, .png, .webp) o adjunta un archivo">
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                id="url_imagen"
+                value={v.url_imagen}
+                onChange={cambiar('url_imagen')}
+                placeholder="https://... o ruta directa de imagen"
+                className="campo-input flex-1"
+                {...describir('url_imagen', errores)}
+              />
+              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shrink-0">
+                <span>📁 Adjuntar</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const archivo = e.target.files?.[0]
+                    if (archivo) {
+                      const lector = new FileReader()
+                      lector.onload = (evento) => {
+                        const resultado = evento.target?.result as string
+                        if (resultado) {
+                          setV((anterior) => ({ ...anterior, url_imagen: resultado }))
+                        }
+                      }
+                      lector.readAsDataURL(archivo)
+                    }
+                  }}
+                />
+              </label>
+              {v.url_imagen && (
+                <button
+                  type="button"
+                  onClick={() => setV((anterior) => ({ ...anterior, url_imagen: '' }))}
+                  className="cursor-pointer rounded-xl border border-slate-200 px-2.5 py-2 text-xs text-rose-600 hover:bg-rose-50"
+                  title="Quitar imagen"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {v.url_imagen && <VistaPreviaImagen url={v.url_imagen} />}
+          </div>
         </Campo>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
