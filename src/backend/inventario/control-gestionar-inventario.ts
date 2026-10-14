@@ -23,7 +23,7 @@ import type {
 } from './types'
 
 const COLUMNAS_PRODUCTO =
-  'id, codigo, nombre, descripcion_tecnica, unidad_medida, margen_ganancia, precio_compra_actual, stock_disponible, stock_minimo, estado, categoria_producto(id, nombre)'
+  'id, codigo, nombre, descripcion_tecnica, unidad_medida, margen_ganancia, precio_compra_actual, stock_disponible, stock_minimo, estado, categoria_producto(id, nombre), imagen_producto(id, url_imagen, es_principal, orden)'
 
 type FilaProducto = {
   id: number
@@ -37,11 +37,16 @@ type FilaProducto = {
   stock_minimo: string | number
   estado: boolean
   categoria_producto: { id: number; nombre: string } | null
+  imagen_producto?: Array<{ id?: number; url_imagen: string; es_principal?: boolean; orden?: number }> | null
 }
 
 function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
   const stock = aNumero(p.stock_disponible)
   const minimo = aNumero(p.stock_minimo)
+  const imagenes = Array.isArray(p.imagen_producto) ? p.imagen_producto : []
+  const imgPrincipal = imagenes.find((i) => i.es_principal) ?? imagenes[0]
+  const imagenUrl = imgPrincipal?.url_imagen ?? null
+
   return {
     id: p.id,
     codigo: p.codigo,
@@ -55,6 +60,8 @@ function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
     stockMinimo: minimo,
     activo: p.estado,
     critico: esStockCritico(stock, minimo),
+    imagenUrl,
+    url_imagen: imagenUrl,
   }
 }
 
@@ -70,6 +77,35 @@ async function auditar(db: Db, usuarioId: number, accion: string, descripcion: s
   } catch (e) {
     console.error(`[CU16] No se pudo registrar ${accion} en la bitácora:`, e)
   }
+}
+
+async function normalizarUrlImagen(db: Db, urlImagen: string): Promise<string> {
+  if (!urlImagen.startsWith('data:')) return urlImagen
+  try {
+    const match = urlImagen.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/)
+    if (!match) return urlImagen
+    const mimeType = match[1]
+    const base64Data = match[2]
+    const buffer = Buffer.from(base64Data, 'base64')
+    const ext = mimeType.split('/')[1]?.replace('+xml', '') || 'png'
+    const fileName = `prod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+    if ((db as any).storage) {
+      const { error } = await (db as any).storage
+        .from('productos')
+        .upload(fileName, buffer, { contentType: mimeType, upsert: true })
+
+      if (!error) {
+        const { data: publicData } = (db as any).storage.from('productos').getPublicUrl(fileName)
+        if (publicData?.publicUrl) return publicData.publicUrl
+      } else {
+        console.error('[CU16] Error al subir imagen a storage:', error)
+      }
+    }
+  } catch (err) {
+    console.error('[CU16] Error al procesar imagen base64:', err)
+  }
+  return urlImagen
 }
 
 /**
@@ -165,7 +201,7 @@ export class ControlGestionarInventario {
   /** Alta de producto con stock 0 (el stock solo entra por el kárdex). */
   static async registrarProducto(db: Db, usuarioId: number, input: RegistrarProductoInput): Promise<ProductoInventarioDTO> {
     const d = registrarProductoSchema.parse(input)
-    const { data, error } = await comoDbCU16(db)
+    let { data, error } = await comoDbCU16(db)
       .from('producto')
       .insert({
         codigo: d.codigo,
@@ -181,9 +217,54 @@ export class ControlGestionarInventario {
       })
       .select(COLUMNAS_PRODUCTO)
       .single()
-    if (error) throw traducirErrorBD(error, 'No se pudo registrar el producto')
 
-    const producto = aProductoDTO(data)
+    // Si la secuencia de IDs de la BD estuviera desfasada respecto a semillas anteriores, reintentar
+    if (error && error.code === '23505' && error.message?.includes('producto_pkey')) {
+      for (let intento = 0; intento < 5 && error; intento++) {
+        const retry = await comoDbCU16(db)
+          .from('producto')
+          .insert({
+            codigo: d.codigo,
+            nombre: d.nombre,
+            descripcion_tecnica: d.descripcion_tecnica,
+            unidad_medida: d.unidad_medida,
+            margen_ganancia: d.margen_ganancia.toFixed(2),
+            precio_compra_actual: d.precio_compra_actual.toFixed(2),
+            stock_minimo: d.stock_minimo.toFixed(2),
+            stock_disponible: '0.00',
+            estado: true,
+            categoria_id: d.categoria_id,
+          })
+          .select(COLUMNAS_PRODUCTO)
+          .single()
+        data = retry.data
+        error = retry.error
+      }
+    }
+
+    if (error || !data) throw traducirErrorBD(error, 'No se pudo registrar el producto')
+
+    const item: FilaProducto = data
+
+    if (d.url_imagen && d.url_imagen.trim()) {
+      let urlLimpia = d.url_imagen.trim()
+      if (urlLimpia.startsWith('data:')) {
+        urlLimpia = await normalizarUrlImagen(db, urlLimpia)
+      }
+      try {
+        await db.from('imagen_producto').insert({
+          producto_id: item.id,
+          url_imagen: urlLimpia,
+          es_principal: true,
+          orden: 1,
+        })
+        item.imagen_producto = [{ url_imagen: urlLimpia, es_principal: true, orden: 1 }]
+      } catch (errImg) {
+        console.error('[CU16] Error al registrar imagen:', errImg)
+      }
+    }
+
+    const producto = aProductoDTO(item)
     await auditar(db, usuarioId, 'NUEVO_PRODUCTO', `Alta del producto «${producto.nombre}» (código ${producto.codigo}, ID ${producto.id}) con stock 0`)
     return producto
   }
@@ -212,14 +293,63 @@ export class ControlGestionarInventario {
       ...(d.categoria_id !== undefined && { categoria_id: d.categoria_id }),
     }
 
-    const { data, error } = await dbCU16
-      .from('producto')
-      .update(cambios)
-      .eq('id', d.producto_id)
-      .select(COLUMNAS_PRODUCTO)
-      .single()
-    if (error) throw traducirErrorBD(error, 'No se pudo modificar el producto')
-    const producto = aProductoDTO(data)
+    const { data, error } = Object.keys(cambios).length > 0
+      ? await dbCU16
+          .from('producto')
+          .update(cambios)
+          .eq('id', d.producto_id)
+          .select(COLUMNAS_PRODUCTO)
+          .single()
+      : await dbCU16
+          .from('producto')
+          .select(COLUMNAS_PRODUCTO)
+          .eq('id', d.producto_id)
+          .single()
+
+    if (error || !data) throw traducirErrorBD(error, 'No se pudo modificar el producto')
+
+    const item: FilaProducto = data
+
+    if (d.url_imagen !== undefined) {
+      let urlLimpia = d.url_imagen ? d.url_imagen.trim() : ''
+      if (urlLimpia.startsWith('data:')) {
+        urlLimpia = await normalizarUrlImagen(db, urlLimpia)
+      }
+      try {
+        const { data: imgsExistentes } = await db
+          .from('imagen_producto')
+          .select('id')
+          .eq('producto_id', d.producto_id)
+          .order('es_principal', { ascending: false })
+          .limit(1)
+
+        const imgExistente = imgsExistentes?.[0] ?? null
+
+        if (urlLimpia) {
+          if (imgExistente) {
+            await db
+              .from('imagen_producto')
+              .update({ url_imagen: urlLimpia, es_principal: true })
+              .eq('id', imgExistente.id)
+          } else {
+            await db.from('imagen_producto').insert({
+              producto_id: d.producto_id,
+              url_imagen: urlLimpia,
+              es_principal: true,
+              orden: 1,
+            })
+          }
+          item.imagen_producto = [{ url_imagen: urlLimpia, es_principal: true, orden: 1 }]
+        } else if (imgExistente) {
+          await db.from('imagen_producto').delete().eq('producto_id', d.producto_id)
+          item.imagen_producto = []
+        }
+      } catch (errImg) {
+        console.error('[CU16] Error al actualizar imagen:', errImg)
+      }
+    }
+
+    const producto = aProductoDTO(item)
 
     const precioAntes = aNumero(actual.precio_compra_actual)
     const margenAntes = aNumero(actual.margen_ganancia)

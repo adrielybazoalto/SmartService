@@ -14,6 +14,41 @@ import type {
 } from './types'
 
 /**
+ * Genera el siguiente número de cotización único para el año actual
+ * evitando colisiones con registros existentes (restricción unique).
+ */
+export async function generarSiguienteNumeroCotizacion(
+  db: Db,
+  offset: number = 0,
+): Promise<string> {
+  const anioActual = new Date().getFullYear()
+  const prefijo = `COT-${anioActual}-`
+
+  const { data: cotizaciones } = await db
+    .from('cotizacion')
+    .select('numero_cotizacion')
+    .like('numero_cotizacion', `${prefijo}%`)
+
+  let maxSecuencia = 0
+  if (cotizaciones && cotizaciones.length > 0) {
+    for (const c of cotizaciones) {
+      if (c.numero_cotizacion) {
+        const match = c.numero_cotizacion.match(/COT-\d{4}-(\d+)/i) || c.numero_cotizacion.match(/(\d+)$/)
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10)
+          if (!isNaN(num) && num > maxSecuencia) {
+            maxSecuencia = num
+          }
+        }
+      }
+    }
+  }
+
+  const siguienteSecuencia = maxSecuencia + 1 + offset
+  return `${prefijo}${String(siguienteSecuencia).padStart(4, '0')}`
+}
+
+/**
  * Crea una cotización con sus líneas de producto y servicio.
  * Calcula el total (subtotal de cada línea) y la persiste.
  * NOTA: no es una transacción atómica; los INSERT son secuenciales
@@ -35,21 +70,50 @@ export async function crearCotizacionConDetalles(
   )
   const total = totalProductos + totalServicios
 
-  const { data: cotizacion, error: errCot } = await db
-    .from('cotizacion')
-    .insert({
-      cliente_id: parsed.cliente_id,
-      establecimiento_id: parsed.establecimiento_id,
-      usuario_id: parsed.usuario_id,
-      numero_cotizacion: parsed.numero_cotizacion,
-      fecha_emision: parsed.fecha_emision ?? new Date().toISOString().slice(0, 10),
-      fecha_vencimiento: parsed.fecha_vencimiento,
-      estado: parsed.estado,
-      total: total.toFixed(2),
-    } as NuevaCotizacion)
-    .select()
-    .single()
-  if (errCot) throw new Error(`No se pudo crear la cotización: ${errCot.message}`)
+  let cotizacion: Cotizacion | null = null
+  let errCot: any = null
+  const maxIntentos = 5
+
+  for (let intento = 0; intento < maxIntentos; intento++) {
+    const numCot = parsed.numero_cotizacion && intento === 0
+      ? parsed.numero_cotizacion
+      : await generarSiguienteNumeroCotizacion(db, intento)
+
+    const res = await db
+      .from('cotizacion')
+      .insert({
+        cliente_id: parsed.cliente_id,
+        establecimiento_id: parsed.establecimiento_id,
+        usuario_id: parsed.usuario_id,
+        numero_cotizacion: numCot,
+        fecha_emision: parsed.fecha_emision ?? new Date().toISOString().slice(0, 10),
+        fecha_vencimiento: parsed.fecha_vencimiento,
+        estado: parsed.estado,
+        total: total.toFixed(2),
+      } as NuevaCotizacion)
+      .select()
+      .single()
+
+    if (res.error) {
+      if (
+        res.error.code === '23505' ||
+        res.error.message?.includes('cotizacion_numero_cotizacion_key') ||
+        res.error.message?.includes('duplicate key value')
+      ) {
+        continue
+      }
+      errCot = res.error
+      break
+    }
+
+    cotizacion = res.data
+    errCot = null
+    break
+  }
+
+  if (errCot || !cotizacion) {
+    throw new Error(`No se pudo crear la cotización: ${errCot?.message || 'Error al generar correlativo único'}`)
+  }
 
   if (parsed.items_producto.length > 0) {
     const lineas: NuevoDetalleCotizacionProducto[] = parsed.items_producto.map((i) => ({
