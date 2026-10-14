@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { PAQUETES } from '@/lib/navigation'
 import { EnlaceSidebar } from '@/components/sidebar-enlace'
+import { usePaqueteSeleccionado } from '@/components/paquete-seleccionado'
 
 /**
  * Navegación lateral por paquetes funcionales en formato acordeón.
@@ -13,26 +14,32 @@ import { EnlaceSidebar } from '@/components/sidebar-enlace'
  * contiene la ruta activa se muestra abierto por defecto (y P1 si la ruta no
  * pertenece a ninguno); el usuario puede abrir/cerrar cualquier paquete.
  *
+ * Además, la cabecera comparte su selección con la vista principal: al pulsar
+ * un paquete se actualiza `usePaqueteSeleccionado`, el mismo estado que usan
+ * las pestañas y las tarjetas del Dashboard (`panel-modulos.tsx`). El paquete
+ * seleccionado queda resaltado y se abre automáticamente.
+ *
  * Seguridad: un paquete deshabilitado (P3/P4) o un paquete habilitado sin
  * módulos permitidos para el rol muestran una indicación de bloqueo / sin
  * permisos en lugar de enlaces.
  */
 export function NavegacionPaquetes({ permisos }: { permisos: string[] }) {
   const pathname = usePathname()
+  const { seleccionado, seleccionar } = usePaqueteSeleccionado()
   const paqueteActivo = idDePaqueteActivo(pathname)
 
   // Solo se guardan las elecciones manuales del usuario; el resto se deriva
-  // del paquete activo para que, al navegar, se abra el paquete correcto.
+  // del paquete activo y del seleccionado para que se abran solos.
   const [elecciones, setElecciones] = useState<Record<string, boolean>>({})
 
-  const estaAbierto = (id: string) => elecciones[id] ?? id === paqueteActivo
-  const alternar = (id: string) =>
-    setElecciones((prev) => ({ ...prev, [id]: !estaAbierto(id) }))
+  const estaAbierto = (id: string) =>
+    elecciones[id] ?? (id === paqueteActivo || id === seleccionado)
 
   return (
     <nav className="space-y-2" aria-label="Navegación principal">
       {PAQUETES.map((paquete) => {
         const abierto = estaAbierto(paquete.id)
+        const esSeleccionado = seleccionado === paquete.id
         const visibles = paquete.items.filter(
           (item) => item.clave === '' || permisos.includes(item.clave),
         )
@@ -41,15 +48,22 @@ export function NavegacionPaquetes({ permisos }: { permisos: string[] }) {
           <div key={paquete.id}>
             <button
               type="button"
-              onClick={() => alternar(paquete.id)}
+              onClick={() => {
+                seleccionar(paquete.id)
+                setElecciones((prev) => ({ ...prev, [paquete.id]: !abierto }))
+              }}
               aria-expanded={abierto}
               aria-controls={`paquete-${paquete.id}`}
-              className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-100"
+              className={`group flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
+                esSeleccionado ? 'bg-lime-50' : 'hover:bg-slate-100'
+              }`}
             >
               <span
                 className={`text-[10px] font-bold uppercase leading-tight tracking-widest ${
                   paquete.habilitado
-                    ? 'text-slate-500 group-hover:text-slate-700'
+                    ? esSeleccionado
+                      ? 'text-slate-800'
+                      : 'text-slate-500 group-hover:text-slate-700'
                     : 'text-slate-400'
                 }`}
               >

@@ -26,7 +26,8 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
   - `src/app/login/login-form.tsx`, `src/app/recuperar/recuperar-form.tsx`, `src/app/perfil/perfil-form.tsx`;
   - `src/app/usuarios/page.tsx`, `src/app/roles/page.tsx`;
   - `src/app/bitacora/filtros-bitacora.tsx`, `src/app/bitacora/fecha-hora.tsx`;
-  - `src/components/sidebar-enlace.tsx`.
+  - `src/components/sidebar-nav.tsx`, `src/components/sidebar-enlace.tsx`;
+  - `src/components/paquete-seleccionado.tsx`, `src/components/panel-modulos.tsx`.
 - **Sin directiva (Server Components por defecto):** todos los demás `page.tsx`, los `layout.tsx` y `src/components/{sidebar,tarjeta-modulo,badge-rol,page-header-badge,icono-modulo}.tsx`.
 
 **Motivo de cada elección:**
@@ -35,7 +36,10 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 |---|---|---|
 | `SidebarLayout` (`src/components/sidebar.tsx:22`) | Server | Lee el usuario y los permisos de la BD antes de pintar el menú; nada de eso viaja al navegador salvo el HTML final |
 | `EnlaceSidebar` (`src/components/sidebar-enlace.tsx:13`) | Client | Necesita `usePathname()` para resaltar el enlace activo (L22-23) |
-| `Home` (`src/app/page.tsx`) | Server | Filtra las tarjetas por permiso en el servidor |
+| `Home` (`src/app/page.tsx`) | Server | Filtra los módulos por permiso en el servidor; el filtrado por paquete lo hace `PanelModulos` (Client) con el estado compartido |
+| `NavegacionPaquetes` (`src/components/sidebar-nav.tsx`) | Client | Acordeón por paquete (estado de apertura) y comparte la selección con el Dashboard vía contexto |
+| `PaqueteSeleccionadoProvider` (`src/components/paquete-seleccionado.tsx`) | Client | Contexto con el paquete seleccionado, montado en el layout para que Sidebar y Dashboard lean/escriban lo mismo |
+| `PanelModulos` (`src/components/panel-modulos.tsx`) | Client | Pestañas Todos/P1–P4 y grid de tarjetas filtradas por la selección compartida |
 | `LoginForm`, `RecuperarForm`, `PerfilForm` | Client | Usan `useActionState` (estado, errores, botón «pendiente») y `useState` (mostrar contraseña) |
 | `AdministrarUsuariosPage` | Client | Tabla con filtros locales, modal y *toggles*. Obtiene los datos llamando a Server Actions desde `useEffect` |
 | `RolesPage` | Client | Interruptores y selección de rol con estado local; guarda con una Server Action |
@@ -142,8 +146,10 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 - **Técnica:** `src/app/usuarios/layout.tsx` ejecuta `requerirAccesoModulo`, y cada Server Action ejecuta `tienePermisoModulo`.
 
 ### `src/app/page.tsx` (dashboard)
-- **Qué hace:** muestra el saludo, el rol y las tarjetas de los paquetes habilitados (P1 y P2) filtradas por permiso.
-  - Con `?aviso=sin_permiso` muestra «No tiene permisos para acceder a este módulo.» (L22, L43).
+- **Qué hace:** muestra el saludo, el rol y las tarjetas de los módulos de los paquetes habilitados (P1 y P2) filtradas por permiso. El grid y las pestañas de filtrado por paquete viven en `PanelModulos` (`src/components/panel-modulos.tsx`).
+  - Con `?aviso=sin_permiso` muestra «No tiene permisos para acceder a este módulo.»
+  - Las pestañas **Todos / P1–P4** filtran las tarjetas; la selección se comparte con el Sidebar mediante `usePaqueteSeleccionado` (`src/components/paquete-seleccionado.tsx`): pulsar una cabecera de paquete en el menú también filtra el Dashboard.
+  - P3 y P4 no tienen módulos: al seleccionarlos se muestra «estará disponible próximamente».
   - Si el rol no tiene módulos, muestra «No tienes módulos asignados a tu rol.»
 - **Pregunta:** «¿Qué ve un técnico al entrar?»
 - **Respuesta:** Con el seed, solo la tarjeta «Mi Perfil (CU05)». De los permisos del técnico, el único que pertenece a P1 es `PERFIL` (seed.sql:146-148), y las tarjetas excluyen Inicio. `COTIZACIONES` y `ORDENES_TRABAJO` no tienen tarjeta porque sus casos de uso (CU08 y CU10–CU13) aún no tienen ítem en `navigation.ts`.

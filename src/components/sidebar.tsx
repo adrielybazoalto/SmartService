@@ -5,6 +5,7 @@ import { getPermisosDeRol } from '@/lib/permisos'
 import { logoutAction } from '@/app/actions/auth'
 import { NavegacionPaquetes } from '@/components/sidebar-nav'
 import { BadgeRol } from '@/components/badge-rol'
+import { PaqueteSeleccionadoProvider } from '@/components/paquete-seleccionado'
 
 /**
  * LAYOUT GLOBAL (Sidebar izquierda + contenido) — tema claro "PULSE".
@@ -16,6 +17,9 @@ import { BadgeRol } from '@/components/badge-rol'
  *   P3 / P4 → paquetes deshabilitados en este ciclo: al desplegarlos indican
  *             «Bloqueado · sin permisos», sin enlaces.
  *
+ * `PaqueteSeleccionadoProvider` envuelve el layout para compartir el paquete
+ * seleccionado entre el Sidebar y las tarjetas del Dashboard (panel-modulos).
+ *
  * Sin sesión activa se devuelve la página tal cual (login, recuperar).
  */
 export async function SidebarLayout({ children }: { children: ReactNode }) {
@@ -25,7 +29,8 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
   const permisos = await getPermisosDeRol(usuario.rol_id)
 
   return (
-    <div className="flex min-h-screen bg-[#F4F5F7] text-slate-900">
+    <PaqueteSeleccionadoProvider>
+      <div className="flex min-h-screen bg-[#F4F5F7] text-slate-900">
       {/* ── Barra Lateral Izquierda (fija) ─────────────────────────── */}
       <aside className="sticky top-0 flex h-screen w-64 flex-col justify-between border-r border-slate-200/80 bg-white p-4">
         {/* Sección superior: logo y navegación por paquetes */}
@@ -77,6 +82,7 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
 
       {/* ── Área de contenido principal ────────────────────────────── */}
       <main className="min-w-0 flex-1">{children}</main>
-    </div>
+      </div>
+    </PaqueteSeleccionadoProvider>
   )
 }
