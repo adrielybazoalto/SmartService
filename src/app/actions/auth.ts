@@ -136,7 +136,7 @@ export async function loginAction(
       await registrarEvento(db, {
         usuario_id: usuario.id,
         accion: 'INICIO_SESION',
-        descripcion: `Inicio de sesión exitoso de ${usuario.correo} desde IP ${ip}`,
+        descripcion: `Inicio de sesión exitoso de ${usuario.correo}`,
       })
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
@@ -172,7 +172,7 @@ export async function logoutAction() {
       await registrarEvento(db, {
         usuario_id: usuario.id,
         accion: 'CIERRE_SESION',
-        descripcion: `Cierre de sesión de ${usuario.correo} desde IP ${ip}`,
+        descripcion: `Cierre de sesión de ${usuario.correo}`,
       })
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
