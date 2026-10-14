@@ -9,7 +9,7 @@ import { createSession, destroySession } from '@/lib/session'
 import { CU01 } from '@/lib/bloqueo-cu01'
 import { getCurrentUser } from '@/lib/auth'
 import { registrarEvento } from '@/backend/bitacora'
-import { headers } from 'next/headers'
+import { obtenerIpOrigen } from '@/lib/ip'
 
 const loginSchema = z.object({
   email: z.string().email('Correo inválido'),
@@ -109,8 +109,7 @@ export async function loginAction(
       password: String(formData.get('password') ?? ''),
     })
 
-    const headersList = await headers()
-    const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1'
+    const ip = await obtenerIpOrigen()
     const db = getSupabaseServiceClient()
 
     // Llamada unificada que se alinea con el diagrama
@@ -137,7 +136,7 @@ export async function loginAction(
         usuario_id: usuario.id,
         accion: 'INICIO_SESION',
         descripcion: `Inicio de sesión exitoso de ${usuario.correo} desde IP ${ip}`,
-      })
+      }, ip)
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
     }
@@ -165,15 +164,14 @@ export async function logoutAction() {
   if (usuario) {
     try {
       const db = getSupabaseServiceClient()
-      const headersList = await headers()
-      const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1'
+      const ip = await obtenerIpOrigen()
 
       // Equivalente al mensaje 2.2: registrarAcceso con 'CIERRE_SESION' e IP
       await registrarEvento(db, {
         usuario_id: usuario.id,
         accion: 'CIERRE_SESION',
         descripcion: `Cierre de sesión de ${usuario.correo} desde IP ${ip}`,
-      })
+      }, ip)
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
     }

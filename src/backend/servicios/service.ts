@@ -24,7 +24,7 @@ export async function listarServicios(
   filtros: FiltrarServiciosInput = {},
 ): Promise<Servicio[]> {
   const parsed = filtrarServiciosSchema.parse(filtros)
-  let query = db.from('servicio').select('*').order('nombre', { ascending: true })
+  let query = db.from('servicio').select('*').order('id', { ascending: true })
 
   if (parsed.q) query = query.ilike('nombre', `%${parsed.q}%`)
   if (parsed.estado === 'activos') query = query.eq('activo', true)
