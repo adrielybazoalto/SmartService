@@ -68,13 +68,13 @@ export function SidebarShell({
             Móvil/tablet: panel deslizante (off-canvas).
             md+: fijo a la izquierda (sticky), igual que en escritorio. */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 flex h-screen w-64 flex-col justify-between overflow-y-auto border-r border-slate-200/80 bg-white p-4 shadow-xl transition-transform duration-300 ease-out md:sticky md:top-0 md:z-auto md:translate-x-0 md:shadow-none ${
+          className={`fixed inset-y-0 left-0 z-40 flex h-screen w-64 flex-col overflow-hidden border-r border-slate-200/80 bg-white shadow-xl transition-transform duration-300 ease-out md:sticky md:top-0 md:z-auto md:translate-x-0 md:shadow-none ${
             abierto ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          {/* Sección superior: logo y navegación por paquetes */}
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          {/* Sección superior: logo y navegación por paquetes (scrollable) */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200/80 p-4">
               <Link
                 href="/"
                 className="block px-3 py-2 text-xl font-bold tracking-wider text-slate-900"
@@ -104,11 +104,13 @@ export function SidebarShell({
               </button>
             </div>
 
-            <NavegacionPaquetes permisos={permisos} />
+            <div className="flex-1 overflow-y-auto p-4">
+              <NavegacionPaquetes permisos={permisos} />
+            </div>
           </div>
 
-          {/* Sección inferior: usuario, rol y cerrar sesión */}
-          <div className="space-y-3 border-t border-slate-200/80 pt-4">
+          {/* Sección inferior: usuario, rol y cerrar sesión (siempre visible) */}
+          <div className="flex-shrink-0 space-y-3 border-t border-slate-200/80 p-4">
             <div className="flex items-center gap-3 px-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold uppercase text-slate-700">
                 {nombre.trim().charAt(0) || '?'}
