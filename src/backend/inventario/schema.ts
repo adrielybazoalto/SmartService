@@ -78,6 +78,12 @@ const camposProducto = {
   precio_compra_actual: monto('El precio de compra'),
   stock_minimo: monto('El stock mínimo'),
   categoria_id: id('La categoría'),
+  url_imagen: z
+    .string()
+    .trim()
+    .max(1000000, 'La imagen excede el tamaño permitido')
+    .nullish()
+    .transform((v) => (v ? v : null)),
 }
 
 /**
@@ -90,6 +96,7 @@ export const registrarProductoSchema = z.strictObject({
   margen_ganancia: camposProducto.margen_ganancia.default(0),
   precio_compra_actual: camposProducto.precio_compra_actual.default(0),
   stock_minimo: camposProducto.stock_minimo.default(0),
+  url_imagen: camposProducto.url_imagen.default(null),
 })
 
 /** Modificación: al menos un campo; el stock NO es modificable aquí. */
@@ -104,6 +111,7 @@ export const modificarProductoSchema = z
     precio_compra_actual: camposProducto.precio_compra_actual.optional(),
     stock_minimo: camposProducto.stock_minimo.optional(),
     categoria_id: camposProducto.categoria_id.optional(),
+    url_imagen: camposProducto.url_imagen.optional(),
   })
   .refine((v) => Object.keys(v).some((k) => k !== 'producto_id' && v[k as keyof typeof v] !== undefined), {
     message: 'No hay cambios que guardar',

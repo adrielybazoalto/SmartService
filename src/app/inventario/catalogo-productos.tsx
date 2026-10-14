@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import type { CategoriaDTO, ProductoInventarioDTO } from '@/backend/inventario/types'
 import type { CapacidadesInventario } from './acceso'
@@ -20,6 +21,42 @@ type Dialogo =
   | { tipo: 'editar' | 'inicial' | 'ajuste' | 'desactivar'; producto: ProductoInventarioDTO }
   | null
 
+function MiniaturaProducto({
+  src,
+  nombre,
+  className = 'h-10 w-10',
+}: {
+  src?: string | null
+  nombre: string
+  className?: string
+}) {
+  const [errorCarga, setErrorCarga] = useState(false)
+
+  useEffect(() => {
+    setErrorCarga(false)
+  }, [src])
+
+  if (!src || errorCarga) {
+    return (
+      <div
+        className={`flex ${className} shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-400 border border-slate-200/60`}
+        aria-label={`Sin imagen: ${nombre}`}
+      >
+        📦
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt={nombre}
+      className={`${className} shrink-0 rounded-lg object-cover border border-slate-200 bg-white`}
+      onError={() => setErrorCarga(true)}
+    />
+  )
+}
+
 /**
  * Catálogo de CU16 con las acciones que permite el rol. Las mutaciones llaman
  * a las Server Actions; éstas revalidan /inventario, así que la lista se
@@ -34,13 +71,32 @@ export function CatalogoProductos({
   categorias: CategoriaDTO[]
   capacidades: CapacidadesInventario
 }) {
+  const router = useRouter()
+  const [lista, setLista] = useState<ProductoInventarioDTO[]>(productos)
   const [dialogo, setDialogo] = useState<Dialogo>(null)
   const [exito, setExito] = useState<string | null>(null)
   const cerrar = useCallback(() => setDialogo(null), [])
-  const alExito = useCallback((mensaje: string) => {
-    setDialogo(null)
-    setExito(mensaje)
-  }, [])
+  const alExito = useCallback(
+    (mensaje: string, productoActualizado?: ProductoInventarioDTO) => {
+      setDialogo(null)
+      setExito(mensaje)
+      if (productoActualizado) {
+        setLista((anterior) => {
+          const existe = anterior.some((p) => p.id === productoActualizado.id)
+          if (existe) {
+            return anterior.map((p) => (p.id === productoActualizado.id ? productoActualizado : p))
+          }
+          return [productoActualizado, ...anterior]
+        })
+      }
+      router.refresh()
+    },
+    [router],
+  )
+
+  useEffect(() => {
+    setLista(productos)
+  }, [productos])
 
   useEffect(() => {
     if (!exito) return
@@ -80,7 +136,7 @@ export function CatalogoProductos({
         </div>
       )}
 
-      {productos.length === 0 ? (
+      {lista.length === 0 ? (
         <p className="tarjeta px-4 py-8 text-center text-sm text-slate-500">
           No hay productos que coincidan con los filtros.
         </p>
@@ -103,13 +159,18 @@ export function CatalogoProductos({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {productos.map((p) => (
+                  {lista.map((p) => (
                     <tr key={p.id} className={`transition-colors hover:bg-slate-50/80 ${p.activo && p.critico ? 'bg-rose-50/40' : ''} ${p.activo ? '' : 'text-slate-400'}`}>
                       <td className="px-4 py-3">
-                        <p className={`font-medium ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
-                        <p className="text-xs text-slate-500">
-                          <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'} · {p.unidadMedida}
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <MiniaturaProducto src={p.imagenUrl} nombre={p.nombre} className="h-10 w-10" />
+                          <div className="min-w-0">
+                            <p className={`font-medium ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
+                            <p className="text-xs text-slate-500">
+                              <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'} · {p.unidadMedida}
+                            </p>
+                          </div>
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">{formatoBs(p.precioCompraActual)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">{formatoNumero(p.margenGanancia)} %</td>
@@ -133,14 +194,17 @@ export function CatalogoProductos({
 
           {/* Móvil: tarjetas */}
           <ul className="space-y-3 md:hidden">
-            {productos.map((p) => (
+            {lista.map((p) => (
               <li key={p.id} className={`tarjeta p-4 ${p.activo && p.critico ? 'border-rose-200' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className={`font-semibold ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'}
-                    </p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <MiniaturaProducto src={p.imagenUrl} nombre={p.nombre} className="h-11 w-11" />
+                    <div className="min-w-0">
+                      <p className={`font-semibold ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'}
+                      </p>
+                    </div>
                   </div>
                   <EstadoProducto activo={p.activo} critico={p.critico} />
                 </div>
