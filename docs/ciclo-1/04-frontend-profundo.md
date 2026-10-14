@@ -112,7 +112,7 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 - ✅ Los inputs del login tienen `aria-label` (`login-form.tsx:95,124`).
 - ✅ El botón de mostrar contraseña tiene un `aria-label` dinámico (L133).
 - ✅ Los interruptores de roles usan `role="switch"` y `aria-checked` (`roles/page.tsx:254-256`).
-- ✅ El Sidebar marca el enlace activo con `aria-current` (`sidebar-enlace.tsx:28`) y los paquetes bloqueados con `aria-disabled` (`sidebar.tsx`).
+- ✅ El Sidebar marca el enlace activo con `aria-current` (`sidebar-enlace.tsx:28`) y cada cabecera de paquete es un botón acordeón con `aria-expanded` / `aria-controls` (`sidebar-nav.tsx`).
 - ✅ El perfil usa `<label htmlFor>` (`perfil-form.tsx:70,107…`).
 - ⚠️ En el modal de usuarios, los `<label>` no tienen `htmlFor` (L391, L403…): no quedan asociados a su input.
 - ⚠️ Los mensajes de error y éxito no usan `aria-live` ni `role="alert"`.
@@ -133,9 +133,10 @@ En el App Router, **cada carpeta de `src/app/` con un `page.tsx` es una URL**. U
 - **Técnica:** `SidebarLayout` llama a `getCurrentUser()`. Si devuelve `null`, retorna solo `children` (`sidebar.tsx:23-24`), que es el caso de `/login` y `/recuperar`.
 
 ### `src/components/sidebar.tsx`
-- **Qué hace:** recorre `PAQUETES`.
-  - En los paquetes habilitados (P1 y P2), muestra solo los ítems cuya `clave` está en `getPermisosDeRol()`, o con clave vacía (Inicio).
-  - P3 y P4 se muestran como bloques no clicables: `pointer-events-none`, `aria-disabled`, sin `href`.
+- **Qué hace:** verifica la sesión y delega la navegación en `NavegacionPaquetes` (`src/components/sidebar-nav.tsx`, Client Component).
+  - Cada paquete (P1–P4) es una cabecera acordeón clicable con una flecha; al pulsarla se muestran u ocultan sus módulos (estado por paquete). El paquete de la ruta activa abre por defecto.
+  - En los paquetes habilitados (P1 y P2), solo aparecen los ítems cuya `clave` está en `getPermisosDeRol()`, o con clave vacía (Inicio); si el rol no tiene ninguno, se indica «Sin módulos asignados a tu rol».
+  - P3 y P4, al desplegarse, muestran «Bloqueado · sin permisos»: no hay enlaces.
 - **Pregunta:** «¿Ocultar el menú es la seguridad?»
 - **Respuesta corta:** No. El menú es comodidad; la seguridad está en el layout y la acción de cada módulo.
 - **Técnica:** `src/app/usuarios/layout.tsx` ejecuta `requerirAccesoModulo`, y cada Server Action ejecuta `tienePermisoModulo`.
