@@ -132,7 +132,6 @@ function mapCaja(row: any): Caja {
     monto_diferencia: row.monto_diferencia == null ? null : num(row.monto_diferencia),
     observacion: row.observacion ?? null,
     estado: row.estado,
-    usuario_nombre: row.usuario?.nombre ?? null,
   };
 }
 
@@ -249,9 +248,6 @@ export async function obtenerResumenCaja(db: Db, usuarioId: number): Promise<Res
  *  - ARQUEO: fn_cerrar_caja calcula el efectivo esperado, la diferencia con
  *    el conteo físico y cierra la caja en una transacción; registra ARQUEO_CAJA.
  */
-/** Nombre de quien abre o cierra la caja (si no llega, el número de usuario) */
-const quien = (dto: CajaDTO) => dto.usuarioNombre?.trim() || `usuario #${dto.usuarioId}`;
-
 export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise<ResultadoCaja> {
   if (cajaDTO.tipo === 'APERTURA') {
     const { montoInicial } = validar(aperturaCajaSchema, cajaDTO);
@@ -270,8 +266,8 @@ export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise
       db,
       cajaDTO.usuarioId,
       'APERTURA_CAJA',
-    `Apertura de caja #${caja.id} por ${quien(cajaDTO)} con fondo inicial Bs ${montoInicial.toFixed(2)}`,
-     cajaDTO.ip ?? null
+      `Apertura de caja #${caja.id} con fondo inicial Bs ${montoInicial.toFixed(2)}`,
+      cajaDTO.ip ?? null
     );
     return { caja };
   }
@@ -300,7 +296,7 @@ export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise
     db,
     cajaDTO.usuarioId,
     'ARQUEO_CAJA',
-    `Cierre de caja #${caja.id} por ${quien(cajaDTO)}: esperado Bs ${esperado.toFixed(2)}, contado Bs ${montoReal.toFixed(2)}, ` +
+    `Cierre de caja #${caja.id}: esperado Bs ${esperado.toFixed(2)}, contado Bs ${montoReal.toFixed(2)}, ` +
       `diferencia Bs ${diferencia.toFixed(2)} (${tipoDif}). Ventas: ${resumen.cantidad_ventas}, ` +
       `total Bs ${resumen.total_vendido.toFixed(2)}` +
       (observacion ? `. Obs: ${observacion}` : ''),
@@ -312,13 +308,14 @@ export async function procesarAperturaOArqueo(db: Db, cajaDTO: CajaDTO): Promise
 
 /** Subflujo "Consultar turnos": turnos cerrados con su diferencia */
 export async function listarTurnosCerrados(db: Db, limite = 20): Promise<Caja[]> {
-  const tope = Math.min(Math.max(1, limite), 100);
-  const consulta = (columnas: string) =>
-    db.from('caja').select(columnas).eq('estado', 'CERRADA').order('fecha_cierre', { ascending: false }).limit(tope);
-  // Con el nombre del usuario que abrió y cerró el turno; si la relación no existe, sin el nombre
-  let { data, error } = await consulta('*, usuario:usuario_id(nombre)');
-  if (error) ({ data, error } = await consulta('*'));
-  if (error) throw errorBD(error, 'No se pudieron cargar los turnos');return ((data ?? []) as any[]).map((row) => {
+  const { data, error } = await db
+    .from('caja')
+    .select('*')
+    .eq('estado', 'CERRADA')
+    .order('fecha_cierre', { ascending: false })
+    .limit(Math.min(Math.max(1, limite), 100));
+  if (error) throw errorBD(error, 'No se pudieron cargar los turnos');
+  return ((data ?? []) as any[]).map((row) => {
     const c = mapCaja(row);
     if (c.monto_diferencia == null && c.monto_final_real != null && c.monto_final_sistema != null) {
       c.monto_diferencia = calcularDiferenciaArqueo(c.monto_final_sistema, c.monto_final_real);
