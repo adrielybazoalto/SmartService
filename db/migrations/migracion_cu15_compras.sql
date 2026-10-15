@@ -447,29 +447,14 @@ BEGIN
                    AND c.id <> v_compra.id
                    AND c.fecha_compra > p_fecha_compra);
 
-        -- Precio pactado con el proveedor (misma regla, limitada a este proveedor).
-        -- UPDATE + INSERT en vez de ON CONFLICT: no exige el índice único de CU14.
-        -- El producto ya está bloqueado (fn_kardex_aplicar), así que dos compras
-        -- del mismo producto no pueden crear el vínculo a la vez.
-        IF EXISTS (SELECT 1 FROM public.producto_proveedor pp
-                    WHERE pp.producto_id = v_linea.producto_id
-                      AND pp.proveedor_id = p_proveedor_id) THEN
-            UPDATE public.producto_proveedor pp
-               SET precio_compra       = v_linea.costo_unitario,
-                   fecha_actualizacion = now()
-             WHERE pp.producto_id = v_linea.producto_id
-               AND pp.proveedor_id = p_proveedor_id
-               AND NOT EXISTS (
-                    SELECT 1
-                      FROM public.detalle_compra d
-                      JOIN public.compra c ON c.id = d.compra_id
-                     WHERE d.producto_id = v_linea.producto_id
-                       AND c.proveedor_id = p_proveedor_id
-                       AND c.id <> v_compra.id
-                       AND c.fecha_compra > p_fecha_compra);
-        ELSE
-            INSERT INTO public.producto_proveedor (producto_id, proveedor_id, precio_compra, fecha_actualizacion)
-            VALUES (v_linea.producto_id, p_proveedor_id, v_linea.costo_unitario, now());
+        -- Validación estricta CU14 / CU15: El producto debe pertenecer previamente al catálogo del proveedor.
+        -- No se insertan automáticamente nuevos productos en producto_proveedor para no alterar las métricas
+        -- ni el catálogo registrado de forma no autorizada.
+        IF NOT EXISTS (SELECT 1 FROM public.producto_proveedor pp
+                        WHERE pp.producto_id = v_linea.producto_id
+                          AND pp.proveedor_id = p_proveedor_id) THEN
+            RAISE EXCEPTION 'El producto % no pertenece al catálogo del proveedor seleccionado', v_linea.producto_id
+                USING ERRCODE = '22023';
         END IF;
 
         v_lineas := v_lineas || jsonb_build_object(

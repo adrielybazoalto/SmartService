@@ -123,24 +123,37 @@ export function FormularioCompra({
   // ------------------------------------------------------------ proveedor
 
   async function cambiarProveedor(proveedorId: string) {
-    const siguiente = { ...v, proveedorId }
+    // Si cambia de proveedor, se reinician las líneas para evitar compras cruzadas de productos
+    const siguiente = { ...v, proveedorId, lineas: [] }
     setV(siguiente)
-    limpiarError('proveedor_id')
+    setBusqueda('')
+    limpiarError('proveedor_id', 'items')
     void verificarDocumento(siguiente)
-    // Recarga el catálogo con el precio pactado de este proveedor (referencia de costo)
+
+    if (!proveedorId) {
+      setProductos([])
+      setErrorProductos(null)
+      return
+    }
+
+    // Recarga únicamente los productos asociados al catálogo de este proveedor (CU14)
     const n = ++peticionProductos.current
     setCargandoProductos(true)
     try {
-      const r = await listarProductosCompraAction(proveedorId ? { proveedor_id: proveedorId } : {})
+      const r = await listarProductosCompraAction({ proveedor_id: proveedorId })
       if (n !== peticionProductos.current) return
       if (r.ok) {
         setProductos(r.data)
         setErrorProductos(null)
       } else {
         setErrorProductos(r.mensaje)
+        setProductos([])
       }
     } catch {
-      if (n === peticionProductos.current) setErrorProductos(MENSAJE_SIN_CONEXION)
+      if (n === peticionProductos.current) {
+        setErrorProductos(MENSAJE_SIN_CONEXION)
+        setProductos([])
+      }
     } finally {
       if (n === peticionProductos.current) setCargandoProductos(false)
     }
@@ -375,9 +388,14 @@ export function FormularioCompra({
           {/* --------------------------------------------------- productos */}
           <section aria-labelledby="sec-productos" className="tarjeta p-5 sm:p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 id="sec-productos" className="text-base font-bold text-slate-900">
-                2. Productos comprados
-              </h2>
+              <div>
+                <h2 id="sec-productos" className="text-base font-bold text-slate-900">
+                  2. Productos comprados
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Solo se permiten productos previamente registrados en el Catálogo de Mayorista del proveedor seleccionado (CU14).
+                </p>
+              </div>
               <p className="text-xs text-slate-500">
                 {v.lineas.length} / {MAX_LINEAS_COMPRA} líneas
               </p>
@@ -386,7 +404,7 @@ export function FormularioCompra({
             {/* Búsqueda */}
             <div className="relative mt-4">
               <label htmlFor="buscar-producto" className={etiqueta}>
-                Buscar producto
+                Buscar producto en el catálogo del proveedor
               </label>
               <div className="relative">
                 <input
@@ -404,10 +422,16 @@ export function FormularioCompra({
                   }}
                   maxLength={100}
                   autoComplete="off"
-                  placeholder={limiteLineas ? 'Se alcanzó el máximo de líneas' : 'Nombre o código del producto…'}
-                  disabled={limiteLineas}
+                  placeholder={
+                    !v.proveedorId
+                      ? 'Seleccione un proveedor primero para ver y buscar productos de su catálogo…'
+                      : limiteLineas
+                        ? 'Se alcanzó el máximo de líneas'
+                        : 'Nombre o código del producto en el catálogo…'
+                  }
+                  disabled={limiteLineas || !v.proveedorId}
                   aria-controls="resultados-productos"
-                  className="campo-input pr-10"
+                  className="campo-input pr-10 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                 />
                 {cargandoProductos && (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -417,11 +441,24 @@ export function FormularioCompra({
               </div>
               {errorProductos && <p className="mt-2 text-xs font-medium text-rose-600">⚠ {errorProductos}</p>}
 
+              {/* Indicador cuando el proveedor no tiene productos en su catálogo de CU14 */}
+              {v.proveedorId && !cargandoProductos && productos.length === 0 && !errorProductos && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <p className="font-semibold">Este proveedor no tiene productos registrados en su catálogo (CU14).</p>
+                  <p className="mt-0.5 text-amber-700">
+                    Para registrar compras de este proveedor, primero debe asociarle productos en{' '}
+                    <Link href="/proveedores" className="underline font-bold hover:text-amber-900">
+                      Proveedores → Catálogo del mayorista
+                    </Link>.
+                  </p>
+                </div>
+              )}
+
               {busqueda.trim() && (
                 <ul id="resultados-productos" aria-label="Resultados de la búsqueda" className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                   {resultados.length === 0 ? (
                     <li className="px-4 py-3 text-sm text-slate-500">
-                      {productos.length === 0 ? 'No hay productos activos en el catálogo.' : 'Ningún producto activo coincide con la búsqueda.'}
+                      {productos.length === 0 ? 'No hay productos en el catálogo de este proveedor.' : 'Ningún producto del catálogo coincide con la búsqueda.'}
                     </li>
                   ) : (
                     resultados.map((p) => {

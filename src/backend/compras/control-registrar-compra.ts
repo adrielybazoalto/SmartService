@@ -60,8 +60,9 @@ export class ControlRegistrarCompra {
   }
 
   /**
-   * Productos activos del catálogo (paso 3). Con `proveedor_id` se agrega el
-   * precio pactado con ese proveedor como referencia de costo.
+   * Productos activos del catálogo del proveedor seleccionado (CU14).
+   * Solo devuelve los artículos que se encuentran registrados previamente en el
+   * "Catálogo del mayorista" (producto_proveedor) de ese proveedor en específico.
    */
   static async listarProductosDisponibles(
     db: Db,
@@ -70,25 +71,40 @@ export class ControlRegistrarCompra {
     const f = filtrosProductosCompraSchema.parse(filtros)
     const dbCU15 = comoDbCU15(db)
 
+    // Si no se especifica un proveedor, no se devuelven productos para compra
+    if (!f.proveedor_id) {
+      return []
+    }
+
+    // 1. Consultar únicamente los productos registrados para este proveedor en CU14
+    const { data: pactados, error: pactadosError } = await dbCU15
+      .from('producto_proveedor')
+      .select('producto_id, precio_compra')
+      .eq('proveedor_id', f.proveedor_id)
+
+    if (pactadosError) throw traducirErrorBDCompras(pactadosError, 'No se pudieron cargar los precios pactados')
+    if (!pactados || pactados.length === 0) {
+      return []
+    }
+
+    const idsPermitidos = pactados.map((pp) => pp.producto_id)
+    const precioPactado = new Map(pactados.map((pp) => [pp.producto_id, aNumero(pp.precio_compra)]))
+
+    // 2. Consultar los detalles de inventario solo de los productos autorizados
     let consulta = dbCU15
       .from('producto')
       .select('id, codigo, nombre, unidad_medida, precio_compra_actual, stock_disponible, categoria_producto(nombre)')
       .eq('estado', true)
+      .in('id', idsPermitidos)
       .order('nombre', { ascending: true })
+
     const texto = f.texto ? sanitizarBusqueda(f.texto) : ''
     if (texto) consulta = consulta.or(`nombre.ilike.%${texto}%,codigo.ilike.%${texto}%`)
 
-    const [productos, pactados] = await Promise.all([
-      consulta,
-      f.proveedor_id
-        ? dbCU15.from('producto_proveedor').select('producto_id, precio_compra').eq('proveedor_id', f.proveedor_id)
-        : Promise.resolve({ data: [], error: null }),
-    ])
-    if (productos.error) throw traducirErrorBDCompras(productos.error, 'No se pudieron cargar los productos')
-    if (pactados.error) throw traducirErrorBDCompras(pactados.error, 'No se pudieron cargar los precios pactados')
+    const { data: productos, error: productosError } = await consulta
+    if (productosError) throw traducirErrorBDCompras(productosError, 'No se pudieron cargar los productos')
 
-    const precioPactado = new Map(pactados.data.map((pp) => [pp.producto_id, aNumero(pp.precio_compra)]))
-    return productos.data.map((p) => ({
+    return (productos ?? []).map((p) => ({
       id: p.id,
       codigo: p.codigo,
       nombre: p.nombre,
@@ -139,7 +155,27 @@ export class ControlRegistrarCompra {
     ip: string | null = null,
   ): Promise<ComprobanteIngresoDTO> {
     const d = registrarCompraSchema.parse(input)
-    const { data, error } = await comoDbCU15(db).rpc('fn_registrar_compra', {
+    const dbCU15 = comoDbCU15(db)
+
+    // Restricción estricta de negocio: Validar que todos los productos a comprar pertenezcan
+    // previamente al catálogo del proveedor (CU14) para evitar asociaciones no autorizadas.
+    const { data: catalogo, error: errorCat } = await dbCU15
+      .from('producto_proveedor')
+      .select('producto_id')
+      .eq('proveedor_id', d.proveedor_id)
+
+    if (errorCat) throw traducirErrorBDCompras(errorCat, 'No se pudo verificar el catálogo del proveedor')
+
+    const idsPermitidos = new Set((catalogo ?? []).map((c) => c.producto_id))
+    const noPermitidos = d.items.filter((i) => !idsPermitidos.has(i.producto_id))
+
+    if (noPermitidos.length > 0) {
+      throw new ErrorCompras(
+        'La compra incluye artículos que no pertenecen al catálogo registrado para este proveedor (CU14).'
+      )
+    }
+
+    const { data, error } = await dbCU15.rpc('fn_registrar_compra', {
       p_usuario_id: usuarioId,
       p_proveedor_id: d.proveedor_id,
       p_tipo_documento: d.tipo_documento,
