@@ -48,6 +48,10 @@ export interface ProductoInventarioDTO {
   imagenPrincipal: ImagenProductoDTO | null
   /** Las demás fotos, en orden, para el detalle del producto. */
   imagenesAdicionales: ImagenProductoDTO[]
+  /** URL o ruta de la imagen principal (compatibilidad con formularios y cotizaciones de CU08). */
+  imagenUrl: string | null
+  /** Alias legado de imagenUrl que consume CU08. */
+  url_imagen?: string | null
 }
 
 export interface MovimientoKardexDTO {

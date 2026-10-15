@@ -45,7 +45,6 @@ type FilaProducto = {
   stock_minimo: string | number
   estado: boolean
   categoria_producto: { id: number; nombre: string } | null
-<<<<<<< HEAD
   imagen_producto?: FilaImagenProducto[] | null
 }
 
@@ -53,6 +52,7 @@ function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
   const stock = aNumero(p.stock_disponible)
   const minimo = aNumero(p.stock_minimo)
   const { principal, adicionales } = separarImagenes(p.imagen_producto)
+  const imagenUrl = principal?.url ?? null
   return {
     id: p.id,
     codigo: p.codigo,
@@ -68,6 +68,8 @@ function aProductoDTO(p: FilaProducto): ProductoInventarioDTO {
     critico: esStockCritico(stock, minimo),
     imagenPrincipal: principal,
     imagenesAdicionales: adicionales,
+    imagenUrl,
+    url_imagen: imagenUrl,
   }
 }
 
@@ -248,7 +250,7 @@ export class ControlGestionarInventario {
       }
     }
 
-    if (error || !data) throw traducirErrorBD(error, 'No se pudo registrar el producto')
+    if (error || !data) throw traducirErrorBD(error ?? {}, 'No se pudo registrar el producto')
 
     const item: FilaProducto = data
 
@@ -264,7 +266,7 @@ export class ControlGestionarInventario {
           es_principal: true,
           orden: 1,
         })
-        item.imagen_producto = [{ url_imagen: urlLimpia, es_principal: true, orden: 1 }]
+        item.imagen_producto = [{ id: 0, url_imagen: urlLimpia, es_principal: true, orden: 1 }]
       } catch (errImg) {
         console.error('[CU16] Error al registrar imagen:', errImg)
       }
@@ -345,7 +347,7 @@ export class ControlGestionarInventario {
               orden: 1,
             })
           }
-          item.imagen_producto = [{ url_imagen: urlLimpia, es_principal: true, orden: 1 }]
+          item.imagen_producto = [{ id: 0, url_imagen: urlLimpia, es_principal: true, orden: 1 }]
         } else if (imgExistente) {
           await db.from('imagen_producto').delete().eq('producto_id', d.producto_id)
           item.imagen_producto = []

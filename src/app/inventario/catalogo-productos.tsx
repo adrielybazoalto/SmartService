@@ -22,42 +22,6 @@ type Dialogo =
   | { tipo: 'detalle' | 'editar' | 'inicial' | 'ajuste' | 'desactivar'; producto: ProductoInventarioDTO }
   | null
 
-function MiniaturaProducto({
-  producto,
-  className = 'h-10 w-10',
-}: {
-  producto: ProductoInventarioDTO
-  className?: string
-}) {
-  const { imagenPrincipal } = producto
-  const src = imagenPrincipal?.urlImagen
-  const [errorCarga, setErrorCarga] = useState(false)
-
-  useEffect(() => {
-    setErrorCarga(false)
-  }, [src])
-
-  if (!src || errorCarga) {
-    return (
-      <div
-        className={`flex ${className} shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-400 border border-slate-200/60`}
-        aria-label={`Sin imagen: ${producto.nombre}`}
-      >
-        📦
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={src}
-      alt={producto.nombre}
-      className={`${className} shrink-0 rounded-lg object-cover border border-slate-200 bg-white`}
-      onError={() => setErrorCarga(true)}
-    />
-  )
-}
-
 /**
  * Catálogo de CU16 con las acciones que permite el rol. Las mutaciones llaman
  * a las Server Actions; éstas revalidan /inventario, así que la lista se
@@ -164,11 +128,6 @@ export function CatalogoProductos({
                     <tr key={p.id} className={`transition-colors hover:bg-slate-50/80 ${p.activo && p.critico ? 'bg-rose-50/40' : ''} ${p.activo ? '' : 'text-slate-400'}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-<<<<<<< HEAD
-                          <MiniaturaProducto producto={p} className="h-10 w-10" />
-                          <div className="min-w-0">
-                            <p className={`font-medium ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
-=======
                           <MiniaturaProducto producto={p} abrir={setDialogo} />
                           <div className="min-w-0">
                             <button
@@ -178,7 +137,6 @@ export function CatalogoProductos({
                             >
                               {p.nombre}
                             </button>
->>>>>>> a13eeaf (feat(cu16): fotografías de producto, pruebas de integración y pendientes)
                             <p className="text-xs text-slate-500">
                               <span className="font-mono">{p.codigo ?? 's/c'}</span> · {p.categoria?.nombre ?? 'Sin categoría'} · {p.unidadMedida}
                             </p>
@@ -210,13 +168,8 @@ export function CatalogoProductos({
             {lista.map((p) => (
               <li key={p.id} className={`tarjeta p-4 ${p.activo && p.critico ? 'border-rose-200' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
-<<<<<<< HEAD
-                  <div className="flex items-center gap-3 min-w-0">
-                    <MiniaturaProducto producto={p} className="h-11 w-11" />
-=======
                   <div className="flex min-w-0 items-center gap-3">
                     <MiniaturaProducto producto={p} abrir={setDialogo} />
->>>>>>> a13eeaf (feat(cu16): fotografías de producto, pruebas de integración y pendientes)
                     <div className="min-w-0">
                       <p className={`font-semibold ${p.activo ? 'text-slate-900' : 'text-slate-500'}`}>{p.nombre}</p>
                       <p className="truncate text-xs text-slate-500">
