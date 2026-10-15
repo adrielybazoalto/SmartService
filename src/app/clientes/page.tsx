@@ -21,6 +21,7 @@ import { PageHeaderBadge } from "@/components/page-header-badge";
 export default function GestionarClientesPage() {
   // ── Atributos Boundary: listado y estado global ──────────────────────────
   const [clientes, setClientes] = useState<ClienteEntity[]>([]);
+  const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
   const [ficha, setFicha] = useState<ClienteEntity | null>(null);
   const [pasoRegistro, setPasoRegistro] = useState<"lista" | "cliente" | "establecimiento">("lista");
@@ -303,6 +304,34 @@ export default function GestionarClientesPage() {
     tipo === "JURIDICO"
       ? "bg-indigo-100 text-indigo-800 border-indigo-200"
       : "bg-emerald-100 text-emerald-800 border-emerald-200";
+
+  const formatearFechaRegistro = (fechaStr?: string | null) => {
+    if (!fechaStr) return "—";
+    try {
+      const soloFecha = fechaStr.split("T")[0];
+      const partes = soloFecha.split("-");
+      if (partes.length === 3) {
+        const [y, m, d] = partes;
+        return `${d}/${m}/${y}`;
+      }
+      const d = new Date(fechaStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString("es-BO");
+      }
+      return fechaStr;
+    } catch {
+      return fechaStr;
+    }
+  };
+
+  const clientesFiltrados = clientes.filter((c) => {
+    if (!busqueda.trim()) return true;
+    const q = busqueda.toLowerCase().trim();
+    const coincideNombre = c.nombre.toLowerCase().includes(q);
+    const coincideDoc = c.documento_identidad ? c.documento_identidad.toLowerCase().includes(q) : false;
+    const coincideRazon = c.razon_social ? c.razon_social.toLowerCase().includes(q) : false;
+    return coincideNombre || coincideDoc || coincideRazon;
+  });
 
   const pasoIndice = pasoRegistro === "cliente" ? 1 : 2;
 
@@ -644,42 +673,84 @@ export default function GestionarClientesPage() {
 
         {/* ── Listado de Clientes ─────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-slate-900">Directorio de Clientes</h2>
-            <button
-              onClick={solicitarModuloClientes}
-              className="text-xs font-semibold text-lime-700 hover:underline cursor-pointer"
-            >
-              ↻ Actualizar listado
-            </button>
+          <div className="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Directorio de Clientes</h2>
+              <p className="text-xs text-slate-500">
+                {clientesFiltrados.length} cliente{clientesFiltrados.length === 1 ? "" : "s"} disponible{clientesFiltrados.length === 1 ? "" : "s"}
+                {busqueda.trim() && ` (filtrado de ${clientes.length})`}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-80">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-sm">
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o documento..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-lime-400 focus:ring-2 focus:ring-lime-300/40 transition-all text-slate-900 placeholder:text-slate-400"
+                />
+                {busqueda && (
+                  <button
+                    type="button"
+                    onClick={() => setBusqueda("")}
+                    className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                    title="Limpiar búsqueda"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={solicitarModuloClientes}
+                className="text-xs font-semibold text-lime-700 hover:text-lime-800 hover:underline cursor-pointer whitespace-nowrap px-2.5 py-2 rounded-xl hover:bg-lime-50 transition-colors"
+                title="Actualizar listado"
+              >
+                ↻ Actualizar
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <th className="p-4 text-center w-16">ID</th>
                   <th className="p-4">Cliente</th>
                   <th className="p-4">Documento</th>
                   <th className="p-4">Contacto</th>
                   <th className="p-4">Establecimientos</th>
+                  <th className="p-4 whitespace-nowrap">Fecha Registro</th>
                   <th className="p-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
                 {cargando ? (
                   <tr>
-                    <td colSpan={5} className="text-center p-8 text-slate-500">
+                    <td colSpan={7} className="text-center p-8 text-slate-500">
                       Cargando directorio de clientes...
                     </td>
                   </tr>
                 ) : clientes.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center p-8 text-slate-500">
+                    <td colSpan={7} className="text-center p-8 text-slate-500">
                       Aún no hay clientes registrados. Usa “Registrar Cliente” para comenzar.
                     </td>
                   </tr>
+                ) : clientesFiltrados.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center p-8 text-slate-500">
+                      No se encontraron clientes que coincidan con &ldquo;{busqueda}&rdquo;.
+                    </td>
+                  </tr>
                 ) : (
-                  clientes.map((c) => (
+                  clientesFiltrados.map((c) => (
                     <tr key={c.id} className="hover:bg-slate-50/80 transition-all">
+                      <td className="p-4 text-center font-mono text-xs text-slate-500 font-semibold">
+                        #{c.id}
+                      </td>
                       <td className="p-4 font-medium text-slate-900">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xs">
@@ -687,6 +758,9 @@ export default function GestionarClientesPage() {
                           </div>
                           <div>
                             <p>{c.nombre}</p>
+                            {c.razon_social && c.razon_social !== c.nombre && (
+                              <p className="text-xs text-slate-400">{c.razon_social}</p>
+                            )}
                             <span
                               className={`inline-block text-[10px] px-1.5 py-0.5 font-semibold rounded border ${getBadgeTipo(
                                 c.tipo_cliente
@@ -697,7 +771,9 @@ export default function GestionarClientesPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="p-4 text-slate-600">{c.documento_identidad || "—"}</td>
+                      <td className="p-4 text-slate-600 font-mono text-xs">
+                        {c.documento_identidad || "—"}
+                      </td>
                       <td className="p-4 text-slate-500">
                         <p>{c.correo || "—"}</p>
                         <p className="text-xs font-medium text-slate-700">{c.telefono || ""}</p>
@@ -717,6 +793,9 @@ export default function GestionarClientesPage() {
                         ) : (
                           "—"
                         )}
+                      </td>
+                      <td className="p-4 text-slate-600 text-xs whitespace-nowrap">
+                        {formatearFechaRegistro(c.fecha_registro)}
                       </td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">

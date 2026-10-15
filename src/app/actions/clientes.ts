@@ -10,6 +10,7 @@ import {
   actualizarCliente,
   crearCliente,
   listarClientes,
+  buscarClientes,
   verificarDocumento,
   registrarClienteCompletoSchema,
   editarClienteFormularioSchema,
@@ -308,13 +309,13 @@ export async function procesarActualizacionCliente(
 
 // ── Consultas para la IU (solicitarModuloClientes) ──────────────────────────
 
-/** Lista de clientes con sus establecimientos (pantalla inicial del CU07). */
-export async function listarClientesAction(): Promise<ClienteEntity[]> {
+/** Lista de clientes con sus establecimientos (pantalla inicial del CU07, con soporte de búsqueda). */
+export async function listarClientesAction(termino?: string): Promise<ClienteEntity[]> {
   await exigirAccesoClientes()
 
   const db = getSupabaseServiceClient()
   const [clientes, establecimientos] = await Promise.all([
-    listarClientes(db),
+    termino && termino.trim() ? buscarClientes(db, termino) : listarClientes(db),
     listarEstablecimientos(db),
   ])
 
