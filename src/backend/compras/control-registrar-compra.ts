@@ -212,24 +212,6 @@ export class ControlRegistrarCompra {
     const d = registrarCompraSchema.parse(input)
     const dbCU15 = comoDbCU15(db)
 
-    // Restricción estricta de negocio: Validar que todos los productos a comprar pertenezcan
-    // previamente al catálogo del proveedor (CU14) para evitar asociaciones no autorizadas.
-    const { data: catalogo, error: errorCat } = await dbCU15
-      .from('producto_proveedor')
-      .select('producto_id')
-      .eq('proveedor_id', d.proveedor_id)
-
-    if (errorCat) throw traducirErrorBDCompras(errorCat, 'No se pudo verificar el catálogo del proveedor')
-
-    const idsPermitidos = new Set((catalogo ?? []).map((c) => c.producto_id))
-    const noPermitidos = d.items.filter((i) => !idsPermitidos.has(i.producto_id))
-
-    if (noPermitidos.length > 0) {
-      throw new ErrorCompras(
-        'La compra incluye artículos que no pertenecen al catálogo registrado para este proveedor (CU14).'
-      )
-    }
-
     const { data, error } = await dbCU15.rpc('fn_registrar_compra', {
       p_usuario_id: usuarioId,
       p_proveedor_id: d.proveedor_id,
