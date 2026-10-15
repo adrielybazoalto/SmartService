@@ -5,6 +5,7 @@ import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
 import { moduloPorRuta, tienePermisoModulo } from "@/lib/permisos";
 import { registrarEvento } from "@/backend/bitacora";
+import { obtenerIpOrigen } from "@/lib/ip";
 
 export interface RolEntity {
   id: number;
@@ -162,11 +163,12 @@ export async function guardarPermisosRol(
     if (insercion) return { ok: false, mensaje: `No se pudo guardar: ${insercion.message}` };
   }
 
+  const ip = await obtenerIpOrigen();
   await registrarEvento(db, {
     usuario_id: usuario.id,
     accion: "CONFIGURAR_ROLES_PERMISOS",
     descripcion: `Se guardaron ${permisosIds.length} permiso(s) de módulos para el rol ${rol.nombre}`,
-  });
+  }, ip);
 
   // Reflejo inmediato: invalida el caché del layout raíz (Navbar) y del panel.
   revalidatePath("/", "layout");

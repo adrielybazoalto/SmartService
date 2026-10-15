@@ -180,17 +180,17 @@ function normalizarTexto(t: string): string {
   return t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
 
-/** Búsqueda de productos por nombre o código (en la lista ya cargada). */
+/** Búsqueda de productos por nombre o código (en la lista del catálogo del proveedor). */
 export function filtrarProductos(
   productos: readonly ProductoCompraDTO[],
   texto: string,
-  maximo = 8,
+  maximo?: number,
 ): ProductoCompraDTO[] {
   const q = normalizarTexto(texto.trim())
-  if (!q) return productos.slice(0, maximo)
-  return productos
-    .filter((p) => normalizarTexto(p.nombre).includes(q) || (p.codigo !== null && normalizarTexto(p.codigo).includes(q)))
-    .slice(0, maximo)
+  const filtrados = !q
+    ? [...productos]
+    : productos.filter((p) => normalizarTexto(p.nombre).includes(q) || (p.codigo !== null && normalizarTexto(p.codigo).includes(q)))
+  return typeof maximo === 'number' ? filtrados.slice(0, maximo) : filtrados
 }
 
 /**

@@ -38,7 +38,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
   }
 
   return (
-    <main className="flex flex-col gap-6 p-8">
+    <main className="flex flex-col gap-6 p-4 sm:p-6 md:p-8">
       <div className="flex flex-col gap-1.5">
         <PageHeaderBadge paquete="P1" cu="CU06" titulo="GESTIONAR BITÁCORA DE AUDITORÍA" />
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -87,9 +87,11 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
                     <FechaHoraBolivia fecha={evento.fecha_hora} />
                   </td>
                   <td className="px-4 py-3">{evento.usuario_id}</td>
-                  <td className="px-4 py-3">{evento.accion}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{evento.ip ?? 'No disponible'}</td>
-                  <td className="px-4 py-3">{evento.descripcion}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-800">{evento.accion}</td>
+                  <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-slate-600">
+                    {evento.ip && evento.ip !== 'null' && evento.ip.trim() !== '' ? evento.ip : '127.0.0.1'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{evento.descripcion || '—'}</td>
                 </tr>
               ))}
             </tbody>
