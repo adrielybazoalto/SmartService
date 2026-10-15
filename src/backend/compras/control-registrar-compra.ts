@@ -135,6 +135,61 @@ export class ControlRegistrarCompra {
     return { disponible: !data, compraId: data?.id ?? null }
   }
 
+  /**
+   * Genera o sugiere el siguiente número secuencial de documento según el tipo
+   * (FACTURA → FAC-0001..., NOTA → NOT-0001...) evitando colisiones con
+   * documentos ya registrados para el proveedor o en el sistema.
+   */
+  static async sugerirNumeroDocumento(
+    db: Db,
+    tipoDocumento: 'FACTURA' | 'NOTA',
+    proveedorId?: number | null,
+  ): Promise<string> {
+    const prefijo = tipoDocumento === 'FACTURA' ? 'FAC-' : 'NOT-'
+    const dbCU15 = comoDbCU15(db)
+
+    let consulta = dbCU15
+      .from('compra')
+      .select('nro_documento, proveedor_id')
+      .eq('tipo_documento', tipoDocumento)
+
+    const { data, error } = await consulta
+    if (error) throw traducirErrorBDCompras(error, 'No se pudo consultar la numeración de documentos')
+
+    const relevantes = proveedorId
+      ? (data ?? []).filter((d) => d.proveedor_id === proveedorId)
+      : (data ?? [])
+
+    let maxNum = 0
+    for (const row of relevantes) {
+      const doc = (row.nro_documento || '').trim()
+      const regexPrefijo = new RegExp(`^${prefijo}(\\d+)`, 'i')
+      const matchPrefijo = doc.match(regexPrefijo)
+      if (matchPrefijo && matchPrefijo[1]) {
+        const val = parseInt(matchPrefijo[1], 10)
+        if (!isNaN(val) && val > maxNum) maxNum = val
+      } else {
+        const matchFin = doc.match(/(\d+)$/)
+        if (matchFin && matchFin[1]) {
+          const val = parseInt(matchFin[1], 10)
+          if (!isNaN(val) && val > maxNum) maxNum = val
+        }
+      }
+    }
+
+    let siguiente = maxNum + 1
+    let sugerido = `${prefijo}${String(siguiente).padStart(4, '0')}`
+
+    // Asegurar que no coincida con ningún documento existente del mismo proveedor
+    const existentes = new Set(relevantes.map((d) => (d.nro_documento || '').trim().toUpperCase()))
+    while (existentes.has(sugerido.toUpperCase())) {
+      siguiente++
+      sugerido = `${prefijo}${String(siguiente).padStart(4, '0')}`
+    }
+
+    return sugerido
+  }
+
   /** Subtotal por línea y total (paso 4). No accede a la BD. */
   static calcularResumen(input: ResumenCompraInput): ResumenCompraDTO {
     const { items } = resumenCompraSchema.parse(input)
