@@ -50,24 +50,24 @@ export default function CotizacionesPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
       <div className="mb-4">
         <span className="inline-block bg-[#eefccb] text-[#558a06] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
           P2: GESTIÓN COMERCIAL · CU08 · ELABORAR COTIZACIONES
         </span>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Gestión de Cotizaciones y Proformas</h1>
         <Link 
           href="/cotizaciones/nuevo" 
-          className="bg-[#9fe82e] hover:bg-[#8be01c] text-gray-900 font-semibold px-4 py-2 rounded-lg text-sm shadow-sm transition-colors flex items-center gap-2"
+          className="bg-[#9fe82e] hover:bg-[#8be01c] text-gray-900 font-semibold px-4 py-2 rounded-xl text-sm shadow-sm transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
         >
           + Nueva Cotización
         </Link>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -112,29 +112,31 @@ export default function CotizacionesPage() {
                         <option value="RECHAZADA">RECHAZADA</option>
                       </select>
                     </td>
-                    <td className="py-4 px-4 text-center space-x-2">
-                      <a 
-                        href={`/cotizaciones/pdf/${cot.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline text-xs font-medium bg-blue-50 px-2.5 py-1 rounded shadow-sm inline-block"
-                      >
-                        📄 Ver PDF
-                      </a>
+                    <td className="py-4 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        <a 
+                          href={`/cotizaciones/pdf/${cot.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline text-xs font-medium bg-blue-50 px-2.5 py-1 rounded-lg shadow-xs inline-block"
+                        >
+                          📄 Ver PDF
+                        </a>
 
-                      <button 
-                        onClick={() => router.push(`/cotizaciones/editar/${cot.id}`)}
-                        className="text-amber-600 hover:underline text-xs font-medium bg-amber-50 px-2.5 py-1 rounded shadow-sm"
-                      >
-                        Editar
-                      </button>
+                        <button 
+                          onClick={() => router.push(`/cotizaciones/editar/${cot.id}`)}
+                          className="text-amber-600 hover:underline text-xs font-medium bg-amber-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
+                        >
+                          Editar
+                        </button>
 
-                      <button 
-                        onClick={() => handleEliminar(cot.id, cot.numero_cotizacion)}
-                        className="text-red-600 hover:underline text-xs font-medium bg-red-50 px-2.5 py-1 rounded shadow-sm"
-                      >
-                        Eliminar
-                      </button>
+                        <button 
+                          onClick={() => handleEliminar(cot.id, cot.numero_cotizacion)}
+                          className="text-red-600 hover:underline text-xs font-medium bg-red-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

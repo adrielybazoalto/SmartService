@@ -46,7 +46,7 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
       onSubmit={handleSubmit}
       className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm"
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
         <label htmlFor="fecha_inicio" className="text-xs font-medium text-slate-500">
           Desde
         </label>
@@ -55,11 +55,11 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           type="date"
           value={filtros.fecha_inicio}
           onChange={(e) => setFiltros({ ...filtros, fecha_inicio: e.target.value })}
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
+          className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
         />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
         <label htmlFor="fecha_fin" className="text-xs font-medium text-slate-500">
           Hasta
         </label>
@@ -68,11 +68,11 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           type="date"
           value={filtros.fecha_fin}
           onChange={(e) => setFiltros({ ...filtros, fecha_fin: e.target.value })}
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
+          className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
         />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
         <label htmlFor="usuario_id" className="text-xs font-medium text-slate-500">
           ID de usuario
         </label>
@@ -83,11 +83,11 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           placeholder="Todos"
           value={filtros.usuario_id}
           onChange={(e) => setFiltros({ ...filtros, usuario_id: e.target.value })}
-          className="w-28 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
+          className="w-full sm:w-28 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
         />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
         <label htmlFor="accion" className="text-xs font-medium text-slate-500">
           Tipo de acción
         </label>
@@ -97,12 +97,11 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           placeholder="Ej: INICIO_SESION"
           value={filtros.accion}
           onChange={(e) => setFiltros({ ...filtros, accion: e.target.value })}
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
-          
+          className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
         />
       </div>
       
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
         <label htmlFor="ip" className="text-xs font-medium text-slate-500">
           Dirección IP
         </label>
@@ -112,22 +111,21 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
           placeholder="Ej: 192.168."
           value={filtros.ip}
           onChange={(e) => setFiltros({ ...filtros, ip: e.target.value })}
-          className="w-40 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
+          className="w-full sm:w-40 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
         />
       </div>
       
-
-      <div className="flex gap-2">
+      <div className="flex w-full sm:w-auto gap-2">
         <button
           type="submit"
-          className="cursor-pointer rounded-xl bg-lime-400 px-4 py-1.5 text-sm font-semibold text-slate-900 shadow-sm shadow-lime-200/60 transition-colors hover:bg-lime-300"
+          className="flex-1 sm:flex-initial cursor-pointer rounded-xl bg-lime-400 px-4 py-1.5 text-sm font-semibold text-slate-900 shadow-sm shadow-lime-200/60 transition-colors hover:bg-lime-300 text-center"
         >
           Filtrar
         </button>
         <button
           type="button"
           onClick={handleLimpiar}
-          className="cursor-pointer rounded-xl border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+          className="flex-1 sm:flex-initial cursor-pointer rounded-xl border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 text-center"
         >
           Limpiar
         </button>

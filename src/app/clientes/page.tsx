@@ -336,10 +336,10 @@ export default function GestionarClientesPage() {
   const pasoIndice = pasoRegistro === "cliente" ? 1 : 2;
 
   return (
-    <div className="min-h-screen bg-slate-100/70 p-6 md:p-10 text-slate-900">
+    <div className="min-h-screen bg-slate-100/70 p-4 sm:p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* ── Cabecera Principal ─────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60">
           <div>
             <PageHeaderBadge
               paquete="P2"
@@ -355,7 +355,7 @@ export default function GestionarClientesPage() {
           </div>
           <button
             onClick={seleccionarNuevoCliente}
-            className="px-5 py-2.5 bg-lime-400 hover:bg-lime-300 text-slate-900 font-semibold text-sm rounded-xl shadow-sm shadow-lime-200/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full md:w-auto px-5 py-2.5 bg-lime-400 hover:bg-lime-300 text-slate-900 font-semibold text-sm rounded-xl shadow-sm shadow-lime-200/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span className="text-lg leading-none">+</span> Registrar Cliente
           </button>
@@ -681,7 +681,7 @@ export default function GestionarClientesPage() {
                 {busqueda.trim() && ` (filtrado de ${clientes.length})`}
               </p>
             </div>
-            <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
               <div className="relative flex-1 md:w-80">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-sm">
                   🔍
@@ -706,7 +706,7 @@ export default function GestionarClientesPage() {
               </div>
               <button
                 onClick={solicitarModuloClientes}
-                className="text-xs font-semibold text-lime-700 hover:text-lime-800 hover:underline cursor-pointer whitespace-nowrap px-2.5 py-2 rounded-xl hover:bg-lime-50 transition-colors"
+                className="text-xs font-semibold text-lime-700 hover:text-lime-800 hover:underline cursor-pointer whitespace-nowrap px-3 py-2 rounded-xl hover:bg-lime-50 transition-colors text-center"
                 title="Actualizar listado"
               >
                 ↻ Actualizar
@@ -831,8 +831,8 @@ export default function GestionarClientesPage() {
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
         >
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 max-w-lg w-full max-h-[90dvh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Editar Datos del Cliente</h3>
                 <p className="text-xs text-slate-500">ID #{clienteAEditar.id} · Modificación de datos y contacto</p>
@@ -846,7 +846,7 @@ export default function GestionarClientesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleGuardarEdicion} className="p-6 space-y-4">
+            <form onSubmit={handleGuardarEdicion} className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className={etiquetaClase}>Tipo de Cliente *</label>

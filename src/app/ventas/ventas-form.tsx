@@ -364,62 +364,79 @@ export default function VentasForm({
                 const excede = l.cantidad > l.stock;
                 const paso = 1;
                 return (
-                  <li key={l.key} className="grid grid-cols-12 items-center gap-3 px-4 py-3">
-                    <div className="col-span-12 flex min-w-0 items-center gap-3 sm:col-span-5">
-                      <Miniatura url={l.imagen} nombre={l.nombre} />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-900">{l.nombre}</p>
-                        <p className={`text-xs ${excede ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-                          Disponible: {fmtCant(l.stock)} {l.unidad}
-                          {excede && ' · excede el stock'}
-                        </p>
+                  <li key={l.key} className="flex flex-col gap-2 p-3 sm:grid sm:grid-cols-12 sm:items-center sm:gap-3 sm:px-4 sm:py-3">
+                    <div className="flex items-center justify-between gap-3 sm:col-span-5 sm:min-w-0">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Miniatura url={l.imagen} nombre={l.nombre} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{l.nombre}</p>
+                          <p className={`text-xs ${excede ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+                            Disponible: {fmtCant(l.stock)} {l.unidad}
+                            {excede && ' · excede el stock'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <span className="col-span-4 text-sm text-slate-600 sm:col-span-2 sm:text-right">{bs(l.precio)}</span>
-                    <div className="col-span-4 flex items-center justify-center sm:col-span-2">
-                      <div className="flex items-center rounded-lg border border-gray-200 bg-[#f8fafc]">
-                        <button
-                          type="button"
-                          onClick={() => cambiarCantidad(l.key, l.cantidad - paso)}
-                          className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
-                          aria-label="Disminuir"
-                        >
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          min={0.01}
-                          step="any"
-                          inputMode="decimal"
-                          value={l.cantidad}
-                          onChange={(e) => cambiarCantidad(l.key, Number(e.target.value))}
-                          className="w-14 bg-transparent text-center text-sm font-semibold text-slate-900 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                          aria-label={`Cantidad de ${l.nombre}`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            cambiarCantidad(l.key, l.stock === null ? l.cantidad + paso : Math.min(l.cantidad + paso, l.stock))
-                          }
-                          className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
-                          aria-label="Aumentar"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    <span className="col-span-3 text-right text-sm font-semibold text-slate-900 sm:col-span-2">
-                      {bs(r2(l.precio * l.cantidad))}
-                    </span>
-                    <div className="col-span-1 flex justify-end">
                       <button
                         type="button"
                         onClick={() => quitar(l.key)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 sm:hidden"
                         aria-label={`Quitar ${l.nombre}`}
                       >
                         ✕
                       </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 sm:border-0 sm:pt-0 sm:contents">
+                      <span className="text-sm text-slate-600 sm:col-span-2 sm:text-right">
+                        <span className="text-xs text-slate-400 sm:hidden">P. unit: </span>
+                        {bs(l.precio)}
+                      </span>
+                      <div className="flex items-center justify-center sm:col-span-2">
+                        <div className="flex items-center rounded-lg border border-gray-200 bg-[#f8fafc]">
+                          <button
+                            type="button"
+                            onClick={() => cambiarCantidad(l.key, l.cantidad - paso)}
+                            className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
+                            aria-label="Disminuir"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min={0.01}
+                            step="any"
+                            inputMode="decimal"
+                            value={l.cantidad}
+                            onChange={(e) => cambiarCantidad(l.key, Number(e.target.value))}
+                            className="w-14 bg-transparent text-center text-sm font-semibold text-slate-900 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                            aria-label={`Cantidad de ${l.nombre}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              cambiarCantidad(l.key, l.stock === null ? l.cantidad + paso : Math.min(l.cantidad + paso, l.stock))
+                            }
+                            className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
+                            aria-label="Aumentar"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <span className="text-right text-sm font-semibold text-slate-900 sm:col-span-2">
+                        <span className="text-xs font-normal text-slate-400 sm:hidden">Total: </span>
+                        {bs(r2(l.precio * l.cantidad))}
+                      </span>
+                      <div className="hidden justify-end sm:col-span-1 sm:flex">
+                        <button
+                          type="button"
+                          onClick={() => quitar(l.key)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          aria-label={`Quitar ${l.nombre}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );

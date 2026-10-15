@@ -49,10 +49,10 @@ export function GestorServicios({
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 p-6 md:p-10 text-slate-900">
+    <div className="min-h-screen bg-slate-100/70 p-4 sm:p-6 md:p-10 text-slate-900">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* ── Cabecera Principal ─────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60">
           <div>
             <PageHeaderBadge
               paquete="P2"
@@ -69,7 +69,7 @@ export function GestorServicios({
           <button
             type="button"
             onClick={() => setFormulario({ servicio: null })}
-            className="px-5 py-2.5 bg-lime-400 hover:bg-lime-300 text-slate-900 font-semibold text-sm rounded-xl shadow-sm shadow-lime-200/60 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+            className="w-full md:w-auto px-5 py-2.5 bg-lime-400 hover:bg-lime-300 text-slate-900 font-semibold text-sm rounded-xl shadow-sm shadow-lime-200/60 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
           >
             <span className="text-lg leading-none">+</span> Nuevo Servicio
           </button>
@@ -236,7 +236,7 @@ function FormularioServicio({
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl animate-in fade-in zoom-in-95 duration-150"
+        className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-6 shadow-xl max-h-[90dvh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150"
       >
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
