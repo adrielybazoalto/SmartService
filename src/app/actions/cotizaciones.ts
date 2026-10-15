@@ -1,6 +1,8 @@
 'use server'
 
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { obtenerIpOrigen } from '@/lib/ip'
+import { getCurrentUser } from '@/lib/auth'
 
 // Obtener lista de clientes
 export async function obtenerClientesAccion() {
@@ -81,11 +83,41 @@ export async function obtenerCotizacionPorIdAccion(id: number) {
 
   if (errCot || !cot) return null
 
-  // Obtener nombre del cliente de forma segura
-  let clienteNombre = `Cliente #${cot.cliente_id}`
+  // Obtener datos completos del cliente de forma segura
+  let clienteData: any = { id: cot.cliente_id, nombre: `Cliente #${cot.cliente_id}` }
   if (cot.cliente_id) {
-    const { data: cli } = await supabase.from('cliente').select('nombre').eq('id', cot.cliente_id).single()
-    if (cli?.nombre) clienteNombre = cli.nombre
+    const { data: cli } = await supabase
+      .from('cliente')
+      .select('*')
+      .eq('id', cot.cliente_id)
+      .single()
+    if (cli) {
+      clienteData = cli
+    }
+  }
+
+  // Obtener datos del establecimiento / sucursal asociado
+  let establecimientoData: any = null
+  if (cot.establecimiento_id) {
+    const { data: est } = await supabase
+      .from('establecimiento')
+      .select('*')
+      .eq('id', cot.establecimiento_id)
+      .single()
+    if (est) {
+      establecimientoData = est
+    }
+  } else if (cot.cliente_id) {
+    // Si la cotización no tiene establecimiento_id explícito, obtener el establecimiento principal o primero del cliente
+    const { data: ests } = await supabase
+      .from('establecimiento')
+      .select('*')
+      .eq('cliente_id', cot.cliente_id)
+      .order('id', { ascending: true })
+      .limit(1)
+    if (ests && ests.length > 0) {
+      establecimientoData = ests[0]
+    }
   }
 
   // 2. Obtener productos relacionados
@@ -113,7 +145,8 @@ export async function obtenerCotizacionPorIdAccion(id: number) {
 
   return {
     ...cot,
-    cliente: { nombre: clienteNombre },
+    cliente: clienteData,
+    establecimiento: establecimientoData,
     productos: prods || [],
     servicios: servs || []
   }
@@ -128,6 +161,21 @@ export async function cambiarEstadoCotizacionAccion(id: number, nuevoEstado: str
     .eq('id', id)
 
   if (error) throw new Error(error.message)
+
+  try {
+    const u = (await getCurrentUser()) as any
+    const usuarioId = Number(u?.id ?? u?.uid) || 1
+    const ip = await obtenerIpOrigen()
+    await supabase.from('bitacora').insert({
+      usuario_id: usuarioId,
+      accion: 'CAMBIAR_ESTADO_COTIZACION',
+      descripcion: `Se cambió el estado de la cotización #${id} a ${nuevoEstado}.`,
+      ip,
+    })
+  } catch (e) {
+    console.warn('[Cotizaciones] Error al auditar cambio de estado:', e)
+  }
+
   return { success: true }
 }
 
@@ -140,6 +188,21 @@ export async function eliminarCotizacionAccion(id: number) {
     .eq('id', id)
 
   if (error) throw new Error(error.message)
+
+  try {
+    const u = (await getCurrentUser()) as any
+    const usuarioId = Number(u?.id ?? u?.uid) || 1
+    const ip = await obtenerIpOrigen()
+    await supabase.from('bitacora').insert({
+      usuario_id: usuarioId,
+      accion: 'ELIMINAR_COTIZACION',
+      descripcion: `Se eliminó la cotización #${id}.`,
+      ip,
+    })
+  } catch (e) {
+    console.warn('[Cotizaciones] Error al auditar eliminación:', e)
+  }
+
   return { success: true }
 }
 
@@ -257,11 +320,12 @@ export async function crearCotizacionCompletaAccion(formData: {
       await supabase.from('detalle_cotizacion_servicio').insert(servsToInsert)
     }
 
+    const ipCreacion = await obtenerIpOrigen()
     await supabase.from('bitacora').insert({
       usuario_id: formData.usuario_id,
       accion: 'CREAR_COTIZACION',
       descripcion: `Se creó la cotización ${correlativo} con estado PENDIENTE.`,
-      ip: null
+      ip: ipCreacion
     })
 
     return { success: true, message: `Cotización ${correlativo} creada con éxito.` }
@@ -325,11 +389,12 @@ export async function actualizarCotizacionCompletaAccion(cotizacionId: number, f
     }
 
     // 5. Bitácora
+    const ipActualizacion = await obtenerIpOrigen()
     await supabase.from('bitacora').insert({
       usuario_id: formData.usuario_id,
       accion: 'ACTUALIZAR_COTIZACION',
       descripcion: `Se actualizó la cotización #${cotizacionId} con nuevo total Bs. ${formData.total}.`,
-      ip: null
+      ip: ipActualizacion
     })
 
     return { success: true, message: 'Cotización actualizada con éxito.' }

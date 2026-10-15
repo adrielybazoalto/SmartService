@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 import {
   listarProductosCompraAction,
   registrarCompraAction,
+  sugerirNumeroDocumentoCompraAction,
   verificarDocumentoCompraAction,
 } from '@/app/actions/compras'
 import type { RegistrarCompraInput } from '@/backend/compras/schema'
@@ -81,12 +82,33 @@ export function FormularioCompra({
   // Descarta respuestas viejas si el usuario cambia de proveedor o documento rápido
   const peticionProductos = useRef(0)
   const claveDocumento = useRef('')
+  const contenedorBuscadorRef = useRef<HTMLDivElement>(null)
+
+  const [generandoNumero, setGenerandoNumero] = useState(false)
+  const [numeroEditadoManualmente, setNumeroEditadoManualmente] = useState(false)
+  const [mostrarCatalogo, setMostrarCatalogo] = useState(false)
+
+  useEffect(() => {
+    function manejarClickFuera(e: MouseEvent) {
+      if (contenedorBuscadorRef.current && !contenedorBuscadorRef.current.contains(e.target as Node)) {
+        setMostrarCatalogo(false)
+      }
+    }
+    document.addEventListener('mousedown', manejarClickFuera)
+    return () => document.removeEventListener('mousedown', manejarClickFuera)
+  }, [])
 
   const porId = new Map(productos.map((p) => [p.id, p]))
   const proveedor = proveedores.find((p) => String(p.id) === v.proveedorId) ?? null
   const { subtotales, total, completas } = resumenFormulario(v.lineas)
   const enLineas = new Set(v.lineas.map((l) => l.productoId))
-  const resultados = busqueda.trim() ? filtrarProductos(productos, busqueda) : []
+  const productosFiltrados = busqueda.trim() ? filtrarProductos(productos, busqueda) : productos
+  const debeMostrarCatalogo = Boolean(
+    v.proveedorId &&
+    !cargandoProductos &&
+    productos.length > 0 &&
+    (mostrarCatalogo || busqueda.trim().length > 0)
+  )
   const bloqueado = pendiente || registrada !== null
   const limiteLineas = v.lineas.length >= MAX_LINEAS_COMPRA
 
@@ -100,6 +122,48 @@ export function FormularioCompra({
   }
 
   // ------------------------------------------------- aviso de duplicado
+
+  async function sugerirNumero(tipo: 'FACTURA' | 'NOTA', proveedorId?: string) {
+    setGenerandoNumero(true)
+    try {
+      const r = await sugerirNumeroDocumentoCompraAction(tipo, proveedorId)
+      if (r.ok && r.data) {
+        return r.data
+      }
+    } catch {
+      // Silencioso
+    } finally {
+      setGenerandoNumero(false)
+    }
+    return null
+  }
+
+  async function aplicarNumeroSugerido() {
+    if (!v.tipoDocumento) return
+    const sugerencia = await sugerirNumero(v.tipoDocumento as 'FACTURA' | 'NOTA', v.proveedorId)
+    if (sugerencia) {
+      setNumeroEditadoManualmente(false)
+      const siguiente = { ...v, nroDocumento: sugerencia }
+      setV(siguiente)
+      limpiarError('nro_documento')
+      void verificarDocumento(siguiente)
+    }
+  }
+
+  async function cambiarTipoDocumento(tipo: 'FACTURA' | 'NOTA') {
+    let siguienteNro = v.nroDocumento
+    const eraSugerido = !v.nroDocumento.trim() || /^FAC-\d+/i.test(v.nroDocumento) || /^NOT-\d+/i.test(v.nroDocumento)
+    if (!numeroEditadoManualmente || eraSugerido) {
+      const sugerencia = await sugerirNumero(tipo, v.proveedorId)
+      if (sugerencia) {
+        siguienteNro = sugerencia
+      }
+    }
+    const siguiente = { ...v, tipoDocumento: tipo, nroDocumento: siguienteNro }
+    setV(siguiente)
+    limpiarError('tipo_documento', 'nro_documento')
+    void verificarDocumento(siguiente)
+  }
 
   async function verificarDocumento(datos: Pick<ValoresCompra, 'proveedorId' | 'tipoDocumento' | 'nroDocumento'>) {
     const doc = documentoAVerificar(datos)
@@ -123,24 +187,44 @@ export function FormularioCompra({
   // ------------------------------------------------------------ proveedor
 
   async function cambiarProveedor(proveedorId: string) {
-    const siguiente = { ...v, proveedorId }
+    let nuevoNroDoc = v.nroDocumento
+    if (v.tipoDocumento && (!numeroEditadoManualmente || !v.nroDocumento.trim())) {
+      const sug = await sugerirNumero(v.tipoDocumento as 'FACTURA' | 'NOTA', proveedorId)
+      if (sug) nuevoNroDoc = sug
+    }
+
+    // Si cambia de proveedor, se reinician las líneas para evitar compras cruzadas de productos
+    const siguiente = { ...v, proveedorId, lineas: [], nroDocumento: nuevoNroDoc }
     setV(siguiente)
-    limpiarError('proveedor_id')
+    setBusqueda('')
+    setMostrarCatalogo(false)
+    limpiarError('proveedor_id', 'items')
     void verificarDocumento(siguiente)
-    // Recarga el catálogo con el precio pactado de este proveedor (referencia de costo)
+
+    if (!proveedorId) {
+      setProductos([])
+      setErrorProductos(null)
+      return
+    }
+
+    // Recarga únicamente los productos asociados al catálogo de este proveedor (CU14)
     const n = ++peticionProductos.current
     setCargandoProductos(true)
     try {
-      const r = await listarProductosCompraAction(proveedorId ? { proveedor_id: proveedorId } : {})
+      const r = await listarProductosCompraAction({ proveedor_id: proveedorId })
       if (n !== peticionProductos.current) return
       if (r.ok) {
         setProductos(r.data)
         setErrorProductos(null)
       } else {
         setErrorProductos(r.mensaje)
+        setProductos([])
       }
     } catch {
-      if (n === peticionProductos.current) setErrorProductos(MENSAJE_SIN_CONEXION)
+      if (n === peticionProductos.current) {
+        setErrorProductos(MENSAJE_SIN_CONEXION)
+        setProductos([])
+      }
     } finally {
       if (n === peticionProductos.current) setCargandoProductos(false)
     }
@@ -152,6 +236,7 @@ export function FormularioCompra({
     if (enLineas.has(p.id) || limiteLineas) return
     setV((a) => ({ ...a, lineas: [...a.lineas, { productoId: p.id, cantidad: '', costoUnitario: costoSugerido(p) }] }))
     setBusqueda('')
+    setMostrarCatalogo(false)
     limpiarError('items')
     // Lleva el foco a la cantidad de la nueva línea
     setTimeout(() => document.getElementById(`linea-${p.id}-cantidad`)?.focus(), 0)
@@ -290,12 +375,7 @@ export function FormularioCompra({
                         value={tipo}
                         checked={v.tipoDocumento === tipo}
                         aria-describedby={errores.tipo_documento ? 'tipo_documento-error' : undefined}
-                        onChange={() => {
-                          const siguiente = { ...v, tipoDocumento: tipo }
-                          setV(siguiente)
-                          limpiarError('tipo_documento')
-                          void verificarDocumento(siguiente)
-                        }}
+                        onChange={() => void cambiarTipoDocumento(tipo)}
                         className="sr-only"
                       />
                       {tipo === 'FACTURA' ? 'Factura' : 'Nota'}
@@ -310,26 +390,59 @@ export function FormularioCompra({
               </fieldset>
 
               <div>
-                <Campo etiqueta="Número de factura o nota" htmlFor="nro_documento" obligatorio error={errores.nro_documento}>
-                  <input
-                    id="nro_documento"
-                    value={v.nroDocumento}
-                    onChange={(e) => {
-                      setV({ ...v, nroDocumento: e.target.value })
-                      limpiarError('nro_documento')
-                      if (documento.estado !== 'sin_verificar') {
-                        claveDocumento.current = ''
-                        setDocumento({ estado: 'sin_verificar' })
-                      }
-                    }}
-                    onBlur={() => void verificarDocumento(v)}
-                    maxLength={50}
-                    autoComplete="off"
-                    placeholder="Ej. 001-2345"
-                    className="campo-input font-mono"
-                    {...describir('nro_documento')}
-                  />
-                </Campo>
+                <div className="mb-1 flex items-center justify-between">
+                  <label htmlFor="nro_documento" className="block text-xs font-semibold text-slate-600">
+                    Número de factura o nota<span className="text-rose-500"> *</span>
+                  </label>
+                  {v.tipoDocumento && (
+                    <button
+                      type="button"
+                      onClick={() => void aplicarNumeroSugerido()}
+                      disabled={generandoNumero || bloqueado}
+                      className="cursor-pointer text-xs font-semibold text-lime-700 hover:text-lime-800 disabled:opacity-50 inline-flex items-center gap-1 transition-colors"
+                      title="Generar correlativo automático para el documento"
+                    >
+                      {generandoNumero ? (
+                        <>
+                          <Spinner />
+                          <span>Generando…</span>
+                        </>
+                      ) : (
+                        <span>⚡ Autogenerar secuencial</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <input
+                  id="nro_documento"
+                  value={v.nroDocumento}
+                  onChange={(e) => {
+                    setNumeroEditadoManualmente(true)
+                    setV({ ...v, nroDocumento: e.target.value })
+                    limpiarError('nro_documento')
+                    if (documento.estado !== 'sin_verificar') {
+                      claveDocumento.current = ''
+                      setDocumento({ estado: 'sin_verificar' })
+                    }
+                  }}
+                  onBlur={() => void verificarDocumento(v)}
+                  maxLength={50}
+                  autoComplete="off"
+                  placeholder={
+                    v.tipoDocumento === 'FACTURA'
+                      ? 'Ej. FAC-0001'
+                      : v.tipoDocumento === 'NOTA'
+                        ? 'Ej. NOT-0001'
+                        : 'Ej. 001-2345'
+                  }
+                  className="campo-input font-mono"
+                  {...describir('nro_documento')}
+                />
+                {errores.nro_documento && (
+                  <p id="nro_documento-error" className="mt-1 text-xs font-medium text-rose-600">
+                    {errores.nro_documento}
+                  </p>
+                )}
                 <AvisoDocumento documento={documento} />
               </div>
 
@@ -375,39 +488,76 @@ export function FormularioCompra({
           {/* --------------------------------------------------- productos */}
           <section aria-labelledby="sec-productos" className="tarjeta p-5 sm:p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 id="sec-productos" className="text-base font-bold text-slate-900">
-                2. Productos comprados
-              </h2>
+              <div>
+                <h2 id="sec-productos" className="text-base font-bold text-slate-900">
+                  2. Productos comprados
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Solo se permiten productos previamente registrados en el Catálogo de Mayorista del proveedor seleccionado (CU14).
+                </p>
+              </div>
               <p className="text-xs text-slate-500">
                 {v.lineas.length} / {MAX_LINEAS_COMPRA} líneas
               </p>
             </div>
 
-            {/* Búsqueda */}
-            <div className="relative mt-4">
-              <label htmlFor="buscar-producto" className={etiqueta}>
-                Buscar producto
-              </label>
+            {/* Búsqueda y Despliegue del Catálogo (CU14) */}
+            <div ref={contenedorBuscadorRef} className="relative mt-4">
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="buscar-producto" className="text-xs font-semibold text-slate-600">
+                  Buscar producto en el catálogo del proveedor
+                </label>
+                {v.proveedorId && productos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarCatalogo((prev) => !prev)}
+                    className="text-xs font-medium text-lime-700 hover:text-lime-800 cursor-pointer"
+                  >
+                    {mostrarCatalogo ? 'Ocultar catálogo' : 'Ver catálogo completo'}
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   id="buscar-producto"
                   type="search"
                   value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
+                  onFocus={() => {
+                    if (v.proveedorId && productos.length > 0) {
+                      setMostrarCatalogo(true)
+                    }
+                  }}
+                  onClick={() => {
+                    if (v.proveedorId && productos.length > 0) {
+                      setMostrarCatalogo(true)
+                    }
+                  }}
+                  onChange={(e) => {
+                    setBusqueda(e.target.value)
+                    setMostrarCatalogo(true)
+                  }}
                   onKeyDown={(e) => {
-                    // Enter agrega el primer resultado en lugar de enviar el formulario
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Escape') {
+                      setMostrarCatalogo(false)
+                    } else if (e.key === 'Enter') {
+                      // Enter agrega el primer resultado en lugar de enviar el formulario
                       e.preventDefault()
-                      const primero = resultados.find((p) => !enLineas.has(p.id))
+                      const primero = productosFiltrados.find((p) => !enLineas.has(p.id))
                       if (primero) agregarProducto(primero)
                     }
                   }}
                   maxLength={100}
                   autoComplete="off"
-                  placeholder={limiteLineas ? 'Se alcanzó el máximo de líneas' : 'Nombre o código del producto…'}
-                  disabled={limiteLineas}
+                  placeholder={
+                    !v.proveedorId
+                      ? 'Seleccione un proveedor primero para ver y buscar productos de su catálogo…'
+                      : limiteLineas
+                        ? 'Se alcanzó el máximo de líneas'
+                        : 'Haga clic para ver el catálogo o escriba nombre o código…'
+                  }
+                  disabled={limiteLineas || !v.proveedorId}
                   aria-controls="resultados-productos"
-                  className="campo-input pr-10"
+                  className="campo-input pr-10 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                 />
                 {cargandoProductos && (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -417,37 +567,80 @@ export function FormularioCompra({
               </div>
               {errorProductos && <p className="mt-2 text-xs font-medium text-rose-600">⚠ {errorProductos}</p>}
 
-              {busqueda.trim() && (
-                <ul id="resultados-productos" aria-label="Resultados de la búsqueda" className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  {resultados.length === 0 ? (
-                    <li className="px-4 py-3 text-sm text-slate-500">
-                      {productos.length === 0 ? 'No hay productos activos en el catálogo.' : 'Ningún producto activo coincide con la búsqueda.'}
-                    </li>
-                  ) : (
-                    resultados.map((p) => {
-                      const agregado = enLineas.has(p.id)
-                      return (
-                        <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-900">{p.nombre}</p>
-                            <p className="truncate text-xs text-slate-500">
-                              <span className="font-mono">{p.codigo ?? 's/c'}</span> · Stock {formatoCantidad(p.stockDisponible)} {p.unidadMedida}
-                              {p.precioPactado !== null && ` · Pactado ${formatoBs(p.precioPactado)}`}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => agregarProducto(p)}
-                            disabled={agregado || limiteLineas}
-                            className="shrink-0 cursor-pointer rounded-lg bg-lime-100 px-2.5 py-1.5 text-xs font-semibold text-lime-800 transition-colors hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              {/* Indicador cuando el proveedor no tiene productos en su catálogo de CU14 */}
+              {v.proveedorId && !cargandoProductos && productos.length === 0 && !errorProductos && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <p className="font-semibold">Este proveedor no tiene productos registrados en su catálogo (CU14).</p>
+                  <p className="mt-0.5 text-amber-700">
+                    Para registrar compras de este proveedor, primero debe asociarle productos en{' '}
+                    <Link href="/proveedores" className="underline font-bold hover:text-amber-900">
+                      Proveedores → Catálogo del mayorista
+                    </Link>.
+                  </p>
+                </div>
+              )}
+
+              {/* Catálogo desplegado automáticamente al enfocar / buscar */}
+              {debeMostrarCatalogo && (
+                <div
+                  id="resultados-productos"
+                  className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+                >
+                  <div className="flex items-center justify-between bg-slate-50 px-4 py-2 text-xs text-slate-600 border-b border-slate-100">
+                    <span className="font-semibold text-slate-700">
+                      {busqueda.trim()
+                        ? `${productosFiltrados.length} de ${productos.length} producto${productos.length === 1 ? '' : 's'} encontrado${productosFiltrados.length === 1 ? '' : 's'}`
+                        : `Catálogo del proveedor (${productos.length} producto${productos.length === 1 ? '' : 's'} disponible${productos.length === 1 ? '' : 's'})`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarCatalogo(false)}
+                      className="cursor-pointer text-slate-400 hover:text-slate-700 font-medium"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                  <ul
+                    aria-label="Catálogo de productos del proveedor"
+                    className="max-h-80 overflow-y-auto divide-y divide-slate-100"
+                  >
+                    {productosFiltrados.length === 0 ? (
+                      <li className="px-4 py-4 text-center text-sm text-slate-500">
+                        {productos.length === 0
+                          ? 'No hay productos en el catálogo de este proveedor.'
+                          : `Ningún producto del catálogo coincide con "${busqueda}".`}
+                      </li>
+                    ) : (
+                      productosFiltrados.map((p) => {
+                        const agregado = enLineas.has(p.id)
+                        return (
+                          <li
+                            key={p.id}
+                            className={`flex items-center justify-between gap-3 px-4 py-2.5 transition-colors ${
+                              agregado ? 'bg-slate-50/60' : 'hover:bg-lime-50/40'
+                            }`}
                           >
-                            {agregado ? 'Agregado' : '+ Agregar'}
-                          </button>
-                        </li>
-                      )
-                    })
-                  )}
-                </ul>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900">{p.nombre}</p>
+                              <p className="truncate text-xs text-slate-500">
+                                <span className="font-mono">{p.codigo ?? 's/c'}</span> · Stock {formatoCantidad(p.stockDisponible)} {p.unidadMedida}
+                                {p.precioPactado !== null && ` · Pactado ${formatoBs(p.precioPactado)}`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => agregarProducto(p)}
+                              disabled={agregado || limiteLineas}
+                              className="shrink-0 cursor-pointer rounded-lg bg-lime-100 px-3 py-1.5 text-xs font-semibold text-lime-800 transition-colors hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                              {agregado ? 'Agregado' : '+ Agregar'}
+                            </button>
+                          </li>
+                        )
+                      })
+                    )}
+                  </ul>
+                </div>
               )}
             </div>
 

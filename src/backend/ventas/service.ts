@@ -21,6 +21,7 @@
  */
 import { ZodError, type z } from 'zod';
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { obtenerIpOrigen } from '@/lib/ip';
 
 import { anularVentaSchema, aperturaCajaSchema, cierreCajaSchema, registrarVentaSchema } from './schema';
 import {
@@ -152,9 +153,10 @@ export async function guardarEventoCaja(
   ip: string | null = null
 ): Promise<void> {
   try {
+    const ipOrigen = (ip && ip.trim()) ? ip.trim() : (await obtenerIpOrigen());
     const { error } = await db
       .from('bitacora')
-      .insert({ usuario_id: usuarioId, accion, descripcion, ip } as any);
+      .insert({ usuario_id: usuarioId, accion, descripcion, ip: ipOrigen } as any);
     if (error) console.error(`[CU09] No se pudo registrar ${accion} en la bitácora: ${error.message}`);
   } catch (e) {
     console.error('[CU09] No se pudo registrar en la bitácora:', (e as Error)?.message ?? e);
