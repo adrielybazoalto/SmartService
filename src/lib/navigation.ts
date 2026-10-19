@@ -162,8 +162,17 @@ export const PAQUETES: PaqueteNav[] = [
   {
     id: 'P3',
     nombre: 'PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO',
-    habilitado: false,
-    items: [],
+    habilitado: true,
+    items: [
+      {
+        id: 'personal-tecnico',
+        etiqueta: 'Disponibilidad y Jornadas (CU10)',
+        ruta: '/personal-tecnico',
+        clave: 'ORDENES_TRABAJO',
+        cu: 'CU10',
+        descripcion: 'Supervisión de técnicos, horarios de trabajo y control de ausencias.',
+      },
+    ],
   },
   {
     id: 'P4',
