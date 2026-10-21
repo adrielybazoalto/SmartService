@@ -36,6 +36,7 @@ export const MODULOS: ModuloRegistrado[] = [
   { clave: 'COMPRAS', ruta: '/compras', etiqueta: 'Compras', descripcion: 'Registro de compras de equipos e insumos' },
   { clave: 'INVENTARIO', ruta: '/inventario', etiqueta: 'Inventario', descripcion: 'Stock, movimientos de kárdex y ajustes' },
   { clave: 'ORDENES_TRABAJO', ruta: '/ordenes-trabajo', etiqueta: 'Órdenes de trabajo', descripcion: 'Órdenes de trabajo y asignaciones' },
+  { clave: 'ASIGNAR_TECNICOS', ruta: '/asignar-tecnicos', etiqueta: 'Asignar técnicos', descripcion: 'Programación y asignación de cuadrillas técnicas' },
   { clave: 'CAJA', ruta: '/caja', etiqueta: 'Caja', descripcion: 'Control y arqueo de caja' },
   { clave: 'VENTAS', ruta: '/ventas', etiqueta: 'Ventas', descripcion: 'Registro de ventas' },
   { clave: 'PERFIL', ruta: '/perfil', etiqueta: 'Mi perfil', descripcion: 'Configuración de perfil personal' },
