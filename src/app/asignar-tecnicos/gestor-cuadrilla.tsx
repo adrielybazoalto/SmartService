@@ -41,8 +41,7 @@ export function GestorCuadrilla({ datos }: { datos: OrdenConTecnicos }) {
         ? await modificarCuadrillaAction(payload)
         : await asignarCuadrillaAction(payload)
       if (r.ok) {
-        setExito(datos.tieneCuadrilla ? 'Cuadrilla modificada correctamente.' : 'Cuadrilla asignada correctamente.')
-        router.refresh()
+        router.push(`/asignar-tecnicos?ok=${datos.tieneCuadrilla ? 'modificada' : 'asignada'}`)
       } else {
         setError(r.error)
       }

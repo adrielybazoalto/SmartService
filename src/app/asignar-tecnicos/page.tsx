@@ -11,7 +11,7 @@ const ESTADOS = ['programadas', 'en_curso', 'finalizadas', 'canceladas', 'todas'
 const CUADRILLAS = ['todas', 'sin_asignar', 'asignadas'] as const
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; estado?: string; cuadrilla?: string }>
+  searchParams: Promise<{ q?: string; estado?: string; cuadrilla?: string; ok?: string }>
 }
 
 function formatearTs(ts: string | null): string {
@@ -30,6 +30,12 @@ export default async function AsignarTecnicosPage({ searchParams }: PageProps) {
   const estado = ESTADOS.find((e) => e === params.estado) ?? 'programadas'
   const cuadrilla = CUADRILLAS.find((c) => c === params.cuadrilla) ?? 'todas'
 
+    const mensajeOk =
+    params.ok === 'asignada'
+      ? 'Cuadrilla asignada correctamente.'
+      : params.ok === 'modificada'
+        ? 'Cuadrilla modificada correctamente.'
+        : null
   let ordenes: Awaited<ReturnType<typeof listarOrdenesAction>> = []
   let errorMensaje: string | null = null
 
@@ -54,7 +60,11 @@ export default async function AsignarTecnicosPage({ searchParams }: PageProps) {
           Asigne o modifique la cuadrilla de las órdenes Programadas; en los demás estados puede consultarla.
         </p>
       </div>
-
+      {mensajeOk && (
+        <p className="rounded-xl border border-lime-200 bg-lime-50 px-4 py-3 text-sm text-lime-800">
+          {mensajeOk}
+        </p>
+      )}
       <FiltrosOrdenes valoresIniciales={{ q, estado, cuadrilla }} />
 
       {errorMensaje ? (
