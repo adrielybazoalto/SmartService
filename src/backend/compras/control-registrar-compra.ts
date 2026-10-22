@@ -60,8 +60,9 @@ export class ControlRegistrarCompra {
   }
 
   /**
-   * Productos activos del catálogo (paso 3). Con `proveedor_id` se agrega el
-   * precio pactado con ese proveedor como referencia de costo.
+   * Productos activos del catálogo del proveedor seleccionado (CU14).
+   * Solo devuelve los artículos que se encuentran registrados previamente en el
+   * "Catálogo del mayorista" (producto_proveedor) de ese proveedor en específico.
    */
   static async listarProductosDisponibles(
     db: Db,
@@ -70,25 +71,40 @@ export class ControlRegistrarCompra {
     const f = filtrosProductosCompraSchema.parse(filtros)
     const dbCU15 = comoDbCU15(db)
 
+    // Si no se especifica un proveedor, no se devuelven productos para compra
+    if (!f.proveedor_id) {
+      return []
+    }
+
+    // 1. Consultar únicamente los productos registrados para este proveedor en CU14
+    const { data: pactados, error: pactadosError } = await dbCU15
+      .from('producto_proveedor')
+      .select('producto_id, precio_compra')
+      .eq('proveedor_id', f.proveedor_id)
+
+    if (pactadosError) throw traducirErrorBDCompras(pactadosError, 'No se pudieron cargar los precios pactados')
+    if (!pactados || pactados.length === 0) {
+      return []
+    }
+
+    const idsPermitidos = pactados.map((pp) => pp.producto_id)
+    const precioPactado = new Map(pactados.map((pp) => [pp.producto_id, aNumero(pp.precio_compra)]))
+
+    // 2. Consultar los detalles de inventario solo de los productos autorizados
     let consulta = dbCU15
       .from('producto')
       .select('id, codigo, nombre, unidad_medida, precio_compra_actual, stock_disponible, categoria_producto(nombre)')
       .eq('estado', true)
+      .in('id', idsPermitidos)
       .order('nombre', { ascending: true })
+
     const texto = f.texto ? sanitizarBusqueda(f.texto) : ''
     if (texto) consulta = consulta.or(`nombre.ilike.%${texto}%,codigo.ilike.%${texto}%`)
 
-    const [productos, pactados] = await Promise.all([
-      consulta,
-      f.proveedor_id
-        ? dbCU15.from('producto_proveedor').select('producto_id, precio_compra').eq('proveedor_id', f.proveedor_id)
-        : Promise.resolve({ data: [], error: null }),
-    ])
-    if (productos.error) throw traducirErrorBDCompras(productos.error, 'No se pudieron cargar los productos')
-    if (pactados.error) throw traducirErrorBDCompras(pactados.error, 'No se pudieron cargar los precios pactados')
+    const { data: productos, error: productosError } = await consulta
+    if (productosError) throw traducirErrorBDCompras(productosError, 'No se pudieron cargar los productos')
 
-    const precioPactado = new Map(pactados.data.map((pp) => [pp.producto_id, aNumero(pp.precio_compra)]))
-    return productos.data.map((p) => ({
+    return (productos ?? []).map((p) => ({
       id: p.id,
       codigo: p.codigo,
       nombre: p.nombre,
@@ -119,6 +135,61 @@ export class ControlRegistrarCompra {
     return { disponible: !data, compraId: data?.id ?? null }
   }
 
+  /**
+   * Genera o sugiere el siguiente número secuencial de documento según el tipo
+   * (FACTURA → FAC-0001..., NOTA → NOT-0001...) evitando colisiones con
+   * documentos ya registrados para el proveedor o en el sistema.
+   */
+  static async sugerirNumeroDocumento(
+    db: Db,
+    tipoDocumento: 'FACTURA' | 'NOTA',
+    proveedorId?: number | null,
+  ): Promise<string> {
+    const prefijo = tipoDocumento === 'FACTURA' ? 'FAC-' : 'NOT-'
+    const dbCU15 = comoDbCU15(db)
+
+    let consulta = dbCU15
+      .from('compra')
+      .select('nro_documento, proveedor_id')
+      .eq('tipo_documento', tipoDocumento)
+
+    const { data, error } = await consulta
+    if (error) throw traducirErrorBDCompras(error, 'No se pudo consultar la numeración de documentos')
+
+    const relevantes = proveedorId
+      ? (data ?? []).filter((d) => d.proveedor_id === proveedorId)
+      : (data ?? [])
+
+    let maxNum = 0
+    for (const row of relevantes) {
+      const doc = (row.nro_documento || '').trim()
+      const regexPrefijo = new RegExp(`^${prefijo}(\\d+)`, 'i')
+      const matchPrefijo = doc.match(regexPrefijo)
+      if (matchPrefijo && matchPrefijo[1]) {
+        const val = parseInt(matchPrefijo[1], 10)
+        if (!isNaN(val) && val > maxNum) maxNum = val
+      } else {
+        const matchFin = doc.match(/(\d+)$/)
+        if (matchFin && matchFin[1]) {
+          const val = parseInt(matchFin[1], 10)
+          if (!isNaN(val) && val > maxNum) maxNum = val
+        }
+      }
+    }
+
+    let siguiente = maxNum + 1
+    let sugerido = `${prefijo}${String(siguiente).padStart(4, '0')}`
+
+    // Asegurar que no coincida con ningún documento existente del mismo proveedor
+    const existentes = new Set(relevantes.map((d) => (d.nro_documento || '').trim().toUpperCase()))
+    while (existentes.has(sugerido.toUpperCase())) {
+      siguiente++
+      sugerido = `${prefijo}${String(siguiente).padStart(4, '0')}`
+    }
+
+    return sugerido
+  }
+
   /** Subtotal por línea y total (paso 4). No accede a la BD. */
   static calcularResumen(input: ResumenCompraInput): ResumenCompraDTO {
     const { items } = resumenCompraSchema.parse(input)
@@ -139,7 +210,9 @@ export class ControlRegistrarCompra {
     ip: string | null = null,
   ): Promise<ComprobanteIngresoDTO> {
     const d = registrarCompraSchema.parse(input)
-    const { data, error } = await comoDbCU15(db).rpc('fn_registrar_compra', {
+    const dbCU15 = comoDbCU15(db)
+
+    const { data, error } = await dbCU15.rpc('fn_registrar_compra', {
       p_usuario_id: usuarioId,
       p_proveedor_id: d.proveedor_id,
       p_tipo_documento: d.tipo_documento,

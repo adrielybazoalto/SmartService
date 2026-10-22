@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { tienePermisoModulo } from "@/lib/permisos";
 import { registrarBitacora } from "@/backend/bitacora";
+import { obtenerIpOrigen } from "@/lib/ip";
 import {
   crearUsuario,
   actualizarUsuario as actualizarUsuarioEnBD,
@@ -68,7 +69,8 @@ function usuarioAEntidad(u: Usuario, roles: Rol[]): UsuarioEntity {
 /** BITÁCORA (CU06): un fallo de auditoría nunca debe interrumpir la operación. */
 async function registrarAuditoria(db: Db, usuarioId: number, accion: string, detalle: string) {
   try {
-    await registrarBitacora(db, { usuario_id: usuarioId, accion, descripcion: detalle });
+    const ip = await obtenerIpOrigen();
+    await registrarBitacora(db, { usuario_id: usuarioId, accion, descripcion: detalle }, ip);
   } catch (e) {
     console.error("Error al registrar en bitácora:", e);
   }

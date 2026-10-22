@@ -1,9 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { z } from 'zod'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { obtenerIpOrigen } from '@/lib/ip'
 import type { UsuarioConRol } from '@/lib/auth'
 import type { Db } from '@/lib/supabase/types'
 import {
@@ -49,11 +49,9 @@ function mensajeDeError(e: unknown, fallback: string): string {
   return fallback
 }
 
-/** IP de origen para la bitácora (cabeceras del proxy). Solo informativa. */
-async function ipCliente(): Promise<string | null> {
-  const h = await headers()
-  const ip = (h.get('x-forwarded-for')?.split(',')[0] ?? h.get('x-real-ip') ?? '').trim()
-  return /^[0-9a-fA-F:.]{3,45}$/.test(ip) ? ip : null
+/** IP de origen para la bitácora centralizada (CU06). */
+async function ipCliente(): Promise<string> {
+  return obtenerIpOrigen()
 }
 
 async function ejecutar<T>(
@@ -94,6 +92,23 @@ export async function verificarDocumentoCompraAction(
 ): Promise<ResultadoCompras<DisponibilidadDocumentoDTO>> {
   return ejecutar('LEER', (_u, db) => ControlRegistrarCompra.verificarDocumento(db, input),
     'Documento verificado.', 'No se pudo verificar el documento.')
+}
+
+export async function sugerirNumeroDocumentoCompraAction(
+  tipoDocumento: 'FACTURA' | 'NOTA',
+  proveedorId?: string | number | null,
+): Promise<ResultadoCompras<string>> {
+  return ejecutar(
+    'LEER',
+    (_u, db) =>
+      ControlRegistrarCompra.sugerirNumeroDocumento(
+        db,
+        tipoDocumento,
+        proveedorId ? Number(proveedorId) : null,
+      ),
+    'Número sugerido.',
+    'No se pudo sugerir el número de documento.',
+  )
 }
 
 export async function calcularResumenCompraAction(input: ResumenCompraInput): Promise<ResultadoCompras<ResumenCompraDTO>> {
