@@ -172,6 +172,14 @@ export const PAQUETES: PaqueteNav[] = [
         cu: 'CU10',
         descripcion: 'Supervisión de técnicos, horarios de trabajo y control de ausencias.',
       },
+      {
+        id: 'asignar-tecnicos',
+        etiqueta: 'Asignar Técnicos (CU11)',
+        ruta: '/asignar-tecnicos',
+        clave: 'ASIGNAR_TECNICOS',
+        cu: 'CU11',
+        descripcion: 'Asignación de cuadrillas con validación de disponibilidad.',
+      },
     ],
   },
   {
