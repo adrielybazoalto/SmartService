@@ -118,6 +118,22 @@ export const PAQUETES: PaqueteNav[] = [
         descripcion: 'Gestión de cotizaciones, proformas y presupuestos para clientes.',
       },
       {
+        id: 'ordenes-trabajo',
+        etiqueta: 'Órdenes de Trabajo (CU12)',
+        ruta: '/ordenes-trabajo',
+        clave: 'ORDENES_TRABAJO',
+        cu: 'CU12',
+        descripcion: 'Gestión de órdenes de trabajo, marcas de tiempo y reporte de campo.',
+      },
+      {
+        id: 'asignar-tecnicos',
+        etiqueta: 'Asignar Técnicos (CU11)',
+        ruta: '/asignar-tecnicos',
+        clave: 'ASIGNAR_TECNICOS',
+        cu: 'CU11',
+        descripcion: 'Programación y asignación de cuadrillas técnicas a órdenes de trabajo.',
+      },
+      {
         id: 'ventas',
         etiqueta: 'Ventas y Caja (CU09)',
         ruta: '/ventas',
