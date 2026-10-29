@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { obtenerCotizacionesAccion, cambiarEstadoCotizacionAccion, eliminarCotizacionAccion } from '@/app/actions/cotizaciones'
+import { convertirCotizacionAOrdenAccion } from '@/app/actions/ordenes-trabajo'
 
 export default function CotizacionesPage() {
   const router = useRouter()
@@ -31,6 +32,23 @@ export default function CotizacionesPage() {
         await cambiarEstadoCotizacionAccion(id, nuevoEstado)
         alert('Estado actualizado con éxito.')
         cargarCotizaciones()
+      } catch (err: any) {
+        alert('Error: ' + err.message)
+      }
+    }
+  }
+
+  const handleConvertirAOrden = async (id: number, nro: string) => {
+    if (confirm(`¿Convertir la cotización ${nro} aprobada en Orden de Trabajo?`)) {
+      try {
+        const res = await convertirCotizacionAOrdenAccion(id)
+        if (res.ok) {
+          alert(res.mensaje)
+          cargarCotizaciones()
+          router.push('/ordenes-trabajo')
+        } else {
+          alert(res.error)
+        }
       } catch (err: any) {
         alert('Error: ' + err.message)
       }
@@ -114,6 +132,14 @@ export default function CotizacionesPage() {
                     </td>
                     <td className="py-4 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {cot.estado === 'APROBADA' && (
+                          <button
+                            onClick={() => handleConvertirAOrden(cot.id, cot.numero_cotizacion)}
+                            className="text-purple-600 hover:underline text-xs font-medium bg-purple-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
+                          >
+                            Crear OT
+                          </button>
+                        )}
                         <a 
                           href={`/cotizaciones/pdf/${cot.id}`}
                           target="_blank"

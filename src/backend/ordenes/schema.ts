@@ -39,7 +39,24 @@ export const crearNotaServicioSchema = z.object({
   monto_total: z.coerce.number().min(0, 'El monto total es obligatorio'),
 })
 
+export const procesarReporteCampoSchema = z.object({
+  ordenId: z.number().int().positive(),
+  diagnostico: z.string().min(1, 'El diagnóstico es obligatorio'),
+  materiales: z
+    .array(
+      z.object({
+        producto_id: z.number().int().positive(),
+        cantidad_utilizada: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+        observacion: z.string().nullable().optional(),
+      }),
+    )
+    .min(0)
+    .optional()
+    .default([]),
+})
+
 export type CrearOrdenTrabajoInput = z.infer<typeof crearOrdenTrabajoSchema>
 export type ActualizarEstadoOrdenTrabajoInput = z.infer<typeof actualizarEstadoOrdenTrabajoSchema>
 export type CrearConsumoMaterialInput = z.infer<typeof crearConsumoMaterialSchema>
 export type CrearNotaServicioInput = z.infer<typeof crearNotaServicioSchema>
+export type ProcesarReporteCampoInput = z.infer<typeof procesarReporteCampoSchema>

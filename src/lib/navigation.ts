@@ -162,8 +162,33 @@ export const PAQUETES: PaqueteNav[] = [
   {
     id: 'P3',
     nombre: 'PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO',
-    habilitado: false,
-    items: [],
+    habilitado: true,
+    items: [
+      {
+        id: 'personal-tecnico',
+        etiqueta: 'Disponibilidad y Jornadas (CU10)',
+        ruta: '/personal-tecnico',
+        clave: 'ORDENES_TRABAJO',
+        cu: 'CU10',
+        descripcion: 'Supervisión de técnicos, horarios de trabajo y control de ausencias.',
+      },
+      {
+        id: 'asignar-tecnicos',
+        etiqueta: 'Asignar Técnicos (CU11)',
+        ruta: '/asignar-tecnicos',
+        clave: 'ASIGNAR_TECNICOS',
+        cu: 'CU11',
+        descripcion: 'Programación y asignación de cuadrillas técnicas a órdenes de trabajo.',
+      },
+      {
+        id: 'ordenes-trabajo',
+        etiqueta: 'Órdenes de Trabajo (CU12)',
+        ruta: '/ordenes-trabajo',
+        clave: 'ORDENES_TRABAJO',
+        cu: 'CU12',
+        descripcion: 'Gestión de órdenes de trabajo, marcas de tiempo y reporte de campo.',
+      },
+    ],
   },
   {
     id: 'P4',
