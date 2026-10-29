@@ -53,6 +53,9 @@ export async function guardarJornada(
   horaFin: string,
 ) {
   const usuarioActual = await getCurrentUser()
+  if (!usuarioActual || !usuarioActual.id) {
+    throw new Error('Sesión requerida: debe iniciar sesión para configurar jornadas laborales.')
+  }
   const db = getSupabaseServiceClient()
 
   const resultado = await guardarJornadaService(db, {
@@ -66,11 +69,10 @@ export async function guardarJornada(
     return resultado
   }
 
-  // Registrar en bitácora (CU06)
-  const usuarioIdAuditoria = usuarioActual?.id ?? 1
+  // Registrar en bitácora con usuario verificado (sin fallback genérico)
   await auditar(
     db,
-    usuarioIdAuditoria,
+    usuarioActual.id,
     'CONFIGURAR_JORNADA',
     `Se actualizó la jornada laboral (${dias}: ${horaInicio} - ${horaFin}) para el técnico ID ${usuarioId}`,
   )
@@ -88,6 +90,9 @@ export async function registrarBloqueo(
   tipo: string,
 ) {
   const usuarioActual = await getCurrentUser()
+  if (!usuarioActual || !usuarioActual.id) {
+    throw new Error('Sesión requerida: debe iniciar sesión para registrar bloqueos de técnicos.')
+  }
   const db = getSupabaseServiceClient()
 
   const resultado = await registrarBloqueoService(db, {
@@ -102,11 +107,10 @@ export async function registrarBloqueo(
     return resultado
   }
 
-  // Registrar en bitácora (CU06)
-  const usuarioIdAuditoria = usuarioActual?.id ?? 1
+  // Registrar en bitácora con usuario verificado (sin fallback genérico)
   await auditar(
     db,
-    usuarioIdAuditoria,
+    usuarioActual.id,
     'REGISTRAR_BLOQUEO',
     `Se registró bloqueo (${tipo}) para el técnico ID ${usuarioId}. Motivo: ${motivo}`,
   )
@@ -118,6 +122,9 @@ export async function registrarBloqueo(
 // 4. Eliminar Bloqueo (Desbloquear al técnico)
 export async function eliminarBloqueoAction(bloqueoId: number) {
   const usuarioActual = await getCurrentUser()
+  if (!usuarioActual || !usuarioActual.id) {
+    throw new Error('Sesión requerida: debe iniciar sesión para eliminar bloqueos de técnicos.')
+  }
   const db = getSupabaseServiceClient()
 
   const resultado = await eliminarBloqueoService(db, bloqueoId)
@@ -126,11 +133,10 @@ export async function eliminarBloqueoAction(bloqueoId: number) {
     return resultado
   }
 
-  // Registrar en bitácora (CU06)
-  const usuarioIdAuditoria = usuarioActual?.id ?? 1
+  // Registrar en bitácora con usuario verificado (sin fallback genérico)
   await auditar(
     db,
-    usuarioIdAuditoria,
+    usuarioActual.id,
     'ELIMINAR_BLOQUEO',
     `Se canceló el bloqueo ID ${bloqueoId} y se habilitó la disponibilidad del técnico`,
   )

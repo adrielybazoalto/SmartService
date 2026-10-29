@@ -6,10 +6,23 @@ import { useRouter } from 'next/navigation'
 import { obtenerCotizacionesAccion, cambiarEstadoCotizacionAccion, eliminarCotizacionAccion } from '@/app/actions/cotizaciones'
 import { convertirCotizacionAOrdenAccion } from '@/app/actions/ordenes-trabajo'
 
+interface CotizacionParaConvertir {
+  id: number
+  nro: string
+  cliente: string
+}
+
 export default function CotizacionesPage() {
   const router = useRouter()
   const [cotizaciones, setCotizaciones] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
+
+  // Estado para el modal de programación y conversión (CU08 -> CU12 -> CU11)
+  const [cotizacionParaConvertir, setCotizacionParaConvertir] = useState<CotizacionParaConvertir | null>(null)
+  const [fechaProgramada, setFechaProgramada] = useState('')
+  const [horaInicio, setHoraInicio] = useState('08:00')
+  const [horaFin, setHoraFin] = useState('12:00')
+  const [convirtiendo, setConvirtiendo] = useState(false)
 
   const cargarCotizaciones = async () => {
     setCargando(true)
@@ -38,20 +51,56 @@ export default function CotizacionesPage() {
     }
   }
 
-  const handleConvertirAOrden = async (id: number, nro: string) => {
-    if (confirm(`¿Convertir la cotización ${nro} aprobada en Orden de Trabajo?`)) {
-      try {
-        const res = await convertirCotizacionAOrdenAccion(id)
-        if (res.ok) {
-          alert(res.mensaje)
-          cargarCotizaciones()
-          router.push('/ordenes-trabajo')
-        } else {
-          alert(res.error)
-        }
-      } catch (err: any) {
-        alert('Error: ' + err.message)
+  const handleAbrirModalConvertir = (cot: any) => {
+    // Por defecto, sugerir mañana de 08:00 a 12:00
+    const manana = new Date()
+    manana.setDate(manana.getDate() + 1)
+    const yyyy = manana.getFullYear()
+    const mm = String(manana.getMonth() + 1).padStart(2, '0')
+    const dd = String(manana.getDate()).padStart(2, '0')
+    setFechaProgramada(`${yyyy}-${mm}-${dd}`)
+    setHoraInicio('08:00')
+    setHoraFin('12:00')
+    setCotizacionParaConvertir({
+      id: cot.id,
+      nro: cot.numero_cotizacion,
+      cliente: cot.cliente?.nombre || `Cliente #${cot.cliente_id}`,
+    })
+  }
+
+  const handleConfirmarConvertir = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cotizacionParaConvertir) return
+
+    if (!fechaProgramada || !horaInicio || !horaFin) {
+      alert('Por favor complete todos los datos de fecha y horario programados.')
+      return
+    }
+
+    if (horaFin <= horaInicio) {
+      alert('La hora de fin programada debe ser posterior a la hora de inicio.')
+      return
+    }
+
+    setConvirtiendo(true)
+    try {
+      const res = await convertirCotizacionAOrdenAccion(cotizacionParaConvertir.id, {
+        fecha_programada: fechaProgramada,
+        hora_inicio: horaInicio,
+        hora_fin: horaFin,
+      })
+      if (res.ok) {
+        alert(res.mensaje)
+        setCotizacionParaConvertir(null)
+        cargarCotizaciones()
+        router.push('/asignar-tecnicos')
+      } else {
+        alert(res.error)
       }
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    } finally {
+      setConvirtiendo(false)
     }
   }
 
@@ -134,8 +183,9 @@ export default function CotizacionesPage() {
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         {cot.estado === 'APROBADA' && (
                           <button
-                            onClick={() => handleConvertirAOrden(cot.id, cot.numero_cotizacion)}
+                            onClick={() => handleAbrirModalConvertir(cot)}
                             className="text-purple-600 hover:underline text-xs font-medium bg-purple-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
+                            title="Programar ventana y crear Orden de Trabajo (CU12 -> CU11)"
                           >
                             Crear OT
                           </button>
@@ -171,6 +221,88 @@ export default function CotizacionesPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal Programar y Crear Orden de Trabajo (CU08 -> CU12 -> CU11) */}
+      {cotizacionParaConvertir && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-150">
+            <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-200">
+              <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-full uppercase">
+                CU12 / CU11
+              </span>
+              <h3 className="mt-2 text-lg font-bold text-slate-900">Programar y Crear Orden de Trabajo</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Defina la fecha y horario para la ejecución. Esta ventana horaria es obligatoria para la asignación de técnicos en CU11.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmarConvertir} className="p-5 sm:p-6 space-y-4">
+              <div className="rounded-xl bg-purple-50/60 p-3 border border-purple-100 text-xs text-purple-900 space-y-1">
+                <div><span className="font-semibold">Cotización:</span> {cotizacionParaConvertir.nro}</div>
+                <div><span className="font-semibold">Cliente:</span> {cotizacionParaConvertir.cliente}</div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Fecha Programada *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={fechaProgramada}
+                  onChange={(e) => setFechaProgramada(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Hora Inicio *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={horaInicio}
+                    onChange={(e) => setHoraInicio(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Hora Fin *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={horaFin}
+                    onChange={(e) => setHoraFin(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setCotizacionParaConvertir(null)}
+                  disabled={convirtiendo}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={convirtiendo}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                >
+                  {convirtiendo ? 'Creando Orden...' : 'Confirmar y Crear OT'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

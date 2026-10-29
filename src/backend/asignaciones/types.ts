@@ -5,7 +5,7 @@ export const ESTADO_PROGRAMADA = 'PROGRAMADA'
 export const ESTADO_FINALIZADA = 'FINALIZADA'
 export const ESTADO_CANCELADA = 'CANCELADA'
 /** Una orden en cualquier otro estado (en proceso, programada, etc.) ocupa al técnico. */
-export const ESTADOS_NO_ACTIVOS: readonly string[] = ['FINALIZADA', 'CANCELADA']
+export const ESTADOS_NO_ACTIVOS: readonly string[] = ['FINALIZADA', 'COMPLETADA', 'CANCELADA']
 
 export type OrdenTrabajo = Tables<'orden_trabajo'>
 

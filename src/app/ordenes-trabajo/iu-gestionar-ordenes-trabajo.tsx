@@ -7,6 +7,7 @@ import {
   procesarReporteCampoAccion,
   obtenerOrdenTrabajoDetalleAccion,
   listarProductosParaConsumoAccion,
+  actualizarVentanaOrdenAccion,
 } from '@/app/actions/ordenes-trabajo'
 import { useRouter } from 'next/navigation'
 
@@ -150,10 +151,21 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
     const estilos: Record<string, string> = {
       PROGRAMADA: 'bg-blue-100 text-blue-800',
       EN_PROGRESO: 'bg-yellow-100 text-yellow-800',
-      COMPLETADA: 'bg-green-100 text-green-800',
+      FINALIZADA: 'bg-emerald-100 text-emerald-800',
+      COMPLETADA: 'bg-emerald-100 text-emerald-800',
       CANCELADA: 'bg-red-100 text-red-800',
     }
     return estilos[estado] || 'bg-gray-100 text-gray-800'
+  }
+
+  const formatearVentana = (inicio: string | null, fin: string | null) => {
+    if (!inicio || !fin) return <span className="text-amber-600 font-medium text-xs">Sin ventana</span>
+    const dIni = new Date(inicio)
+    const dFin = new Date(fin)
+    const fecha = dIni.toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const hIni = dIni.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
+    const hFin = dFin.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
+    return `${fecha} (${hIni} - ${hFin})`
   }
 
   return (
@@ -182,6 +194,7 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Código</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Tipo</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Estado</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Ventana Programada</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Inicio Real</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Fin Real</th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Acciones</th>
@@ -190,7 +203,7 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
             <tbody className="divide-y divide-slate-200">
               {ordenes.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-slate-500">
                     No hay órdenes de trabajo
                   </td>
                 </tr>
@@ -203,6 +216,9 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getEstadoBadge(orden.estado)}`}>
                       {orden.estado}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
+                    {formatearVentana(orden.fecha_inicio_programada, orden.fecha_fin_programada)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                     {orden.fecha_inicio_real ? new Date(orden.fecha_inicio_real).toLocaleString('es-BO') : '-'}

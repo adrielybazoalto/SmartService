@@ -83,17 +83,67 @@ export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<Resp
 }
 
 /**
- * Convertir cotización aprobada a orden de trabajo
+ * Convertir cotización aprobada a orden de trabajo con ventana horaria
  */
-export async function convertirCotizacionAOrdenAccion(cotizacionId: number): Promise<RespuestaAccion<any>> {
+export async function convertirCotizacionAOrdenAccion(
+  cotizacionId: number,
+  datosVentana?: {
+    fecha_programada?: string
+    hora_inicio?: string
+    hora_fin?: string
+    fecha_inicio_programada?: string
+    fecha_fin_programada?: string
+  },
+): Promise<RespuestaAccion<any>> {
   try {
     const { db, usuarioId, ip } = await contexto()
-    const orden = await ControlOrdenesTrabajo.convertirCotizacionAOrdenBD(db, cotizacionId, usuarioId, ip)
+    const orden = await ControlOrdenesTrabajo.convertirCotizacionAOrdenBD(
+      db,
+      cotizacionId,
+      usuarioId,
+      ip,
+      datosVentana,
+    )
     revalidatePath('/ordenes-trabajo')
     revalidatePath('/cotizaciones')
-    return exito(orden, `Orden de trabajo ${orden.codigo_orden} creada exitosamente`)
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, `Orden de trabajo ${orden.codigo_orden} creada exitosamente con ventana programada`)
   } catch (e) {
     return falla(e, 'Error al convertir cotización a orden')
+  }
+}
+
+/**
+ * Actualizar ventana horaria programada de una orden de trabajo
+ */
+export async function actualizarVentanaOrdenAccion(
+  ordenId: number,
+  fechaProgramada: string,
+  horaInicio: string,
+  horaFin: string,
+): Promise<RespuestaAccion<any>> {
+  try {
+    const { db } = await contexto()
+    const dIni = new Date(`${fechaProgramada}T${horaInicio}:00`)
+    const dFin = new Date(`${fechaProgramada}T${horaFin}:00`)
+    if (isNaN(dIni.getTime()) || isNaN(dFin.getTime()) || dFin.getTime() <= dIni.getTime()) {
+      throw new Error('La hora de fin programada debe ser posterior a la hora de inicio')
+    }
+    const { data, error } = await db
+      .from('orden_trabajo')
+      .update({
+        fecha_inicio_programada: dIni.toISOString(),
+        fecha_fin_programada: dFin.toISOString(),
+      })
+      .eq('id', ordenId)
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/asignar-tecnicos')
+    return exito(data, 'Ventana horaria programada actualizada')
+  } catch (e) {
+    return falla(e, 'Error al actualizar ventana horaria')
   }
 }
 
