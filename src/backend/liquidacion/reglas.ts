@@ -3,14 +3,14 @@
 // =====================================================================
 
 import { ErrorNegocio, MENSAJES } from "./errores";
-import { ESTADO_ORDEN_FINALIZADA, type OrdenPendienteLiquidar } from "./types";
+import { ESTADOS_ORDEN_TERMINADA, type OrdenPendienteLiquidar } from "./types";
 
 type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
 
-/** Excepción del CU13: solo órdenes FINALIZADAS y sin nota emitida. */
+/** Excepción del CU13: solo órdenes terminadas (COMPLETADA) y sin nota emitida. */
 export function verificarOrdenLiquidable(orden: OrdenConNota | null): OrdenPendienteLiquidar {
   if (!orden) throw new ErrorNegocio(MENSAJES.ORDEN_NO_EXISTE);
-  if (orden.estado.toUpperCase() !== ESTADO_ORDEN_FINALIZADA) {
+  if (!ESTADOS_ORDEN_TERMINADA.includes(orden.estado.toUpperCase())) {
     throw new ErrorNegocio(MENSAJES.ORDEN_NO_FINALIZADA);
   }
   if (orden.tieneNota) throw new ErrorNegocio(MENSAJES.ORDEN_CON_NOTA(orden.codigo_orden));
@@ -20,7 +20,8 @@ export function verificarOrdenLiquidable(orden: OrdenConNota | null): OrdenPendi
     tipo_trabajo: orden.tipo_trabajo,
     estado: orden.estado,
     fecha_inicio_real: orden.fecha_inicio_real,
-    horas_fin_real: orden.horas_fin_real,
+    fecha_fin_real: orden.fecha_fin_real,
+    horas_trabajadas: orden.horas_trabajadas,
     cotizacion_id: orden.cotizacion_id,
     numero_cotizacion: orden.numero_cotizacion,
     cliente_nombre: orden.cliente_nombre,

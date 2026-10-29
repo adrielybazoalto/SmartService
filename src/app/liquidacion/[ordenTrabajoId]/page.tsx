@@ -1,7 +1,7 @@
 // =====================================================================
 //  CU13 - UI_Liquidacion (carga en el servidor)
 //  Pasos 2 y 3: recupera materiales, horas y calcula el monto total.
-//  Excepción: si la orden no está FINALIZADA muestra el mensaje del CU.
+//  Excepción: si la orden no está COMPLETADA muestra el mensaje del CU.
 // =====================================================================
 
 import Link from "next/link";
@@ -19,11 +19,23 @@ export default async function LiquidacionPage({ params }: Props) {
   const id = Number(ordenTrabajoId);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const controller = await crearLiquidacionController();
+  const controller = crearLiquidacionController();
 
   try {
-    const detalle = await controller.obtenerDetalleLiquidacion(id);
-    return (
+    // Si la orden ya tiene nota, se muestra la nota emitida (y su PDF).
+    const emitida = await controller.consultarNotaEmitida(id);
+    if (emitida) {
+      return (
+        <main className="mx-auto max-w-5xl p-6">
+          <Link href="/liquidacion" className="text-sm text-blue-700 hover:underline">
+            ← Volver a órdenes finalizadas
+          </Link>
+          <LiquidacionForm detalleInicial={emitida.detalle} notaInicial={emitida.nota} />
+        </main>
+      );
+    }
+
+    const detalle = await controller.obtenerDetalleLiquidacion(id);  return (
       <main className="mx-auto max-w-5xl p-6">
         <Link href="/liquidacion" className="text-sm text-blue-700 hover:underline">
           ← Volver a órdenes finalizadas

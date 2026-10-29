@@ -13,7 +13,7 @@ export class ErrorNegocio extends Error {
 /** Mensajes del CU13 (iguales a los de la especificación del caso de uso). */
 export const MENSAJES = {
   ORDEN_NO_EXISTE: "La orden de trabajo no existe.",
-  ORDEN_NO_FINALIZADA: "No se puede liquidar una orden que no se encuentra en estado Finalizada.",
+  ORDEN_NO_FINALIZADA: "No se puede liquidar una orden que no se encuentra en estado Finalizada (Completada).",
   ORDEN_CON_NOTA: (codigo: string) => `La orden ${codigo} ya tiene una nota de servicio emitida.`,
   SIN_SESION: "Debe iniciar sesión con un usuario activo.",
   SIN_PERMISO: "Su rol no tiene permiso para emitir notas de servicio.",

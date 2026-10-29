@@ -1,6 +1,6 @@
 // =====================================================================
 //  CU13 - Fábrica: arma el control con su repositorio (solo servidor)
-//  El cliente de Supabase sale de @/lib/supabase (vía integracion.ts).
+//  Cliente de Supabase: getSupabaseServiceClient() (vía integracion.ts).
 // =====================================================================
 
 import { LiquidacionController } from "./control-emitir-nota";
@@ -9,7 +9,7 @@ import { LiquidacionRepositorio } from "./repositorio";
 
 export const RUTA_LIQUIDACION = "/liquidacion";
 
-export async function crearLiquidacionController(): Promise<LiquidacionController> {
-  const supabase = await obtenerClienteSupabase();
+export function crearLiquidacionController(): LiquidacionController {
+  const supabase = obtenerClienteSupabase();
   return new LiquidacionController(new LiquidacionRepositorio(supabase));
 }

@@ -29,7 +29,7 @@ export class LiquidacionController {
     return this.repositorio.listarOrdenesSinNota();
   }
 
-  /** Excepción del CU13: orden FINALIZADA y sin nota. */
+  /** Excepción del CU13: orden COMPLETADA y sin nota. */
   async verificarEstadoOrden(ordenTrabajoId: number): Promise<OrdenPendienteLiquidar> {
     return verificarOrdenLiquidable(await this.repositorio.obtenerOrden(ordenTrabajoId));
   }
@@ -52,6 +52,39 @@ export class LiquidacionController {
     ]);
 
     return { orden, materiales, calculo, requiereServicio, servicios };
+  }
+    /** Orden que ya tiene nota: devuelve la nota y su detalle (para ver y descargar el PDF). */
+  async consultarNotaEmitida(
+    ordenTrabajoId: number,
+  ): Promise<{ nota: NotaServicio; detalle: DetalleLiquidacion } | null> {
+    const nota = await this.repositorio.obtenerNotaDeOrden(ordenTrabajoId);
+    if (!nota) return null;
+    const fila = await this.repositorio.obtenerOrden(ordenTrabajoId);
+    if (!fila) return null;
+
+    const { tieneNota: _tieneNota, ...orden } = fila;
+    void _tieneNota;
+    const materiales = await this.repositorio.listarMaterialesConsumidos(ordenTrabajoId);
+    const costoMateriales = Math.round(materiales.reduce((s, m) => s + m.subtotal, 0) * 100) / 100;
+    const costoManoObra = Math.max(0, Math.round((nota.monto_total - costoMateriales) * 100) / 100);
+    const horas = orden.horas_trabajadas;
+
+    return {
+      nota,
+      detalle: {
+        orden,
+        materiales,
+        calculo: {
+          costo_materiales: costoMateriales,
+          horas_trabajadas: horas,
+          tarifa_hora: horas > 0 ? Math.round((costoManoObra / horas) * 100) / 100 : 0,
+          costo_mano_obra: costoManoObra,
+          total_liquidacion: nota.monto_total,
+        },
+        requiereServicio: false,
+        servicios: [],
+      },
+    };
   }
 
   /** Paso 5: saldo = total - anticipo */

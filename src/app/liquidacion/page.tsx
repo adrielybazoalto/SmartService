@@ -1,6 +1,6 @@
 // =====================================================================
 //  CU13 - UI_OrdenesFinalizadas
-//  Paso 1 del flujo principal: el Encargado ve las órdenes FINALIZADAS
+//  Paso 1 del flujo principal: el Encargado ve las órdenes COMPLETADAS
 //  sin nota de servicio y selecciona una para liquidar.
 // =====================================================================
 
@@ -15,7 +15,7 @@ export default async function OrdenesFinalizadasPage() {
   let error: string | null = null;
 
   try {
-    const controller = await crearLiquidacionController();
+    const controller = crearLiquidacionController();
     ordenes = await controller.listarOrdenesFinalizadas();
   } catch (e) {
     error = e instanceof Error ? e.message : "No se pudieron cargar las órdenes.";
@@ -49,7 +49,7 @@ export default async function OrdenesFinalizadasPage() {
                 <th className="px-4 py-3">Cliente</th>
                 <th className="px-4 py-3">Tipo</th>
                 <th className="px-4 py-3">Cotización</th>
-                <th className="px-4 py-3">Inicio real</th>
+                <th className="px-4 py-3">Fin real</th>
                 <th className="px-4 py-3 text-right">Horas</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -60,9 +60,9 @@ export default async function OrdenesFinalizadasPage() {
                   <td className="px-4 py-3 font-medium text-gray-900">{o.codigo_orden}</td>
                   <td className="px-4 py-3">{o.cliente_nombre ?? "—"}</td>
                   <td className="px-4 py-3">{o.tipo_trabajo}</td>
-                  <td className="px-4 py-3">{o.numero_cotizacion ?? "Correctivo (sin cotización)"}</td>
-                  <td className="px-4 py-3">{formatearFecha(o.fecha_inicio_real)}</td>
-                  <td className="px-4 py-3 text-right">{o.horas_fin_real ?? 0}</td>
+                  <td className="px-4 py-3">{o.numero_cotizacion ??"Sin cotización"}</td>
+                  <td className="px-4 py-3">{formatearFecha(o.fecha_fin_real)}</td>
+                  <td className="px-4 py-3 text-right">{o.horas_trabajadas}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/liquidacion/${o.id}`}

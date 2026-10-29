@@ -4,8 +4,11 @@
 //  (mismos nombres y atributos del diagrama de análisis y de Supabase)
 // =====================================================================
 
-/** Estado que deja el CU12 cuando el técnico termina la orden. */
-export const ESTADO_ORDEN_FINALIZADA = "FINALIZADA";
+/**
+ * Estados con los que el CU12 deja una orden terminada.
+ * El CU12 del proyecto usa "COMPLETADA"; se acepta también "FINALIZADA".
+ */
+export const ESTADOS_ORDEN_TERMINADA = ["COMPLETADA", "FINALIZADA"];
 
 /** Tabla orden_trabajo (solo los atributos que usa el CU13). */
 export interface OrdenTrabajo {
@@ -14,7 +17,9 @@ export interface OrdenTrabajo {
   tipo_trabajo: string;
   estado: string;
   fecha_inicio_real: string | null;
-  horas_fin_real: number | null;
+  fecha_fin_real: string | null;
+  /** Calculado: fecha_fin_real - fecha_inicio_real, en horas. */
+  horas_trabajadas: number;
   cotizacion_id: number | null;
 }
 

@@ -10,7 +10,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { obtenerUsuarioSesion } from "./integracion";
 import { verificarOrdenLiquidable } from "./reglas";
 import {
-  ESTADO_ORDEN_FINALIZADA,
   type CalculoLiquidacion,
   type MaterialConsumido,
   type NotaServicio,
@@ -20,7 +19,7 @@ import {
 } from "./types";
 
 const COLUMNAS_ORDEN = `
-  id, codigo_orden, tipo_trabajo, estado, fecha_inicio_real, horas_fin_real, cotizacion_id,
+  id, codigo_orden, tipo_trabajo, estado, fecha_inicio_real, fecha_fin_real, cotizacion_id,
   cotizacion ( numero_cotizacion, cliente ( nombre ) ),
   nota_servicio ( id )
 `;
@@ -31,7 +30,14 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
   return valor ?? null;
 }
 
-export type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
+export /** Horas efectivas = fin real - inicio real (mismo cálculo que el SQL). */
+function calcularHoras(inicio: string | null, fin: string | null): number {
+  if (!inicio || !fin) return 0;
+  const ms = new Date(fin).getTime() - new Date(inicio).getTime();
+  return ms > 0 ? Math.round((ms / 3_600_000) * 100) / 100 : 0;
+}
+
+type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapearOrden(fila: any): OrdenConNota {
@@ -44,7 +50,8 @@ function mapearOrden(fila: any): OrdenConNota {
     tipo_trabajo: fila.tipo_trabajo,
     estado: fila.estado,
     fecha_inicio_real: fila.fecha_inicio_real,
-    horas_fin_real: fila.horas_fin_real === null ? null : Number(fila.horas_fin_real),
+    fecha_fin_real: fila.fecha_fin_real,
+    horas_trabajadas: calcularHoras(fila.fecha_inicio_real, fila.fecha_fin_real),
     cotizacion_id: fila.cotizacion_id,
     numero_cotizacion: cotizacion?.numero_cotizacion ?? null,
     cliente_nombre: cliente?.nombre ?? null,
@@ -55,13 +62,13 @@ function mapearOrden(fila: any): OrdenConNota {
 export class LiquidacionRepositorio {
   constructor(private readonly db: SupabaseClient) {}
 
-  /** OrdenTrabajo: órdenes FINALIZADAS que todavía no tienen nota de servicio. */
+  /** OrdenTrabajo: órdenes COMPLETADAS (terminadas en el CU12) sin nota de servicio. */
   async listarOrdenesSinNota(): Promise<OrdenPendienteLiquidar[]> {
     const { data, error } = await this.db
       .from("orden_trabajo")
       .select(COLUMNAS_ORDEN)
-      .eq("estado", ESTADO_ORDEN_FINALIZADA)
-      .order("fecha_inicio_real", { ascending: false });
+      .or("estado.ilike.completada,estado.ilike.finalizada")
+      .order("fecha_fin_real", { ascending: false });
 
     if (error) throw new Error(`No se pudieron listar las órdenes: ${error.message}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,6 +89,22 @@ export class LiquidacionRepositorio {
 
     if (error) throw new Error(`No se pudo obtener la orden: ${error.message}`);
     return data ? mapearOrden(data) : null;
+  }
+    /** NotaServicio.obtenerPorOrden: la nota ya emitida de la orden (o null). */
+  async obtenerNotaDeOrden(ordenTrabajoId: number): Promise<NotaServicio | null> {
+    const { data, error } = await this.db
+      .from("nota_servicio")
+      .select("id, orden_trabajo_id, numero_nota, anticipo_pagado, fecha_emision, estado, monto_total")
+      .eq("orden_trabajo_id", ordenTrabajoId)
+      .maybeSingle();
+
+    if (error) throw new Error(`No se pudo obtener la nota de servicio: ${error.message}`);
+    if (!data) return null;
+    return {
+      ...data,
+      anticipo_pagado: Number(data.anticipo_pagado),
+      monto_total: Number(data.monto_total),
+    } as NotaServicio;
   }
 
   /** DetalleConsumoMaterial.listarPorOrden + Producto.calcularPrecioVenta */
@@ -176,9 +199,9 @@ export class LiquidacionRepositorio {
 
   /**
    * Usuario que inició sesión (login propio del CU01).
-   * Se obtiene con las funciones de @/lib/auth o @/lib/sesiones (integracion.ts).
+   * Se obtiene con getCurrentUser() de @/lib/auth (integracion.ts).
    */
   async obtenerUsuarioActual(): Promise<UsuarioSesion | null> {
-    return obtenerUsuarioSesion(this.db);
+    return obtenerUsuarioSesion();
   }
 }

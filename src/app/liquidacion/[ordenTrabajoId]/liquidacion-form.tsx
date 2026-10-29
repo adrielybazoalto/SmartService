@@ -12,17 +12,22 @@ import { useMemo, useState, useTransition, type ChangeEvent } from "react";
 import {
   calcularLiquidacionAction,
   emitirNotaServicioAction,
-} from "@/backend/liquidacion/acciones";
+} from "@/app/actions/liquidacion";
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
 import { descargarNotaServicioPDF } from "../_lib/pdf";
 import { formatearBs } from "../_lib/formato";
-
-export function LiquidacionForm({ detalleInicial }: { detalleInicial: DetalleLiquidacion }) {
+export function LiquidacionForm({
+  detalleInicial,
+  notaInicial = null,
+}: {
+  detalleInicial: DetalleLiquidacion;
+  notaInicial?: NotaServicio | null;
+}) {
   const [detalle, setDetalle] = useState(detalleInicial);
   const [servicioId, setServicioId] = useState<number | null>(null);
-  const [anticipoTexto, setAnticipoTexto] = useState("0");
+  const [anticipoTexto, setAnticipoTexto] = useState(notaInicial ? String(notaInicial.anticipo_pagado) : "0");
   const [error, setError] = useState<string | null>(null);
-  const [nota, setNota] = useState<NotaServicio | null>(null);
+  const [nota, setNota] = useState<NotaServicio | null>(notaInicial);
   const [pendiente, iniciar] = useTransition();
 
   const { orden, materiales, calculo } = detalle;
@@ -62,9 +67,19 @@ export function LiquidacionForm({ detalleInicial }: { detalleInicial: DetalleLiq
         setError(r.error);
         return;
       }
-      setNota(r.data);
-      await descargarNotaServicioPDF(r.data, detalle);
+            setNota(r.data);
+      await descargarPDF(r.data);
     });
+  }
+
+  // UI_Liquidacion.mostrarNotaPDF
+  async function descargarPDF(n: NotaServicio) {
+    try {
+      await descargarNotaServicioPDF(n, detalle);
+    } catch (e) {
+      console.error("[CU13] Error al generar el PDF", e);
+      setError("La nota se emitió, pero no se pudo generar el PDF. Use el botón Descargar PDF.");
+    }
   }
 
   return (
@@ -74,7 +89,7 @@ export function LiquidacionForm({ detalleInicial }: { detalleInicial: DetalleLiq
           <h1 className="text-2xl font-semibold text-gray-900">Liquidación {orden.codigo_orden}</h1>
           <p className="text-sm text-gray-600">
             {orden.cliente_nombre ?? "Cliente no registrado"} · {orden.tipo_trabajo}
-            {orden.numero_cotizacion ? ` · ${orden.numero_cotizacion}` : " · Correctivo"}
+            {orden.numero_cotizacion ? ` · ${orden.numero_cotizacion}` :" · Sin cotización"}
           </p>
         </div>
         <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">{orden.estado}</span>
@@ -191,7 +206,7 @@ export function LiquidacionForm({ detalleInicial }: { detalleInicial: DetalleLiq
           <p className="font-medium">Nota de servicio {nota.numero_nota} emitida ({nota.estado}).</p>
           <button
             type="button"
-            onClick={() => descargarNotaServicioPDF(nota, detalle)}
+                       onClick={() => descargarPDF(nota)}
             className="mt-3 rounded-md border border-green-600 px-3 py-1.5 font-medium hover:bg-green-100"
           >
             Descargar PDF otra vez
