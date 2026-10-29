@@ -12,8 +12,9 @@
 --                                  la nota y la bitácora en UNA transacción.
 --
 --  Supuestos (ajustar si su base es distinta):
---   - orden_trabajo.estado = 'FINALIZADA' cuando la orden terminó (CU12).
---   - orden_trabajo.horas_fin_real = horas técnicas trabajadas.
+--   - El CU12 deja la orden en estado 'COMPLETADA' cuando el técnico termina
+--     (también se acepta 'FINALIZADA').
+--   - Horas trabajadas = fecha_fin_real - fecha_inicio_real (columnas del CU12).
 --   - producto.margen_ganancia es un porcentaje (30 = 30 %).
 --   - Tarifa por hora: la de los servicios cotizados en la cotización de
 --     la orden; si la orden no tiene cotización (correctivo), la del
@@ -57,18 +58,27 @@ AS $$
 DECLARE
     v_cotizacion_id INTEGER;
     v_horas         NUMERIC;
+    v_inicio        TIMESTAMP;
+    v_fin           TIMESTAMP;
     v_materiales    NUMERIC;
     v_tarifa        NUMERIC;
     v_mano_obra     NUMERIC;
 BEGIN
-    SELECT ot.cotizacion_id, COALESCE(ot.horas_fin_real, 0)
-      INTO v_cotizacion_id, v_horas
+    SELECT ot.cotizacion_id, ot.fecha_inicio_real, ot.fecha_fin_real
+      INTO v_cotizacion_id, v_inicio, v_fin
       FROM orden_trabajo ot
      WHERE ot.id = p_orden_id;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'La orden de trabajo % no existe', p_orden_id;
     END IF;
+
+    -- Horas efectivas registradas por el técnico en el CU12
+    v_horas := CASE
+                 WHEN v_inicio IS NOT NULL AND v_fin IS NOT NULL AND v_fin > v_inicio
+                 THEN ROUND(EXTRACT(EPOCH FROM (v_fin - v_inicio)) / 3600.0, 2)
+                 ELSE 0
+               END;
 
     -- Materiales consumidos en campo a precio de venta
     SELECT COALESCE(SUM(
@@ -142,7 +152,7 @@ BEGIN
     END IF;
 
     -- Excepción del CU13
-    IF UPPER(COALESCE(v_estado, '')) <> 'FINALIZADA' THEN
+    IF UPPER(COALESCE(v_estado, '')) NOT IN ('COMPLETADA', 'FINALIZADA') THEN
         RAISE EXCEPTION 'No se puede liquidar una orden que no se encuentra en estado Finalizada';
     END IF;
 

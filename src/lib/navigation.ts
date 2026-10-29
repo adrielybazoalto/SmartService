@@ -188,6 +188,14 @@ export const PAQUETES: PaqueteNav[] = [
         cu: 'CU12',
         descripcion: 'Gestión de órdenes de trabajo, marcas de tiempo y reporte de campo.',
       },
+            {
+        id: 'liquidacion',
+        etiqueta: 'Notas de Servicio y Liquidación (CU13)',
+        ruta: '/liquidacion',
+        clave: 'ORDENES_TRABAJO',
+        cu: 'CU13',
+        descripcion: 'Liquidación de órdenes finalizadas y emisión de notas de servicio.',
+      },
     ],
   },
   {
