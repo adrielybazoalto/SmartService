@@ -14,10 +14,13 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
 import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
+import { ErrorPago, PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago';
 import {
   VentaError,
   anularVenta as anularVentaService,
   buscarClienteMostrador,
+  confirmarPagoTarjeta,
+  iniciarPagoTarjeta,
   listarClientesVenta as listarClientesService,
   listarProductosVenta as listarProductosService,
   listarTurnosCerrados as listarTurnosService,
@@ -69,7 +72,7 @@ async function contexto(): Promise<Contexto> {
 const exito = <T>(data: T, mensaje: string) => ({ ok: true as const, data, mensaje });
 
 function falla(e: unknown, porDefecto: string) {
-  if (e instanceof VentaError) return { ok: false as const, error: e.message };
+  if (e instanceof VentaError || e instanceof ErrorPago) return { ok: false as const, error: e.message };
   console.error('[CU09]', e);
   return { ok: false as const, error: porDefecto };
 }
@@ -220,6 +223,38 @@ export async function registrarVentaAction(input: RegistrarVentaInput): Promise<
 
 export async function registrarVenta(input: RegistrarVentaInput): Promise<RespuestaAccion<ComprobanteVenta>> {
   return registrarVentaAction(input);
+}
+
+/** Flujo alternativo "Pago con tarjeta": crea el cobro en Stripe y devuelve su enlace */
+export async function iniciarPagoTarjetaAction(input: RegistrarVentaInput): Promise<RespuestaAccion<{ url: string }>> {
+  try {
+    const { db, usuarioId, ip } = await contexto();
+    const r = await iniciarPagoTarjeta(db, new PasarelaPago(), { ...(input as any), usuarioId, ip }, await obtenerUrlBase());
+    return exito(r, 'Redirigiendo a la pasarela de pago');
+  } catch (e) {
+    return falla(e, 'No se pudo iniciar el pago con tarjeta');
+  }
+}
+
+/** Al volver de Stripe: verifica el pago y recién entonces registra la venta */
+export async function confirmarPagoTarjetaAction(sessionId: string): Promise<RespuestaAccion<ComprobanteVenta>> {
+  try {
+    const { db, usuarioId, ip } = await contexto();
+    const { comprobante, yaRegistrada } = await confirmarPagoTarjeta(db, new PasarelaPago(), {
+      sessionId: String(sessionId),
+      usuarioId,
+      ip,
+    });
+    revalidatePath('/ventas');
+    return exito(
+      comprobante,
+      yaRegistrada
+        ? `La venta ${comprobante.nroComprobante} ya estaba registrada`
+        : `Pago con tarjeta confirmado · venta ${comprobante.nroComprobante} registrada`
+    );
+  } catch (e) {
+    return falla(e, 'No se pudo confirmar el pago con tarjeta');
+  }
 }
 
 /** Subflujo: anulación (solo turno abierto y del mismo usuario) */

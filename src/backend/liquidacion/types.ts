@@ -73,6 +73,22 @@ export interface NotaServicio {
   fecha_emision: string;
   estado: string;
   monto_total: number;
+  /** Pago del saldo con tarjeta (Stripe). Ver migracion_cu13_pago_stripe.sql */
+  metodo_pago?: string | null;
+  fecha_pago?: string | null;
+}
+
+/** Nota PENDIENTE de pago, para el listado de cobros. */
+export interface NotaPendientePago {
+  id: number;
+  numero_nota: string;
+  orden_trabajo_id: number;
+  codigo_orden: string;
+  cliente_nombre: string | null;
+  fecha_emision: string;
+  monto_total: number;
+  anticipo_pagado: number;
+  saldo: number;
 }
 
 /** Datos que envía UI_Liquidacion al confirmar la emisión. */

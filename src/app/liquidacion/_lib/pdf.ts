@@ -7,7 +7,7 @@
 // =====================================================================
 
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
-import { formatearBs, formatearFecha } from "./formato";
+import { formatearBs, formatearFecha, formatearFechaHora } from "./formato";
 
 export async function descargarNotaServicioPDF(
   nota: NotaServicio,
@@ -60,7 +60,9 @@ export async function descargarNotaServicioPDF(
 
   // Mano de obra y totales
   const c = detalle.calculo;
-  const saldo = Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100;
+  const pagadaConTarjeta = nota.metodo_pago === "TARJETA";
+  const saldoNota = Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100;
+  const saldo = nota.estado.toUpperCase() === "PAGADA" ? 0 : saldoNota;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const finTabla = (doc as any).lastAutoTable?.finalY ?? y + 30;
 
@@ -71,6 +73,9 @@ export async function descargarNotaServicioPDF(
       [`Mano de obra (${c.horas_trabajadas} h x ${formatearBs(c.tarifa_hora)})`, formatearBs(c.costo_mano_obra)],
       ["MONTO TOTAL", formatearBs(nota.monto_total)],
       ["Anticipo pagado", `- ${formatearBs(nota.anticipo_pagado)}`],
+      ...(pagadaConTarjeta
+        ? [[`Pagado con tarjeta (${formatearFechaHora(nota.fecha_pago ?? null)})`, `- ${formatearBs(saldoNota)}`]]
+        : []),
       ["SALDO PENDIENTE", formatearBs(saldo)],
     ],
     styles: { fontSize: 10 },

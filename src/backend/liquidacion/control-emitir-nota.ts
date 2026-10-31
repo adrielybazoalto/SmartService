@@ -12,17 +12,23 @@ import {
   calcularSaldo,
   requiereElegirServicio,
   validarAnticipo,
+  verificarNotaCobrable,
   verificarOrdenLiquidable,
 } from "./reglas";
 import type {
   DetalleLiquidacion,
   EmitirNotaInput,
+  NotaPendientePago,
   NotaServicio,
   OrdenPendienteLiquidar,
 } from "./types";
+import type { PasarelaPago } from "@/backend/pagos/pasarela-pago";
 
 export class LiquidacionController {
-  constructor(private readonly repositorio: LiquidacionRepositorio) {}
+  constructor(
+    private readonly repositorio: LiquidacionRepositorio,
+    private readonly pasarela?: PasarelaPago,
+  ) {}
 
   /** UI_OrdenesFinalizadas.mostrarOrdenesSinNota */
   listarOrdenesFinalizadas(): Promise<OrdenPendienteLiquidar[]> {
@@ -85,6 +91,59 @@ export class LiquidacionController {
         servicios: [],
       },
     };
+  }
+
+  /** Notas PENDIENTES con saldo por cobrar */
+  listarNotasPendientesPago(): Promise<NotaPendientePago[]> {
+    return this.repositorio.listarNotasPendientesPago();
+  }
+
+  /**
+   * Flujo alternativo "Cobrar saldo con tarjeta" (pasos 11 a 13)
+   * NotaServicio.calcularSaldo + PasarelaPago.crearSesionPago
+   * Devuelve el enlace de la página de pago de Stripe.
+   */
+  async iniciarCobroSaldo(notaId: number, urlBase: string): Promise<{ url: string }> {
+    verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    if (!this.pasarela) throw new ErrorNegocio("La pasarela de pago no está configurada.");
+
+    const nota = await this.repositorio.obtenerNotaPorId(notaId);
+    const saldo = verificarNotaCobrable(nota);
+    const retorno = `${urlBase}/liquidacion/${nota!.orden_trabajo_id}`;
+
+    const sesion = await this.pasarela.crearSesionPago({
+      montoBs: saldo,
+      descripcion: `Saldo de la nota de servicio ${nota!.numero_nota} - SgarNet`,
+      urlRetorno: `${retorno}?pago=exito`,
+      urlCancelacion: `${retorno}?pago=cancelado`,
+      metadata: { tipo: "NOTA_SERVICIO", nota_id: String(nota!.id), numero_nota: nota!.numero_nota, saldo_bs: saldo.toFixed(2) },
+    });
+    return { url: sesion.url };
+  }
+
+  /**
+   * Pasos 15 a 17: al volver de Stripe se verifica el pago y la nota pasa
+   * a PAGADA (NotaServicio.registrarPago + Bitacora.registrarEvento).
+   */
+  async confirmarPagoSaldo(sessionId: string, ip: string | null): Promise<NotaServicio> {
+    const usuario = verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    if (!this.pasarela) throw new ErrorNegocio("La pasarela de pago no está configurada.");
+
+    const pago = await this.pasarela.verificarPago(sessionId);
+    if (!pago.pagado) throw new ErrorNegocio(MENSAJES.PAGO_NO_APROBADO);
+
+    const notaId = Number(pago.metadata.nota_id);
+    if (pago.metadata.tipo !== "NOTA_SERVICIO" || !Number.isInteger(notaId)) {
+      throw new ErrorNegocio(MENSAJES.PAGO_NO_CORRESPONDE);
+    }
+
+    return this.repositorio.registrarPago({
+      notaId,
+      sessionId: pago.sessionId,
+      montoBs: Number(pago.metadata.saldo_bs),
+      usuarioId: usuario.id,
+      ip,
+    });
   }
 
   /** Paso 5: saldo = total - anticipo */

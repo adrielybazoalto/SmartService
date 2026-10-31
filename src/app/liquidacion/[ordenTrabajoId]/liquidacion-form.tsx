@@ -4,24 +4,32 @@
 //  CU13 - UI_Liquidacion (interacción)
 //  mostrarDetalleLiquidacion · ingresarAnticipo · mostrarSaldo ·
 //  confirmarEmision · mostrarNotaPDF · mostrarMensajeError
+//  cobrarSaldoConTarjeta · redirigirPago · retornarAlSistema · mostrarNotaPagada
 // =====================================================================
 
-import { useMemo, useState, useTransition, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent } from "react";
 // Importante: el formulario (cliente) importa SOLO acciones y tipos,
 // nunca el index del backend, para no mezclar código de servidor.
 import {
   calcularLiquidacionAction,
+  confirmarPagoSaldoAction,
   emitirNotaServicioAction,
+  iniciarCobroSaldoAction,
 } from "@/app/actions/liquidacion";
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
 import { descargarNotaServicioPDF } from "../_lib/pdf";
-import { formatearBs } from "../_lib/formato";
+import { formatearBs, formatearFechaHora } from "../_lib/formato";
 export function LiquidacionForm({
   detalleInicial,
   notaInicial = null,
+  sessionIdRetorno = null,
+  pagoCancelado = false,
 }: {
   detalleInicial: DetalleLiquidacion;
   notaInicial?: NotaServicio | null;
+  /** session_id que Stripe agrega a la URL al volver de un pago */
+  sessionIdRetorno?: string | null;
+  pagoCancelado?: boolean;
 }) {
   const [detalle, setDetalle] = useState(detalleInicial);
   const [servicioId, setServicioId] = useState<number | null>(null);
@@ -29,6 +37,41 @@ export function LiquidacionForm({
   const [error, setError] = useState<string | null>(null);
   const [nota, setNota] = useState<NotaServicio | null>(notaInicial);
   const [pendiente, iniciar] = useTransition();
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [cobrando, setCobrando] = useState(false);
+  const confirmado = useRef(false);
+
+  // retornarAlSistema(sessionId): al volver de Stripe se confirma el pago una sola vez
+  useEffect(() => {
+    if (pagoCancelado) setError("Pago cancelado: la nota sigue PENDIENTE.");
+    if (sessionIdRetorno && !confirmado.current) {
+      confirmado.current = true;
+      setCobrando(true);
+      confirmarPagoSaldoAction(sessionIdRetorno).then((r) => {
+        setCobrando(false);
+        if (r.ok) {
+          setNota(r.data);
+          setAviso(`Pago confirmado: la nota ${r.data.numero_nota} quedó PAGADA.`);
+        } else setError(r.error);
+      });
+    }
+    // quita ?pago=...&session_id=... de la barra de direcciones
+    if (sessionIdRetorno || pagoCancelado) window.history.replaceState(null, "", window.location.pathname);
+  }, [sessionIdRetorno, pagoCancelado]);
+
+  // cobrarSaldoConTarjeta -> redirigirPago(url)
+  function cobrarSaldoConTarjeta() {
+    if (!nota) return;
+    setError(null);
+    setCobrando(true);
+    iniciarCobroSaldoAction(nota.id).then((r) => {
+      if (r.ok) window.location.assign(r.data.url);
+      else {
+        setCobrando(false);
+        setError(r.error);
+      }
+    });
+  }
 
   const { orden, materiales, calculo } = detalle;
   const anticipo = Number(anticipoTexto.replace(",", "."));
@@ -201,15 +244,38 @@ export function LiquidacionForm({
         <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
+      {aviso && (
+        <div role="status" className="rounded-md border border-green-300 bg-green-100 p-3 text-sm font-medium text-green-900">{aviso}</div>
+      )}
+
       {nota && (
         <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-800">
           <p className="font-medium">Nota de servicio {nota.numero_nota} emitida ({nota.estado}).</p>
+          <p className="mt-1">
+            Total {formatearBs(nota.monto_total)} · Anticipo {formatearBs(nota.anticipo_pagado)} ·{" "}
+            {nota.estado.toUpperCase() === "PENDIENTE"
+              ? `Saldo pendiente ${formatearBs(Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100)}`
+              : "Sin saldo pendiente"}
+          </p>
+          {nota.metodo_pago === "TARJETA" && (
+            <p className="mt-1">Saldo pagado con tarjeta (Stripe) el {formatearFechaHora(nota.fecha_pago ?? null)}.</p>
+          )}
+          {nota.estado.toUpperCase() === "PENDIENTE" && nota.monto_total - nota.anticipo_pagado > 0 && (
+            <button
+              type="button"
+              onClick={cobrarSaldoConTarjeta}
+              disabled={cobrando}
+              className="mt-3 mr-2 rounded-md bg-indigo-700 px-3 py-1.5 font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+            >
+              {cobrando ? "Conectando con la pasarela…" : "Cobrar saldo con tarjeta (Stripe)"}
+            </button>
+          )}
           <button
             type="button"
-                       onClick={() => descargarPDF(nota)}
+            onClick={() => descargarPDF(nota)}
             className="mt-3 rounded-md border border-green-600 px-3 py-1.5 font-medium hover:bg-green-100"
           >
-            Descargar PDF otra vez
+            Descargar PDF
           </button>
         </div>
       )}

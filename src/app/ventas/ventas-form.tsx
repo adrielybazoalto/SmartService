@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { descargarNotaVenta, registrarVenta } from '@/app/actions/ventas';
+import { confirmarPagoTarjetaAction, descargarNotaVenta, iniciarPagoTarjetaAction, registrarVenta } from '@/app/actions/ventas';
 import type {
   ClienteVenta,
   ComprobanteVenta,
@@ -65,10 +65,11 @@ const bs = (n: number) =>
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const fmtCant = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
-/** Métodos de pago habilitados: efectivo y QR */
+/** Métodos de pago habilitados: efectivo, QR y tarjeta (pasarela Stripe) */
 const PAGOS: { valor: TipoPago; etiqueta: string }[] = [
   { valor: 'EFECTIVO', etiqueta: 'Efectivo' },
   { valor: 'QR', etiqueta: 'QR' },
+  { valor: 'TARJETA', etiqueta: 'Tarjeta' },
 ];
 
 /**
@@ -114,6 +115,39 @@ export default function VentasForm({
   const [error, setError] = useState<string | null>(null);
   const [ultimaVenta, setUltimaVenta] = useState<ComprobanteVenta | null>(null);
   const buscadorRef = useRef<HTMLInputElement>(null);
+  const retornoProcesado = useRef(false);
+
+  // retornarAlSistema(sessionId): Stripe vuelve a /ventas?pago=exito&session_id=...
+  // Recién aquí se registra la venta pagada con tarjeta (una sola vez).
+  useEffect(() => {
+    if (retornoProcesado.current) return;
+    retornoProcesado.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const pago = q.get('pago');
+    const sessionId = q.get('session_id');
+    if (!pago) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    if (pago === 'cancelado') {
+      setError('Pago con tarjeta cancelado: la venta no se registró.');
+      notificar('error', 'Pago con tarjeta cancelado');
+      return;
+    }
+    if (pago === 'exito' && sessionId) {
+      setGuardando(true);
+      confirmarPagoTarjetaAction(sessionId).then((res) => {
+        setGuardando(false);
+        if (!res.ok) {
+          setError(res.error);
+          notificar('error', res.error);
+          return;
+        }
+        setUltimaVenta(res.data);
+        notificar('ok', res.mensaje);
+        onVentaRegistrada();
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- Catálogo de productos (paso 3) -----------------------------------------
   const opciones = useMemo<Opcion[]>(
@@ -212,6 +246,26 @@ export default function VentasForm({
     if (hayExcesoStock) return setError('Hay productos con cantidad mayor al stock disponible');
     if (cambio !== null && cambio < 0) return setError('El efectivo recibido es menor al total');
     if (tipoPago === 'QR' && !pagoQrConfirmado) return setError('Confirme que recibió el pago por QR');
+
+    // Tarjeta: se cobra en Stripe y la venta se registra al volver (retornarAlSistema)
+    if (tipoPago === 'TARJETA') {
+      setGuardando(true);
+      const pago = await iniciarPagoTarjetaAction({
+        clienteId,
+        tipoPago,
+        tipoComprobante,
+        descuento: descuentoNum,
+        items: lineas.map((l) => ({ productoId: l.id, cantidad: l.cantidad })),
+      });
+      if (!pago.ok) {
+        setGuardando(false);
+        setError(pago.error);
+        notificar('error', pago.error);
+        return;
+      }
+      window.location.assign(pago.data.url); // redirigirPago(url)
+      return;
+    }
 
     setGuardando(true);
     const res = await registrarVenta({
@@ -498,7 +552,7 @@ export default function VentasForm({
         {/* Método de pago */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">Método de pago</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {PAGOS.map((p) => (
               <button
                 key={p.valor}
@@ -551,6 +605,14 @@ export default function VentasForm({
             </div>
           )}
         </div>
+        {/* Cobro con tarjeta (Stripe) */}
+        {tipoPago === 'TARJETA' && lineas.length > 0 && !descuentoInvalido && (
+          <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+            Al confirmar se abre la página de pago de Stripe (modo prueba). La venta se registra solo cuando el pago
+            queda aprobado. Tarjeta de prueba: 4242 4242 4242 4242, cualquier fecha futura y CVC.
+          </p>
+        )}
+
         {/* Cobro por QR */}
         {tipoPago === 'QR' && lineas.length > 0 && !descuentoInvalido && (
           <PanelQr total={total} confirmado={pagoQrConfirmado} onConfirmar={setPagoQrConfirmado} />
@@ -589,7 +651,9 @@ export default function VentasForm({
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#8cd600] px-5 py-3.5 text-base font-semibold text-gray-900 shadow-sm transition hover:bg-[#73b800] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {guardando && <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />}
-        {guardando ? 'Registrando…' : `Confirmar venta · ${bs(total)}`}
+        {guardando
+          ? tipoPago === 'TARJETA' ? 'Conectando con la pasarela…' : 'Registrando…'
+          : tipoPago === 'TARJETA' ? `Pagar con tarjeta · ${bs(total)}` : `Confirmar venta · ${bs(total)}`}
       </button>
     </div>
   );

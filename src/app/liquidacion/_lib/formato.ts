@@ -14,3 +14,8 @@ export function formatearFecha(fecha: string | null): string {
   const d = new Date(fecha.length === 10 ? `${fecha}T00:00:00` : fecha);
   return d.toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
+
+export function formatearFechaHora(fecha: string | null): string {
+  if (!fecha) return "—";
+  return new Date(fecha).toLocaleString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}

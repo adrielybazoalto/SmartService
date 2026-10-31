@@ -3,7 +3,7 @@
 // =====================================================================
 
 import { ErrorNegocio, MENSAJES } from "./errores";
-import { ESTADOS_ORDEN_TERMINADA, type OrdenPendienteLiquidar } from "./types";
+import { ESTADOS_ORDEN_TERMINADA, type NotaServicio, type OrdenPendienteLiquidar } from "./types";
 
 type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
 
@@ -37,6 +37,15 @@ export function requiereElegirServicio(orden: OrdenPendienteLiquidar): boolean {
 export function validarAnticipo(anticipo: number, total: number): void {
   if (!Number.isFinite(anticipo) || anticipo < 0) throw new ErrorNegocio(MENSAJES.ANTICIPO_INVALIDO);
   if (anticipo > total) throw new ErrorNegocio(MENSAJES.ANTICIPO_MAYOR_TOTAL);
+}
+
+/** Cobro con tarjeta: la nota debe estar PENDIENTE y tener saldo. Devuelve el saldo. */
+export function verificarNotaCobrable(nota: NotaServicio | null): number {
+  if (!nota) throw new ErrorNegocio(MENSAJES.NOTA_NO_EXISTE);
+  if (nota.estado.toUpperCase() !== "PENDIENTE") throw new ErrorNegocio(MENSAJES.NOTA_NO_PENDIENTE(nota.numero_nota));
+  const saldo = calcularSaldo(nota.monto_total, nota.anticipo_pagado);
+  if (saldo <= 0) throw new ErrorNegocio(MENSAJES.SIN_SALDO);
+  return saldo;
 }
 
 /** Paso 5 del flujo principal: saldo = total - anticipo. */

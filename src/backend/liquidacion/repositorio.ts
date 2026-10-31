@@ -12,6 +12,7 @@ import { verificarOrdenLiquidable } from "./reglas";
 import {
   type CalculoLiquidacion,
   type MaterialConsumido,
+  type NotaPendientePago,
   type NotaServicio,
   type OrdenPendienteLiquidar,
   type Servicio,
@@ -38,6 +39,25 @@ function calcularHoras(inicio: string | null, fin: string | null): number {
 }
 
 type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
+
+// Columnas de nota_servicio que usa el CU13 (incluye las del pago con tarjeta)
+const COLUMNAS_NOTA =
+  "id, orden_trabajo_id, numero_nota, anticipo_pagado, fecha_emision, estado, monto_total, metodo_pago, fecha_pago";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapearNota(fila: any): NotaServicio {
+  return {
+    id: fila.id,
+    orden_trabajo_id: fila.orden_trabajo_id,
+    numero_nota: fila.numero_nota,
+    anticipo_pagado: Number(fila.anticipo_pagado),
+    fecha_emision: fila.fecha_emision,
+    estado: fila.estado,
+    monto_total: Number(fila.monto_total),
+    metodo_pago: fila.metodo_pago ?? null,
+    fecha_pago: fila.fecha_pago ?? null,
+  };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapearOrden(fila: any): OrdenConNota {
@@ -90,21 +110,75 @@ export class LiquidacionRepositorio {
     if (error) throw new Error(`No se pudo obtener la orden: ${error.message}`);
     return data ? mapearOrden(data) : null;
   }
-    /** NotaServicio.obtenerPorOrden: la nota ya emitida de la orden (o null). */
+  /** NotaServicio.obtenerPorOrden: la nota ya emitida de la orden (o null). */
   async obtenerNotaDeOrden(ordenTrabajoId: number): Promise<NotaServicio | null> {
     const { data, error } = await this.db
       .from("nota_servicio")
-      .select("id, orden_trabajo_id, numero_nota, anticipo_pagado, fecha_emision, estado, monto_total")
+      .select(COLUMNAS_NOTA)
       .eq("orden_trabajo_id", ordenTrabajoId)
       .maybeSingle();
 
     if (error) throw new Error(`No se pudo obtener la nota de servicio: ${error.message}`);
-    if (!data) return null;
-    return {
-      ...data,
-      anticipo_pagado: Number(data.anticipo_pagado),
-      monto_total: Number(data.monto_total),
-    } as NotaServicio;
+    return data ? mapearNota(data) : null;
+  }
+
+  /** NotaServicio.buscarPorId */
+  async obtenerNotaPorId(notaId: number): Promise<NotaServicio | null> {
+    const { data, error } = await this.db.from("nota_servicio").select(COLUMNAS_NOTA).eq("id", notaId).maybeSingle();
+    if (error) throw new Error(`No se pudo obtener la nota de servicio: ${error.message}`);
+    return data ? mapearNota(data) : null;
+  }
+
+  /** Notas PENDIENTES (con saldo por cobrar), para la pantalla de liquidación. */
+  async listarNotasPendientesPago(): Promise<NotaPendientePago[]> {
+    const { data, error } = await this.db
+      .from("nota_servicio")
+      .select(`${COLUMNAS_NOTA}, orden_trabajo ( codigo_orden, cotizacion ( cliente ( nombre ) ) )`)
+      .ilike("estado", "pendiente")
+      .order("id", { ascending: false });
+
+    if (error) throw new Error(`No se pudieron listar las notas pendientes: ${error.message}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filas: any[] = data ?? [];
+    return filas.map((f): NotaPendientePago => {
+      const n = mapearNota(f);
+      const orden = primero(f.orden_trabajo);
+      const cotizacion = orden ? primero(orden.cotizacion) : null;
+      const cliente = cotizacion ? primero(cotizacion.cliente) : null;
+      return {
+        id: n.id,
+        numero_nota: n.numero_nota,
+        orden_trabajo_id: n.orden_trabajo_id,
+        codigo_orden: orden?.codigo_orden ?? "—",
+        cliente_nombre: cliente?.nombre ?? null,
+        fecha_emision: n.fecha_emision,
+        monto_total: n.monto_total,
+        anticipo_pagado: n.anticipo_pagado,
+        saldo: Math.round((n.monto_total - n.anticipo_pagado) * 100) / 100,
+      };
+    });
+  }
+
+  /**
+   * NotaServicio.registrarPago + Bitacora.registrarEvento
+   * Todo en una transacción dentro de sp_registrar_pago_nota (idempotente).
+   */
+  async registrarPago(params: {
+    notaId: number;
+    sessionId: string;
+    montoBs: number;
+    usuarioId: number;
+    ip: string | null;
+  }): Promise<NotaServicio> {
+    const { data, error } = await this.db.rpc("sp_registrar_pago_nota", {
+      p_nota_id: params.notaId,
+      p_session_id: params.sessionId,
+      p_monto_pagado: params.montoBs,
+      p_usuario_id: params.usuarioId,
+      p_ip: params.ip,
+    });
+    if (error) throw new Error(error.message);
+    return mapearNota(Array.isArray(data) ? data[0] : data);
   }
 
   /** DetalleConsumoMaterial.listarPorOrden + Producto.calcularPrecioVenta */

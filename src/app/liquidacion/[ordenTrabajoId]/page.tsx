@@ -12,10 +12,15 @@ import { LiquidacionForm } from "./liquidacion-form";
 export const dynamic = "force-dynamic";
 
 // Next.js 15+: params es una Promise.
-type Props = { params: Promise<{ ordenTrabajoId: string }> };
+type Props = {
+  params: Promise<{ ordenTrabajoId: string }>;
+  // Stripe vuelve con ?pago=exito&session_id=cs_test_... o ?pago=cancelado
+  searchParams: Promise<{ pago?: string; session_id?: string }>;
+};
 
-export default async function LiquidacionPage({ params }: Props) {
+export default async function LiquidacionPage({ params, searchParams }: Props) {
   const { ordenTrabajoId } = await params;
+  const { pago, session_id } = await searchParams;
   const id = Number(ordenTrabajoId);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
@@ -30,12 +35,18 @@ export default async function LiquidacionPage({ params }: Props) {
           <Link href="/liquidacion" className="text-sm text-blue-700 hover:underline">
             ← Volver a órdenes finalizadas
           </Link>
-          <LiquidacionForm detalleInicial={emitida.detalle} notaInicial={emitida.nota} />
+          <LiquidacionForm
+            detalleInicial={emitida.detalle}
+            notaInicial={emitida.nota}
+            sessionIdRetorno={pago === "exito" && session_id ? session_id : null}
+            pagoCancelado={pago === "cancelado"}
+          />
         </main>
       );
     }
 
-    const detalle = await controller.obtenerDetalleLiquidacion(id);  return (
+    const detalle = await controller.obtenerDetalleLiquidacion(id);
+    return (
       <main className="mx-auto max-w-5xl p-6">
         <Link href="/liquidacion" className="text-sm text-blue-700 hover:underline">
           ← Volver a órdenes finalizadas

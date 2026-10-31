@@ -21,6 +21,11 @@ export const MENSAJES = {
   ANTICIPO_MAYOR_TOTAL: "El anticipo no puede ser mayor al monto total.",
   FALTA_SERVICIO: "La orden no tiene cotización: seleccione el servicio para calcular la mano de obra.",
   ID_INVALIDO: "El identificador de la orden no es válido.",
+  NOTA_NO_EXISTE: "La nota de servicio no existe.",
+  NOTA_NO_PENDIENTE: (numero: string) => `La nota ${numero} no está pendiente de pago.`,
+  SIN_SALDO: "La nota no tiene saldo pendiente.",
+  PAGO_NO_APROBADO: "El pago con tarjeta no fue confirmado. La nota sigue PENDIENTE.",
+  PAGO_NO_CORRESPONDE: "El pago no corresponde a una nota de servicio.",
 } as const;
 
 export function mensajeDeError(error: unknown): string {
