@@ -3,7 +3,13 @@
 // =====================================================================
 
 import { ErrorNegocio, MENSAJES } from "./errores";
-import { ESTADOS_ORDEN_TERMINADA, type NotaServicio, type OrdenPendienteLiquidar } from "./types";
+import {
+  ESTADOS_ORDEN_TERMINADA,
+  METODOS_PAGO_MANUAL,
+  type MetodoPagoManual,
+  type NotaServicio,
+  type OrdenPendienteLiquidar,
+} from "./types";
 
 type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
 
@@ -46,6 +52,15 @@ export function verificarNotaCobrable(nota: NotaServicio | null): number {
   const saldo = calcularSaldo(nota.monto_total, nota.anticipo_pagado);
   if (saldo <= 0) throw new ErrorNegocio(MENSAJES.SIN_SALDO);
   return saldo;
+}
+
+/** Pago manual del saldo: método válido y referencia en TRANSFERENCIA. */
+export function validarPagoManual(metodo: string, referencia: string | null): { metodo: MetodoPagoManual; referencia: string | null } {
+  const m = String(metodo ?? "").toUpperCase() as MetodoPagoManual;
+  if (!METODOS_PAGO_MANUAL.includes(m)) throw new ErrorNegocio(MENSAJES.METODO_INVALIDO);
+  const ref = (referencia ?? "").trim().slice(0, 60) || null;
+  if (m === "TRANSFERENCIA" && !ref) throw new ErrorNegocio(MENSAJES.FALTA_REFERENCIA);
+  return { metodo: m, referencia: m === "TRANSFERENCIA" ? ref : null };
 }
 
 /** Paso 5 del flujo principal: saldo = total - anticipo. */

@@ -60,3 +60,18 @@ export async function confirmarPagoSaldoAction(sessionId: string): Promise<Resul
     return { ok: false, error: mensajeDeError(error) }
   }
 }
+
+/** Registrar pago del saldo con EFECTIVO, QR o TRANSFERENCIA (lo confirma el Encargado). */
+export async function registrarPagoSaldoAction(
+  notaId: number,
+  metodo: string,
+  referencia?: string | null,
+): Promise<ResultadoAccion<NotaServicio>> {
+  try {
+    if (!Number.isInteger(notaId) || notaId <= 0) throw new Error('La nota de servicio no es válida.')
+    const controller = crearLiquidacionController()
+    return { ok: true, data: await controller.registrarPagoSaldo(notaId, String(metodo), referencia ?? null, await obtenerIpCliente()) }
+  } catch (error) {
+    return { ok: false, error: mensajeDeError(error) }
+  }
+}

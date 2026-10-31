@@ -42,7 +42,7 @@ type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
 
 // Columnas de nota_servicio que usa el CU13 (incluye las del pago con tarjeta)
 const COLUMNAS_NOTA =
-  "id, orden_trabajo_id, numero_nota, anticipo_pagado, fecha_emision, estado, monto_total, metodo_pago, fecha_pago";
+  "id, orden_trabajo_id, numero_nota, anticipo_pagado, fecha_emision, estado, monto_total, metodo_pago, fecha_pago, referencia_pago";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapearNota(fila: any): NotaServicio {
@@ -56,6 +56,7 @@ function mapearNota(fila: any): NotaServicio {
     monto_total: Number(fila.monto_total),
     metodo_pago: fila.metodo_pago ?? null,
     fecha_pago: fila.fecha_pago ?? null,
+    referencia_pago: fila.referencia_pago ?? null,
   };
 }
 
@@ -157,6 +158,28 @@ export class LiquidacionRepositorio {
         saldo: Math.round((n.monto_total - n.anticipo_pagado) * 100) / 100,
       };
     });
+  }
+
+  /**
+   * NotaServicio.registrarPagoManual + Bitacora.registrarEvento
+   * EFECTIVO / QR / TRANSFERENCIA en una transacción (sp_registrar_pago_manual_nota).
+   */
+  async registrarPagoManual(params: {
+    notaId: number;
+    metodo: string;
+    referencia: string | null;
+    usuarioId: number;
+    ip: string | null;
+  }): Promise<NotaServicio> {
+    const { data, error } = await this.db.rpc("sp_registrar_pago_manual_nota", {
+      p_nota_id: params.notaId,
+      p_metodo: params.metodo,
+      p_referencia: params.referencia,
+      p_usuario_id: params.usuarioId,
+      p_ip: params.ip,
+    });
+    if (error) throw new Error(error.message);
+    return mapearNota(Array.isArray(data) ? data[0] : data);
   }
 
   /**

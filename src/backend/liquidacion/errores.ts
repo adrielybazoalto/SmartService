@@ -26,6 +26,8 @@ export const MENSAJES = {
   SIN_SALDO: "La nota no tiene saldo pendiente.",
   PAGO_NO_APROBADO: "El pago con tarjeta no fue confirmado. La nota sigue PENDIENTE.",
   PAGO_NO_CORRESPONDE: "El pago no corresponde a una nota de servicio.",
+  METODO_INVALIDO: "Método de pago inválido: use Efectivo, QR, Transferencia o Tarjeta.",
+  FALTA_REFERENCIA: "Ingrese el número de referencia de la transferencia.",
 } as const;
 
 export function mensajeDeError(error: unknown): string {

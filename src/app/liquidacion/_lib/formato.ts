@@ -19,3 +19,14 @@ export function formatearFechaHora(fecha: string | null): string {
   if (!fecha) return "—";
   return new Date(fecha).toLocaleString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+
+const ETIQUETAS_PAGO: Record<string, string> = {
+  EFECTIVO: "Efectivo",
+  QR: "QR",
+  TRANSFERENCIA: "Transferencia",
+  TARJETA: "Tarjeta (Stripe)",
+};
+
+export function etiquetaMetodoPago(metodo: string | null | undefined): string {
+  return metodo ? ETIQUETAS_PAGO[metodo.toUpperCase()] ?? metodo : "—";
+}

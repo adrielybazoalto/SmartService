@@ -76,7 +76,13 @@ export interface NotaServicio {
   /** Pago del saldo con tarjeta (Stripe). Ver migracion_cu13_pago_stripe.sql */
   metodo_pago?: string | null;
   fecha_pago?: string | null;
+  /** N° de referencia (transferencia). Ver migracion_metodos_pago.sql */
+  referencia_pago?: string | null;
 }
+
+/** Métodos que confirma el Encargado (la TARJETA se cobra con Stripe). */
+export const METODOS_PAGO_MANUAL = ["EFECTIVO", "QR", "TRANSFERENCIA"] as const;
+export type MetodoPagoManual = (typeof METODOS_PAGO_MANUAL)[number];
 
 /** Nota PENDIENTE de pago, para el listado de cobros. */
 export interface NotaPendientePago {

@@ -65,13 +65,18 @@ export const itemVentaSchema = z.object({
 /** datosVentaDTO (sin usuarioId, que lo pone el servidor desde la sesión) */
 export const registrarVentaSchema = z.object({
   clienteId: id('Cliente').nullable().optional(),
-  tipoPago: z.enum(TIPOS_PAGO, { message: 'Método de pago no habilitado: use efectivo o QR' }),
+  tipoPago: z.enum(TIPOS_PAGO, { message: 'Método de pago no válido' }),
+  /** N° de referencia del comprobante (obligatorio en TRANSFERENCIA) */
+  referenciaPago: z.string().trim().max(60, { message: 'La referencia admite hasta 60 caracteres' }).optional(),
   tipoComprobante: z.enum(TIPOS_COMPROBANTE, { message: 'Tipo de comprobante inválido' }),
   descuento: monto('El descuento').default(0),
   items: z
     .array(itemVentaSchema, { message: 'Lista de ítems inválida' })
     .min(1, { message: 'Agregue al menos un producto a la venta' })
     .max(100, { message: 'Demasiadas líneas en una sola venta' }),
+}).refine((d) => d.tipoPago !== 'TRANSFERENCIA' || !!d.referenciaPago, {
+  message: 'Ingrese el número de referencia de la transferencia',
+  path: ['referenciaPago'],
 });
 
 /** Anulación (subflujo) */

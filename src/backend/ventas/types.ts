@@ -132,6 +132,8 @@ export interface DatosVentaDTO {
   tipoPago: TipoPago;
   tipoComprobante: TipoComprobante;
   descuento?: number;
+  /** N° de referencia del comprobante (TRANSFERENCIA) */
+  referenciaPago?: string;
   items: ItemVentaDTO[];
 }
 

@@ -452,7 +452,15 @@ export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO
     tipoComprobante: datos.tipoComprobante,
   };
 
-  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', await describirVenta(db, comprobante), datosVentaDTO.ip ?? null);
+  // TRANSFERENCIA: se guarda el número de referencia del comprobante bancario
+  let referencia = '';
+  if (datos.tipoPago === 'TRANSFERENCIA' && datos.referenciaPago) {
+    const { error: errRef } = await db.from('venta').update({ referencia_pago: datos.referenciaPago } as any).eq('id', comprobante.ventaId);
+    if (errRef) console.warn('[CU09] No se pudo guardar la referencia de la transferencia:', errRef.message);
+    referencia = ` · Ref. transferencia: ${datos.referenciaPago}`;
+  }
+
+  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', `${await describirVenta(db, comprobante)}${referencia}`, datosVentaDTO.ip ?? null);
   return comprobante;
 }
 

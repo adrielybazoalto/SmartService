@@ -15,10 +15,13 @@ import {
   confirmarPagoSaldoAction,
   emitirNotaServicioAction,
   iniciarCobroSaldoAction,
+  registrarPagoSaldoAction,
 } from "@/app/actions/liquidacion";
+import { PanelQr } from "@/components/pagos/panel-qr";
+import { PanelTransferencia } from "@/components/pagos/panel-transferencia";
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
 import { descargarNotaServicioPDF } from "../_lib/pdf";
-import { formatearBs, formatearFechaHora } from "../_lib/formato";
+import { etiquetaMetodoPago, formatearBs, formatearFechaHora } from "../_lib/formato";
 export function LiquidacionForm({
   detalleInicial,
   notaInicial = null,
@@ -39,6 +42,10 @@ export function LiquidacionForm({
   const [pendiente, iniciar] = useTransition();
   const [aviso, setAviso] = useState<string | null>(null);
   const [cobrando, setCobrando] = useState(false);
+  // Cobro del saldo: EFECTIVO / QR / TRANSFERENCIA (confirma el Encargado) o TARJETA (Stripe)
+  const [metodoPago, setMetodoPago] = useState<"EFECTIVO" | "QR" | "TRANSFERENCIA" | "TARJETA">("EFECTIVO");
+  const [pagoConfirmado, setPagoConfirmado] = useState(false);
+  const [referencia, setReferencia] = useState("");
   const confirmado = useRef(false);
 
   // retornarAlSistema(sessionId): al volver de Stripe se confirma el pago una sola vez
@@ -60,6 +67,29 @@ export function LiquidacionForm({
   }, [sessionIdRetorno, pagoCancelado]);
 
   // cobrarSaldoConTarjeta -> redirigirPago(url)
+  // seleccionarMetodoPago -> registrarPagoSaldo (EFECTIVO, QR o TRANSFERENCIA)
+  function registrarPagoSaldo() {
+    if (!nota) return;
+    if (metodoPago === "TARJETA") return cobrarSaldoConTarjeta();
+    setError(null);
+    if (metodoPago === "TRANSFERENCIA" && !referencia.trim()) {
+      setError("Ingrese el número de referencia de la transferencia.");
+      return;
+    }
+    if (!pagoConfirmado) {
+      setError("Confirme que recibió el pago del saldo.");
+      return;
+    }
+    setCobrando(true);
+    registrarPagoSaldoAction(nota.id, metodoPago, metodoPago === "TRANSFERENCIA" ? referencia.trim() : null).then((r) => {
+      setCobrando(false);
+      if (r.ok) {
+        setNota(r.data);
+        setAviso(`Pago registrado: la nota ${r.data.numero_nota} quedó PAGADA (${etiquetaMetodoPago(r.data.metodo_pago)}).`);
+      } else setError(r.error);
+    });
+  }
+
   function cobrarSaldoConTarjeta() {
     if (!nota) return;
     setError(null);
@@ -257,18 +287,78 @@ export function LiquidacionForm({
               ? `Saldo pendiente ${formatearBs(Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100)}`
               : "Sin saldo pendiente"}
           </p>
-          {nota.metodo_pago === "TARJETA" && (
-            <p className="mt-1">Saldo pagado con tarjeta (Stripe) el {formatearFechaHora(nota.fecha_pago ?? null)}.</p>
+          {nota.metodo_pago && (
+            <p className="mt-1">
+              Saldo pagado con {etiquetaMetodoPago(nota.metodo_pago)} el {formatearFechaHora(nota.fecha_pago ?? null)}
+              {nota.referencia_pago ? ` · Referencia: ${nota.referencia_pago}` : ""}.
+            </p>
           )}
           {nota.estado.toUpperCase() === "PENDIENTE" && nota.monto_total - nota.anticipo_pagado > 0 && (
-            <button
-              type="button"
-              onClick={cobrarSaldoConTarjeta}
-              disabled={cobrando}
-              className="mt-3 mr-2 rounded-md bg-indigo-700 px-3 py-1.5 font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
-            >
-              {cobrando ? "Conectando con la pasarela…" : "Cobrar saldo con tarjeta (Stripe)"}
-            </button>
+            <div className="mt-4 space-y-3 rounded-md border border-gray-200 bg-white p-3 text-gray-800">
+              <p className="font-medium">Cobrar saldo</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(["EFECTIVO", "QR", "TRANSFERENCIA", "TARJETA"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setMetodoPago(m);
+                      setPagoConfirmado(false);
+                      setError(null);
+                    }}
+                    className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+                      metodoPago === m ? "border-blue-700 bg-blue-700 text-white" : "border-gray-300 hover:border-blue-400"
+                    }`}
+                  >
+                    {etiquetaMetodoPago(m)}
+                  </button>
+                ))}
+              </div>
+
+              {metodoPago === "EFECTIVO" && (
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" checked={pagoConfirmado} onChange={(e) => setPagoConfirmado(e.target.checked)} className="mt-0.5" />
+                  <span>
+                    Confirmo que recibí <strong>{formatearBs(Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100)}</strong> en efectivo
+                  </span>
+                </label>
+              )}
+              {metodoPago === "QR" && (
+                <PanelQr
+                  total={Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100}
+                  confirmado={pagoConfirmado}
+                  onConfirmar={setPagoConfirmado}
+                />
+              )}
+              {metodoPago === "TRANSFERENCIA" && (
+                <PanelTransferencia
+                  total={Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100}
+                  referencia={referencia}
+                  onReferencia={(v) => {
+                    setReferencia(v);
+                    if (!v.trim()) setPagoConfirmado(false);
+                  }}
+                  confirmado={pagoConfirmado}
+                  onConfirmar={setPagoConfirmado}
+                />
+              )}
+              {metodoPago === "TARJETA" && (
+                <p className="text-sm text-gray-600">
+                  Se abrirá la página de pago de Stripe (modo prueba). Tarjeta de prueba: 4242 4242 4242 4242.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={registrarPagoSaldo}
+                disabled={cobrando || (metodoPago !== "TARJETA" && !pagoConfirmado)}
+                className="rounded-md bg-indigo-700 px-3 py-1.5 font-medium text-white hover:bg-indigo-800 disabled:opacity-50"
+              >
+                {cobrando
+                  ? metodoPago === "TARJETA" ? "Conectando con la pasarela…" : "Registrando…"
+                  : metodoPago === "TARJETA" ? "Cobrar con tarjeta (Stripe)" : "Registrar pago del saldo"}
+              </button>
+            </div>
           )}
           <button
             type="button"

@@ -12,6 +12,7 @@ import {
   calcularSaldo,
   requiereElegirServicio,
   validarAnticipo,
+  validarPagoManual,
   verificarNotaCobrable,
   verificarOrdenLiquidable,
 } from "./reglas";
@@ -96,6 +97,22 @@ export class LiquidacionController {
   /** Notas PENDIENTES con saldo por cobrar */
   listarNotasPendientesPago(): Promise<NotaPendientePago[]> {
     return this.repositorio.listarNotasPendientesPago();
+  }
+
+  /**
+   * Flujo alternativo "Registrar pago del saldo" con EFECTIVO, QR o
+   * TRANSFERENCIA: el Encargado confirma que recibió el dinero.
+   */
+  async registrarPagoSaldo(
+    notaId: number,
+    metodo: string,
+    referencia: string | null,
+    ip: string | null,
+  ): Promise<NotaServicio> {
+    const usuario = verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    const pago = validarPagoManual(metodo, referencia);
+    verificarNotaCobrable(await this.repositorio.obtenerNotaPorId(notaId));
+    return this.repositorio.registrarPagoManual({ notaId, ...pago, usuarioId: usuario.id, ip });
   }
 
   /**
