@@ -25,10 +25,18 @@
 -- ---------------------------------------------------------------------
 -- 1. Una sola nota de servicio por orden de trabajo
 -- ---------------------------------------------------------------------
+--    Solo se crea si la tabla todavía NO tiene un UNIQUE sobre orden_trabajo_id
+--    (así no queda la restricción repetida).
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'uq_nota_servicio_orden'
+        SELECT 1
+          FROM pg_constraint con
+          JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)
+         WHERE con.conrelid = 'public.nota_servicio'::regclass
+           AND con.contype = 'u'
+           AND array_length(con.conkey, 1) = 1
+           AND a.attname = 'orden_trabajo_id'
     ) THEN
         ALTER TABLE nota_servicio
             ADD CONSTRAINT uq_nota_servicio_orden UNIQUE (orden_trabajo_id);
@@ -135,7 +143,7 @@ DECLARE
     v_estado     VARCHAR;
     v_codigo     VARCHAR;
     v_liq        RECORD;
-    v_anio       TEXT := TO_CHAR(CURRENT_DATE, 'YYYY');
+       v_anio       TEXT := TO_CHAR((NOW() AT TIME ZONE 'America/La_Paz')::date, 'YYYY');
     v_secuencia  INTEGER;
     v_numero     VARCHAR;
     v_nota       nota_servicio;
@@ -187,7 +195,7 @@ BEGIN
     )
     VALUES (
         p_orden_id, v_numero, p_anticipo,
-        CURRENT_DATE,
+               (NOW() AT TIME ZONE 'America/La_Paz')::date,   -- fecha de Bolivia, no UTC
         CASE WHEN p_anticipo >= v_liq.total_liquidacion THEN 'PAGADA' ELSE 'PENDIENTE' END,
         v_liq.total_liquidacion
     )

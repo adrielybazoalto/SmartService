@@ -126,22 +126,12 @@ export async function obtenerCotizacionPorIdAccion(id: number) {
     .select('*, producto:producto_id(nombre)')
     .eq('cotizacion_id', id)
 
-  // 3. Obtener servicios relacionados (soporte dual para ambas tablas)
-  let servs: any[] = []
-  const { data: servs1 } = await supabase
+    // 3. Obtener servicios relacionados (tabla única detalle_cotizacion_servicio;
+  //    la tabla duplicada detalle_cotizacion_service se eliminó)
+  const { data: servs } = await supabase
     .from('detalle_cotizacion_servicio')
     .select('*, servicio:servicio_id(nombre)')
     .eq('cotizacion_id', id)
-  
-  if (servs1 && servs1.length > 0) {
-    servs = servs1
-  } else {
-    const { data: servs2 } = await (supabase as any)
-      .from('detalle_cotizacion_service')
-      .select('*, servicio:servicio_id(nombre)')
-      .eq('cotizacion_id', id)
-    if (servs2) servs = servs2
-  }
 
   return {
     ...cot,
