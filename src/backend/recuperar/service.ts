@@ -3,7 +3,6 @@ import type { Db } from '@/lib/supabase/types'
 import { hashContrasena } from '@/lib/password'
 import { registrarBitacora } from '@/backend/bitacora'
 import { GestorSesiones } from '@/lib/sesiones'
-import { enviarCorreoRecuperacion } from '@/lib/email'
 import {
   nuevaContrasenaSchema,
   solicitarRecuperacionSchema,
@@ -34,7 +33,7 @@ export class ControlRecuperarContrasena {
    * 1) Solicita el enlace: si el correo no está registrado lanza la excepción
    * 'No existe una cuenta asociada a este correo'. Si existe, genera un token
    * seguro con expiración limitada, lo guarda en TOKEN_RECUPERACION (solo su
-   * hash) y envía el correo electrónico con el enlace mediante Nodemailer.
+   * hash) y genera el enlace para el envío por correo.
    */
   static async solicitarRecuperacion(
     db: Db,
@@ -75,7 +74,6 @@ export class ControlRecuperarContrasena {
       ? `${baseUrl.replace(/\/$/, '')}${enlaceRelativo}`
       : enlaceRelativo
 
-    await enviarCorreoRecuperacion({ para: correo, enlace: enlaceCompleto })
     return { correo, enlace: enlaceCompleto }
   }
 
