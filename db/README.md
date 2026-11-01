@@ -24,9 +24,7 @@ Ejecuta **en este orden**:
 
 ## BD ya existente (migrada)
 
-Lo pendiente está en `migrations/`. **`EJECUTAR_TODO_PENDIENTE.sql`** une esos
-scripts en orden: pégalo completo en el SQL Editor. Cuando se aplique, mueve los
-scripts a `aplicadas/` y borra ese archivo.
+Si hay algo pendiente, está en `migrations/`; al aplicarlo, muévelo a `aplicadas/`.
 
 > `schema.sql` no refleja todavía la base migrada (esquema `private`, RLS, columnas
 > del anticipo). Debe regenerarse desde Supabase con `supabase db dump --schema-only`,
@@ -52,6 +50,9 @@ Orden histórico de `aplicadas/`:
 | 14 | `migracion_rbac_ajuste_matriz.sql` | CU10 con clave propia |
 | 15 | `migracion_cu12_hora_bolivia.sql`, `migracion_cu12_correccion_horas.sql` | Fechas en hora de Bolivia |
 | 16 | `migracion_cu08_anticipo.sql`, `migracion_cu08_anticipo_tarjeta.sql` | Anticipo del CU08 |
+| 17 | `migracion_rbac_matriz_completa.sql` | Matriz de acciones y guardado atómico |
+| 18 | `migracion_cu12_crear_orden.sql`, `migracion_cu08_guardar_cotizacion.sql` | Correlativos y cálculos en SQL |
+| 19 | `migracion_fase9_ciclo1.sql` | Estado de clientes, bitácora de solo inserción y CU02 |
 
 > Si solo necesitas permisos/datos sobre una BD migrada, puedes re-ejecutar
 > `seed.sql` sin romper lo existente.

@@ -17,7 +17,7 @@ const { MODULOS, moduloPorRuta, quitaModuloProtegido } = await import('@/lib/nav
 const RAIZ = process.env.SMARTSERVICE_RAIZ ?? fileURLToPath(new URL('../../', import.meta.url));
 const leer = (...ruta) => readFileSync(join(RAIZ, 'db', ...ruta), 'utf8');
 const MIGRACION = leer('migrations', 'aplicadas', 'migracion_rbac_ajuste_matriz.sql');
-const COMPLETA = leer('migrations', 'migracion_rbac_matriz_completa.sql');
+const COMPLETA = leer('migrations', 'aplicadas', 'migracion_rbac_matriz_completa.sql');
 
 let ok = 0, fallos = 0;
 function resultado(nombre, paso, detalle) {

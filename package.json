@@ -16,7 +16,6 @@
     "test:permisos": "node pruebas/ordenes/fase4-permisos.prueba.mjs",
     "test:cu10": "node pruebas/personal-tecnico/cu10-backend.prueba.mjs",
     "test:bd:fase9": "node pruebas/bd/fase9.prueba.mjs",
-    "test:bd:pendiente": "node pruebas/bd/pendiente-todo.prueba.mjs",
     "test:ordenes": "node pruebas/ordenes/cu11-cu12-fechas.prueba.mjs"
   },
   "dependencies": {
