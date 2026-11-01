@@ -30,7 +30,7 @@ function errorVisible(e: unknown, fallback: string): string {
  * Obtiene el transporte de Nodemailer leyendo las credenciales SMTP directamente
  * del archivo .env (soporta HOST, PORT, USER, PASS, así como SMTP_HOST, SMTP_PORT, etc.).
  */
-export function getEmailTransporter(): Transporter {
+export async function getEmailTransporter(): Promise<Transporter> {
   const host = process.env.HOST || process.env.SMTP_HOST || 'smtp.gmail.com'
   const port = parseInt(process.env.PORT || process.env.SMTP_PORT || '587', 10)
   const secure = process.env.SECURE === 'true' || process.env.SMTP_SECURE === 'true' || port === 465
@@ -52,7 +52,7 @@ export function getEmailTransporter(): Transporter {
  * Envío real del correo electrónico con el enlace de recuperación usando Nodemailer.
  */
 export async function enviarCorreoRecuperacion(correo: string, enlace: string): Promise<void> {
-  const transporter = getEmailTransporter()
+  const transporter = await getEmailTransporter()
   const user = process.env.USER || process.env.SMTP_USER
   const from = process.env.FROM || process.env.SMTP_FROM || user || 'SmartService <no-reply@smartservice.com>'
 
