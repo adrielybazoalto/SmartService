@@ -9,7 +9,7 @@ import { PageHeaderBadge } from '@/components/page-header-badge'
 /**
  * Panel principal. Muestra las tarjetas de los casos de uso de TODOS los
  * paquetes habilitados en lib/navigation.ts (filtrados por el permiso activo
- * del rol — RBAC en BD, PERMISO ⋈ ROL_PERMISO) y las filtra por paquete con
+ * del rol — RBAC en BD, ROL_FUNCION ⋈ FUNCION, acción LEER) y las filtra por paquete con
  * las pestañas de `PanelModulos` (Todos / P1–P4). La selección se comparte con
  * el Sidebar mediante `PaqueteSeleccionadoProvider` (ver sidebar.tsx).
  */

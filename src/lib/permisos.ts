@@ -12,7 +12,10 @@ import { moduloPorRuta } from '@/lib/navigation'
  * `src/lib/navigation.ts`, la **única fuente de verdad** del alcance del
  * sistema (compartida con el Sidebar y el panel principal). Este módulo solo
  * aporta la parte de servidor: la matriz de permisos VIVE EN LA BASE DE DATOS
- * (PERMISO ⋈ ROL_PERMISO), de modo que el Administrador podrá editar los
+ * en un solo modelo: ROL_FUNCION ⋈ FUNCION ⋈ ACCION. Cada FUNCION es un módulo
+ * (clave + ruta) y el acceso al módulo es la acción LEER; las demás acciones
+ * (CREAR, ACTUALIZAR, ELIMINAR, PROCESAR) controlan las operaciones internas.
+ * Así el Administrador podrá editar los
  * permisos desde /roles sin tocar el código. Cualquier error de lectura opera
  * en modo "fail-closed" (sin permisos) por seguridad.
  *
@@ -23,12 +26,18 @@ import { moduloPorRuta } from '@/lib/navigation'
 export { MODULOS, moduloPorRuta } from '@/lib/navigation'
 export type { ModuloRegistrado } from '@/lib/navigation'
 
-/** Permisos (claves) activos de un rol, leídos de ROL_PERMISO ⋈ PERMISO. */
+/** Acción de ACCION que da acceso (entrar) a un módulo. */
+export const ACCION_ACCESO = 'LEER'
+
+/**
+ * Módulos (claves de FUNCION) a los que el rol puede entrar: filas de
+ * ROL_FUNCION con la acción LEER sobre una FUNCION que tiene clave.
+ */
 export const getPermisosDeRol = cache(async (rolId: number): Promise<string[]> => {
   const db = getSupabaseServiceClient()
   const { data, error } = await db
-    .from('rol_permiso')
-    .select('permiso:permiso_id(nombre)')
+    .from('rol_funcion')
+    .select('funcion:funcion_id(clave), accion:accion_id(nombre)')
     .eq('rol_id', rolId)
 
   // Fail-closed: si no se pueden leer (p.ej. migración pendiente), sin permisos.
@@ -37,14 +46,16 @@ export const getPermisosDeRol = cache(async (rolId: number): Promise<string[]> =
     return []
   }
 
-  return (data ?? [])
-    .map((fila) => fila.permiso?.nombre)
-    .filter((nombre): nombre is string => Boolean(nombre))
+  const claves = (data ?? [])
+    .filter((fila) => fila.accion?.nombre === ACCION_ACCESO)
+    .map((fila) => fila.funcion?.clave)
+    .filter((clave): clave is string => Boolean(clave))
+  return [...new Set(claves)]
 })
 
 /**
  * Nivel 2 — Verificación de acceso por permiso: ¿el usuario autenticado tiene
- * el permiso ACTIVO de la ruta en ROL_PERMISO? Es la ÚNICA condición de acceso
+ * el permiso LEER de la ruta en ROL_FUNCION? Es la ÚNICA condición de acceso
  * a cualquier módulo (sin nombres de rol fijos en código).
  */
 export async function tienePermisoModulo(ruta: string): Promise<boolean> {

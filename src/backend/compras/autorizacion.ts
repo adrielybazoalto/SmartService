@@ -30,7 +30,7 @@ const accionesComprasDeRol = cache(async (rolId: number): Promise<string[]> => {
 /**
  * Guard de CU15 para cada Server Action (verificación en el SERVIDOR):
  *   1) sesión válida (requireUser: JWT + usuario activo en BD);
- *   2) permiso de ruta COMPRAS en ROL_PERMISO;
+ *   2) permiso de ruta COMPRAS en ROL_FUNCION (acción LEER);
  *   3) la acción pedida en ROL_FUNCION ('Compras').
  * Devuelve el usuario autenticado: su `id` es la ÚNICA identidad que se usa.
  *

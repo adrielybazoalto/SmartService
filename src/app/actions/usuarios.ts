@@ -41,7 +41,7 @@ type Db = ReturnType<typeof getSupabaseServiceClient>;
 
 /**
  * Único guard de acceso del módulo: el permiso USUARIOS debe estar ACTIVO en
- * ROL_PERMISO (BD) para la sesión actual. Devuelve el usuario autenticado.
+ * ROL_FUNCION (acción LEER, BD) para la sesión actual. Devuelve el usuario autenticado.
  * Cualquier otra condición de rol se evalúa después, sobre los datos reales
  * (nunca por nombre de rol en la matriz).
  */

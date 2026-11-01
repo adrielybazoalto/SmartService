@@ -28,36 +28,6 @@ CREATE TABLE MODULO (
     nombre VARCHAR(100) NOT NULL UNIQUE
 );
 
--- Permiso a nivel de módulo/ruta (RBAC por rutas: /usuarios, /roles, ...)
-CREATE TABLE PERMISO (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL UNIQUE,
-    ruta VARCHAR(100) NOT NULL UNIQUE,
-    descripcion VARCHAR(255)
-);
-
--- Asignación rol -> permiso (matriz RBAC editable en el futuro desde /roles)
-CREATE TABLE ROL_PERMISO (
-    id SERIAL PRIMARY KEY,
-    rol_id INTEGER NOT NULL,
-    permiso_id INTEGER NOT NULL,
-
-    CONSTRAINT fk_rol_permiso_rol
-        FOREIGN KEY (rol_id)
-        REFERENCES ROL(id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-
-    CONSTRAINT fk_rol_permiso_permiso
-        FOREIGN KEY (permiso_id)
-        REFERENCES PERMISO(id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-
-    CONSTRAINT uq_rol_permiso
-        UNIQUE (rol_id, permiso_id)
-);
-
 CREATE TABLE ACCION (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL UNIQUE
@@ -68,6 +38,13 @@ CREATE TABLE FUNCION (
     modulo_id INTEGER NOT NULL,
     nombre VARCHAR(100) NOT NULL,
     descripcion VARCHAR(255),
+    -- RBAC unificado: cada FUNCION con clave/ruta es un módulo del menú;
+    -- entrar al módulo = acción LEER en ROL_FUNCION.
+    clave VARCHAR(100),
+    ruta VARCHAR(100),
+
+    CONSTRAINT uq_funcion_clave UNIQUE (clave),
+    CONSTRAINT uq_funcion_ruta UNIQUE (ruta),
 
     CONSTRAINT fk_funcion_modulo
         FOREIGN KEY (modulo_id)
@@ -818,8 +795,6 @@ CREATE TABLE MOVIMIENTO_KARDEX (
 
 CREATE INDEX idx_usuario_rol ON USUARIO(rol_id);
 CREATE INDEX idx_token_usuario ON TOKEN_RECUPERACION(usuario_id);
-CREATE INDEX idx_rol_permiso_rol ON ROL_PERMISO(rol_id);
-CREATE INDEX idx_rol_permiso_permiso ON ROL_PERMISO(permiso_id);
 CREATE INDEX idx_bitacora_usuario ON BITACORA(usuario_id);
 CREATE INDEX idx_carga_usuario ON CARGA_HORARIA_TECNICO(usuario_id);
 CREATE INDEX idx_bloqueo_usuario ON BLOQUEO_TECNICO(usuario_id);

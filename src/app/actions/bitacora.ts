@@ -10,7 +10,7 @@ import {
 } from '@/backend/bitacora'
 
 export async function listarBitacoraAction(filtros: FiltrarBitacoraInput = {}) {
-  // Única condición de acceso: permiso BITACORA activo en rol_permiso (BD).
+  // Única condición de acceso: permiso BITACORA (LEER) en rol_funcion (BD).
   if (!(await tienePermisoModulo('/bitacora'))) {
     throw new Error('No autorizado: tu rol no tiene el permiso del módulo Bitácora.')
   }

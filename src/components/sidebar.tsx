@@ -17,7 +17,7 @@ import { SidebarShell } from '@/components/sidebar-shell'
  * `NavegacionPaquetes`, un Client Component en formato acordeón:
  *
  *   P1 / P2 → paquetes habilitados; muestran SOLO los ítems cuyo permiso
- *             está activo en ROL_PERMISO (BD).
+ *             tiene LEER en ROL_FUNCION (BD).
  *   P3 / P4 → paquetes deshabilitados en este ciclo: al desplegarlos indican
  *             «Bloqueado · sin permisos», sin enlaces.
  *

@@ -17,7 +17,7 @@
  *     (CU18–CU20, aún sin pantallas).
  *
  * La visibilidad de cada ítem además depende del permiso activo del rol en
- * la BD (PERMISO ⋈ ROL_PERMISO, ver lib/permisos.ts).
+ * la BD (ROL_FUNCION ⋈ FUNCION, acción LEER, ver lib/permisos.ts).
  */
 
 export interface ItemNav {
@@ -28,7 +28,7 @@ export interface ItemNav {
   /** Ruta de navegación (solo para ítems de paquetes habilitados). */
   ruta: string
   /**
-   * Clave del permiso en PERMISO.nombre (RBAC en BD) e ícono del módulo.
+   * Clave del módulo en FUNCION.clave (RBAC en BD) e ícono del módulo.
    * Cadena vacía = siempre visible (p. ej. Inicio).
    */
   clave: string
@@ -218,7 +218,7 @@ export const PAQUETES: PaqueteNav[] = [
 
 /** Módulo registrado en el catálogo RBAC (ruta con su clave de permiso). */
 export interface ModuloRegistrado {
-  /** Clave del permiso en PERMISO.nombre (p. ej. 'USUARIOS'). */
+  /** Clave del módulo en FUNCION.clave (p. ej. 'USUARIOS'). */
   clave: string
   ruta: string
   etiqueta: string

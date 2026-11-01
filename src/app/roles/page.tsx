@@ -13,7 +13,7 @@ import { PageHeaderBadge } from "@/components/page-header-badge";
 
 /**
  * Consola RBAC (módulo /roles): lee roles, módulos y asignaciones DESDE LA
- * BASE DE DATOS (ROL, PERMISO, ROL_PERMISO). Al guardar, persiste en la BD y
+ * BASE DE DATOS (ROL, FUNCION, ACCION, ROL_FUNCION). Al guardar, persiste en la BD y
  * refresca el sitio (router.refresh + revalidatePath) para que el Dashboard y
  * el Navbar reflejen los cambios de inmediato en cualquier sesión.
  */
@@ -131,7 +131,7 @@ export default function RolesPage() {
             <p className="text-sm text-slate-500">
               Asignación de módulos por rol, guardada en la base de datos (
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs text-slate-600">
-                rol_permiso
+                rol_funcion
               </code>
               ). Los cambios se reflejan al instante en el Navbar y el Dashboard.
             </p>

@@ -31,7 +31,7 @@ import {
  * Orquesta el registro de un cliente y su establecimiento contra Supabase,
  * validando el documento único y registrando el evento de bitácora.
  *
- * Acceso: permiso CLIENTES activo en ROL_PERMISO (BD) + sesión JWT propia.
+ * Acceso: permiso CLIENTES (LEER) en ROL_FUNCION (BD) + sesión JWT propia.
  */
 
 // ── Entidades para la IU (nunca exponen columnas de auditoría) ──────────────

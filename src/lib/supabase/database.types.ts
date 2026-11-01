@@ -32,9 +32,9 @@ export type Database = {
         Relationships: []
       }
       funcion: {
-        Row: { id: number; nombre: string; descripcion: string | null; modulo_id: number }
-        Insert: { id?: number; nombre: string; descripcion?: string | null; modulo_id: number }
-        Update: { id?: number; nombre?: string; descripcion?: string | null; modulo_id?: number }
+        Row: { id: number; nombre: string; descripcion: string | null; modulo_id: number; clave: string | null; ruta: string | null }
+        Insert: { id?: number; nombre: string; descripcion?: string | null; modulo_id: number; clave?: string | null; ruta?: string | null }
+        Update: { id?: number; nombre?: string; descripcion?: string | null; modulo_id?: number; clave?: string | null; ruta?: string | null }
         Relationships: [
           {
             foreignKeyName: 'funcion_modulo_id_fkey'
@@ -224,63 +224,6 @@ export type Database = {
             columns: ['accion_id']
             isOneToOne: false
             referencedRelation: 'accion'
-            referencedColumns: ['id']
-          },
-        ]
-      }
-      permiso: {
-        Row: {
-          id: number
-          nombre: string
-          ruta: string
-          descripcion: string | null
-        }
-        Insert: {
-          id?: number
-          nombre: string
-          ruta: string
-          descripcion?: string | null
-        }
-        Update: {
-          id?: number
-          nombre?: string
-          ruta?: string
-          descripcion?: string | null
-        }
-        Relationships: []
-      }
-      rol_permiso: {
-        Row: {
-          id: number
-          rol_id: number
-          permiso_id: number
-          descripcion: string | null
-        }
-        Insert: {
-          id?: number
-          rol_id: number
-          permiso_id: number
-          descripcion?: string | null
-        }
-        Update: {
-          id?: number
-          rol_id?: number
-          permiso_id?: number
-          descripcion?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'rol_permiso_rol_id_fkey'
-            columns: ['rol_id']
-            isOneToOne: false
-            referencedRelation: 'rol'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'rol_permiso_permiso_id_fkey'
-            columns: ['permiso_id']
-            isOneToOne: false
-            referencedRelation: 'permiso'
             referencedColumns: ['id']
           },
         ]

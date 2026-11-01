@@ -112,88 +112,61 @@ INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion) VALUES
 ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
 -- ============================================================
--- 5B. TABLA: PERMISO / ROL_PERMISO (RBAC por RUTAS - menú y protección)
--- La interfaz lee aquí qué módulos puede ver cada rol. Matriz por defecto:
---   ADMINISTRADOR: todos los módulos registrados
+-- 5B. MÓDULOS DEL MENÚ (RBAC unificado en ROL_FUNCION)
+-- Cada FUNCION con clave y ruta es un módulo; entrar = acción LEER.
+-- Matriz por defecto:
+--   ADMINISTRADOR: todos los módulos (ya tiene todas las acciones arriba)
 --   ENCARGADO:     perfil, clientes, proveedores, compras, inventario,
---                  cotizaciones, órdenes de trabajo, caja, ventas
+--                  cotizaciones, servicios, órdenes, asignar técnicos,
+--                  caja, ventas y notas de servicio
 --   TECNICO:       perfil, cotizaciones (lectura), órdenes de trabajo
---
--- Los permisos base usan ids canónicos (1–10). Los del Ciclo 2
--- (PROVEEDORES/CU14, COMPRAS/CU15, INVENTARIO/CU16) se insertan por NOMBRE y
--- con id DINÁMICO, de modo que re-ejecutar este seed sea idempotente y no
--- colisione con las migraciones de esos CU, que también los crean.
--- La matriz ROL_PERMISO se arma por NOMBRE (no por id).
 -- ============================================================
--- Permisos base (ids canónicos 1–10)
-INSERT INTO PERMISO (id, nombre, ruta, descripcion) VALUES
-(1, 'PERFIL', '/perfil', 'Configuración de perfil personal'),
-(2, 'USUARIOS', '/usuarios', 'Gestión de usuarios del sistema'),
-(3, 'ROLES', '/roles', 'Administración de roles y permisos'),
-(4, 'BITACORA', '/bitacora', 'Consulta de auditoría de eventos'),
-(9, 'CLIENTES', '/clientes', 'Gestión de clientes y establecimientos'),
-(5, 'COTIZACIONES', '/cotizaciones', 'Cotizaciones y servicios'),
-(6, 'ORDENES_TRABAJO', '/ordenes-trabajo', 'Órdenes de trabajo'),
-(7, 'CAJA', '/caja', 'Control y arqueo de caja'),
-(8, 'VENTAS', '/ventas', 'Registro de ventas'),
-(10, 'SERVICIOS', '/servicios', 'Catálogo de servicios técnicos y tarifas')
-ON CONFLICT (nombre) DO NOTHING;
+UPDATE FUNCION SET clave = 'USUARIOS',        ruta = '/usuarios'        WHERE id = 1;
+UPDATE FUNCION SET clave = 'ROLES',           ruta = '/roles'           WHERE id = 2;
+UPDATE FUNCION SET clave = 'BITACORA',        ruta = '/bitacora'        WHERE id = 3;
+UPDATE FUNCION SET clave = 'CLIENTES',        ruta = '/clientes'        WHERE id = 5;
+UPDATE FUNCION SET clave = 'INVENTARIO',      ruta = '/inventario'      WHERE id = 6;
+UPDATE FUNCION SET clave = 'COTIZACIONES',    ruta = '/cotizaciones'    WHERE id = 7;
+UPDATE FUNCION SET clave = 'VENTAS',          ruta = '/ventas'          WHERE id = 8;
+UPDATE FUNCION SET clave = 'ORDENES_TRABAJO', ruta = '/ordenes-trabajo' WHERE id = 9;
 
--- Permisos del Ciclo 2 (id dinámico; idempotente por nombre o ruta).
--- setval al MAX actual para que el SERIAL no reutilice los ids ya insertados.
-SELECT setval(
-  pg_get_serial_sequence('PERMISO', 'id'),
-  (SELECT COALESCE(MAX(id), 1) FROM PERMISO)
-);
-INSERT INTO PERMISO (nombre, ruta, descripcion)
-SELECT v.nombre, v.ruta, v.descripcion
-FROM (VALUES
-    ('PROVEEDORES', '/proveedores', 'Gestión de proveedores y catálogo de mayoristas'),
-    ('COMPRAS',     '/compras',     'Registro de compras de equipos e insumos'),
-    ('INVENTARIO',  '/inventario',  'Inventario, kárdex y ajustes de stock')
-) AS v(nombre, ruta, descripcion)
-WHERE NOT EXISTS (
-    SELECT 1 FROM PERMISO p WHERE p.nombre = v.nombre OR p.ruta = v.ruta
-);
+INSERT INTO FUNCION (id, modulo_id, nombre, descripcion, clave, ruta) VALUES
+(11, 4, 'Compras',          'Registro de compras de equipos e insumos (CU15)',      'COMPRAS',          '/compras'),
+(12, 1, 'Perfil',           'Configuración de perfil personal (CU05)',              'PERFIL',           '/perfil'),
+(13, 6, 'Caja',             'Control y arqueo de caja',                             'CAJA',             '/caja'),
+(14, 5, 'Servicios',        'Catálogo de servicios técnicos y tarifas (CU17)',      'SERVICIOS',        '/servicios'),
+(15, 4, 'Proveedores',      'Proveedores y catálogo de mayoristas (CU14)',          'PROVEEDORES',      '/proveedores'),
+(16, 7, 'Notas de Servicio','Liquidación y notas de servicio (CU13)',               'NOTAS_SERVICIO',   '/liquidacion'),
+(17, 7, 'Asignar Técnicos', 'Programar y asignar personal técnico (CU11)',          'ASIGNAR_TECNICOS', '/asignar-tecnicos')
+ON CONFLICT (id) DO NOTHING;
+SELECT setval(pg_get_serial_sequence('FUNCION', 'id'), (SELECT MAX(id) FROM FUNCION));
 
--- ADMINISTRADOR: acceso total (todos los permisos registrados)
-INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion)
-SELECT r.id, p.id, 'Acceso total'
-FROM ROL r
-CROSS JOIN PERMISO p
-WHERE r.nombre = 'ADMINISTRADOR'
-ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+-- ADMINISTRADOR: todas las acciones también en las funciones nuevas
+INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
+SELECT 1, f.id, a.id, 'Acceso total'
+FROM FUNCION f CROSS JOIN ACCION a
+ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
--- ENCARGADO: módulos operativos (NO /usuarios, /roles, /bitacora)
-INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion)
-SELECT r.id, p.id,
-       CASE p.nombre
-         WHEN 'CLIENTES'         THEN 'Clientes y establecimientos'
-         WHEN 'PROVEEDORES'      THEN 'Proveedores y mayoristas'
-         WHEN 'COMPRAS'          THEN 'Registro de compras'
-         WHEN 'INVENTARIO'       THEN 'Consulta de inventario y kárdex'
-         WHEN 'COTIZACIONES'     THEN 'Cotizaciones y servicios'
-         WHEN 'ORDENES_TRABAJO'  THEN 'Órdenes de trabajo'
-         WHEN 'CAJA'             THEN 'Caja'
-         WHEN 'VENTAS'           THEN 'Ventas'
-         ELSE 'Módulo propio'
-       END
-FROM ROL r
-CROSS JOIN PERMISO p
-WHERE r.nombre = 'ENCARGADO'
-  AND p.nombre IN ('PERFIL', 'CLIENTES', 'PROVEEDORES', 'COMPRAS', 'INVENTARIO',
-                   'COTIZACIONES', 'ORDENES_TRABAJO', 'CAJA', 'VENTAS')
-ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+-- ENCARGADO: acceso (LEER) a sus módulos
+INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
+SELECT 2, f.id, a.id, 'Acceso al módulo'
+FROM FUNCION f JOIN ACCION a ON a.nombre = 'LEER'
+WHERE f.clave IN ('PERFIL', 'CLIENTES', 'PROVEEDORES', 'COMPRAS', 'INVENTARIO', 'COTIZACIONES',
+                  'SERVICIOS', 'ORDENES_TRABAJO', 'ASIGNAR_TECNICOS', 'CAJA', 'VENTAS', 'NOTAS_SERVICIO')
+ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
+-- ENCARGADO: registrar compras (CU15)
+INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
+SELECT 2, f.id, a.id, 'Registrar compras'
+FROM FUNCION f JOIN ACCION a ON a.nombre = 'CREAR'
+WHERE f.clave = 'COMPRAS'
+ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
--- TECNICO: cotizaciones (lectura), órdenes de trabajo y perfil
-INSERT INTO ROL_PERMISO (rol_id, permiso_id, descripcion)
-SELECT r.id, p.id,
-       CASE p.nombre WHEN 'COTIZACIONES' THEN 'Cotizaciones (solo lectura)' ELSE 'Módulo propio' END
-FROM ROL r
-CROSS JOIN PERMISO p
-WHERE r.nombre = 'TECNICO'
-  AND p.nombre IN ('PERFIL', 'COTIZACIONES', 'ORDENES_TRABAJO')
-ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+-- TECNICO: perfil, cotizaciones (lectura) y órdenes de trabajo
+INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
+SELECT 3, f.id, a.id, 'Acceso al módulo'
+FROM FUNCION f JOIN ACCION a ON a.nombre = 'LEER'
+WHERE f.clave IN ('PERFIL', 'COTIZACIONES', 'ORDENES_TRABAJO')
+ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
 -- ============================================================
 -- 6. TABLA: USUARIO (CU01, CU03, CU05)
@@ -239,8 +212,6 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================
 SELECT setval(pg_get_serial_sequence('ROL', 'id'), COALESCE(MAX(id), 1)) FROM ROL;
 SELECT setval(pg_get_serial_sequence('MODULO', 'id'), COALESCE(MAX(id), 1)) FROM MODULO;
-SELECT setval(pg_get_serial_sequence('PERMISO', 'id'), COALESCE(MAX(id), 1)) FROM PERMISO;
-SELECT setval(pg_get_serial_sequence('ROL_PERMISO', 'id'), COALESCE(MAX(id), 1)) FROM ROL_PERMISO;
 SELECT setval(pg_get_serial_sequence('ACCION', 'id'), COALESCE(MAX(id), 1)) FROM ACCION;
 SELECT setval(pg_get_serial_sequence('FUNCION', 'id'), COALESCE(MAX(id), 1)) FROM FUNCION;
 SELECT setval(pg_get_serial_sequence('ROL_FUNCION', 'id'), COALESCE(MAX(id), 1)) FROM ROL_FUNCION;

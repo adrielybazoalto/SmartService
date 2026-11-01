@@ -80,7 +80,7 @@ export function productosRepetidos(items: readonly { producto_id: number }[]): n
 
 /**
  * Decisión de acceso de CU15 (dos niveles, ambos obligatorios):
- *   1) permiso de ruta COMPRAS en ROL_PERMISO;
+ *   1) permiso de ruta COMPRAS en ROL_FUNCION (acción LEER);
  *   2) la acción concedida en ROL_FUNCION para 'Compras'.
  */
 export function evaluarAccesoCompras(
