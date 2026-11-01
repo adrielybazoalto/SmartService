@@ -10,8 +10,8 @@ import {
 } from '@/app/actions/recuperar'
 import { PageHeaderBadge } from '@/components/page-header-badge'
 
-const estadoSolicitud: SolicitarRecuperacionState = { ok: false }
-const estadoRestablecer: RestablecerContrasenaState = { ok: false }
+const estadoSolicitud: SolicitarRecuperacionState = { ok: false, success: false }
+const estadoRestablecer: RestablecerContrasenaState = { ok: false, success: false }
 
 const inputClase =
   'w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 px-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50'
@@ -77,7 +77,7 @@ function FormularioEmail({ errorInicial }: { errorInicial?: string }) {
   )
 
   // Resultado exitoso (mostrarResultado)
-  if (state.ok) {
+  if (state.success || state.ok) {
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
@@ -132,7 +132,7 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
   )
 
   // Resultado exitoso (mostrarResultado)
-  if (state.ok) {
+  if (state.success || state.ok) {
     return (
       <div className="space-y-4 text-center">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
