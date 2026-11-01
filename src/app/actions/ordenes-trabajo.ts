@@ -4,7 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { getCurrentUser } from '@/lib/auth'
 import { obtenerIpOrigen } from '@/lib/ip'
-import { ControlOrdenesTrabajo } from '@/backend/ordenes/control-ordenes-trabajo'
+import { ControlOrdenesTrabajo, type VentanaHorariaInput } from '@/backend/ordenes/control-ordenes-trabajo'
+import { horasEntre } from '@/backend/asignaciones/disponibilidad'
+import type { OrdenTrabajo } from '@/backend/ordenes/types'
+import { ventanaBolivia } from '@/lib/fechas'
+import { tienePermisoModulo } from '@/lib/permisos'
 import type { Db } from '@/lib/supabase/types'
 
 type RespuestaAccion<T> = { ok: true; data: T; mensaje: string } | { ok: false; error: string }
@@ -26,6 +30,12 @@ async function contexto() {
     db: getSupabaseServiceClient() as unknown as Db,
     usuarioId: id,
     ip: await obtenerIpOrigen(),
+  }
+}
+
+async function exigirModulo(ruta: string) {
+  if (!(await tienePermisoModulo(ruta))) {
+    throw new Error('No autorizado: tu rol no tiene el permiso de este módulo.')
   }
 }
 
@@ -55,7 +65,7 @@ export async function obtenerOrdenesTrabajoAccion(): Promise<RespuestaAccion<any
     const { db } = await contexto()
     const { data, error } = await db
       .from('orden_trabajo')
-      .select('*, cotizacion(*, cliente(*)), orden_trabajo_tecnico(*, usuario(*))')
+      .select('*, cotizacion(*, cliente(*)), orden_trabajo_tecnico(*, usuario(nombre)), nota_servicio(id)')
       .order('id', { ascending: false })
     if (error) throw new Error(error.message)
     return exito(data || [], `${(data || []).length} orden(es) de trabajo`)
@@ -65,20 +75,42 @@ export async function obtenerOrdenesTrabajoAccion(): Promise<RespuestaAccion<any
 }
 
 /**
- * Obtener detalle de una orden de trabajo
+ * Obtener detalle de una orden de trabajo (un técnico solo ve las suyas)
  */
 export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<RespuestaAccion<any>> {
   try {
-    const { db } = await contexto()
+    const { db, usuarioId } = await contexto()
+    await exigirModulo('/ordenes-trabajo')
+    await ControlOrdenesTrabajo.validarTecnicoAsignado(db, id, usuarioId)
     const { data, error } = await db
       .from('orden_trabajo')
-      .select('*, cotizacion(*, cliente(*)), orden_trabajo_tecnico(*, usuario(*)), detalle_consumo_material(*, producto(*))')
+      .select(
+        '*, cotizacion(*, cliente(*)), orden_trabajo_tecnico(usuario_id, es_lider, usuario(nombre)), detalle_consumo_material(*, producto(nombre, unidad_medida)), nota_servicio(id, numero_nota, estado, monto_total)',
+      )
       .eq('id', id)
       .single()
     if (error) throw new Error(error.message)
-    return exito(data, 'Orden cargada')
+    return exito({ ...data, horas_trabajadas: horasEntre(data.fecha_inicio_real, data.fecha_fin_real) }, 'Orden cargada')
   } catch (e) {
     return falla(e, 'Error al obtener detalle de orden')
+  }
+}
+
+/**
+ * Cancelar una orden PROGRAMADA. Además del módulo de órdenes (el técnico también lo
+ * tiene) exige el de asignación: cancela quien programa, no quien ejecuta.
+ */
+export async function cancelarOrdenAccion(ordenId: number): Promise<RespuestaAccion<OrdenTrabajo>> {
+  try {
+    const { db, usuarioId, ip } = await contexto()
+    await exigirModulo('/ordenes-trabajo')
+    await exigirModulo('/asignar-tecnicos')
+    const orden = await ControlOrdenesTrabajo.cancelarOrden(db, ordenId, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, `Orden ${orden.codigo_orden} cancelada`)
+  } catch (e) {
+    return falla(e, 'Error al cancelar la orden')
   }
 }
 
@@ -87,13 +119,7 @@ export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<Resp
  */
 export async function convertirCotizacionAOrdenAccion(
   cotizacionId: number,
-  datosVentana?: {
-    fecha_programada?: string
-    hora_inicio?: string
-    hora_fin?: string
-    fecha_inicio_programada?: string
-    fecha_fin_programada?: string
-  },
+  datosVentana: VentanaHorariaInput,
 ): Promise<RespuestaAccion<any>> {
   try {
     const { db, usuarioId, ip } = await contexto()
@@ -124,16 +150,12 @@ export async function actualizarVentanaOrdenAccion(
 ): Promise<RespuestaAccion<any>> {
   try {
     const { db } = await contexto()
-    const dIni = new Date(`${fechaProgramada}T${horaInicio}:00`)
-    const dFin = new Date(`${fechaProgramada}T${horaFin}:00`)
-    if (isNaN(dIni.getTime()) || isNaN(dFin.getTime()) || dFin.getTime() <= dIni.getTime()) {
-      throw new Error('La hora de fin programada debe ser posterior a la hora de inicio')
-    }
+    const { inicio, fin } = ventanaBolivia(fechaProgramada, horaInicio, horaFin)
     const { data, error } = await db
       .from('orden_trabajo')
       .update({
-        fecha_inicio_programada: dIni.toISOString(),
-        fecha_fin_programada: dFin.toISOString(),
+        fecha_inicio_programada: inicio,
+        fecha_fin_programada: fin,
       })
       .eq('id', ordenId)
       .select()

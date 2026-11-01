@@ -538,6 +538,12 @@ export type Database = {
           fecha_vencimiento: string | null
           estado: string
           total: string
+          anticipo_monto: string
+          anticipo_metodo: string | null
+          anticipo_referencia: string | null
+          anticipo_fecha: string | null
+          anticipo_usuario_id: number | null
+          anticipo_stripe_session_id: string | null
         }
         Insert: {
           id?: number

@@ -12,8 +12,7 @@
 --                                  la nota y la bitácora en UNA transacción.
 --
 --  Supuestos (ajustar si su base es distinta):
---   - El CU12 deja la orden en estado 'COMPLETADA' cuando el técnico termina
---     (también se acepta 'FINALIZADA').
+--   - El CU12 deja la orden en estado 'FINALIZADA' cuando el técnico termina.
 --   - Horas trabajadas = fecha_fin_real - fecha_inicio_real (columnas del CU12).
 --   - producto.margen_ganancia es un porcentaje (30 = 30 %).
 --   - Tarifa por hora: la de los servicios cotizados en la cotización de
@@ -160,7 +159,7 @@ BEGIN
     END IF;
 
     -- Excepción del CU13
-    IF UPPER(COALESCE(v_estado, '')) NOT IN ('COMPLETADA', 'FINALIZADA') THEN
+    IF UPPER(COALESCE(v_estado, '')) <> 'FINALIZADA' THEN
         RAISE EXCEPTION 'No se puede liquidar una orden que no se encuentra en estado Finalizada';
     END IF;
 
@@ -217,3 +216,18 @@ BEGIN
     RETURN v_nota;
 END;
 $$;
+
+-- Solo el servidor (service_role) puede ejecutar la función, no el navegador
+REVOKE ALL ON FUNCTION public.fn_calcular_liquidacion(INTEGER, INTEGER) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.sp_emitir_nota_servicio(INTEGER, NUMERIC, INTEGER, VARCHAR, INTEGER) FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON FUNCTION public.fn_calcular_liquidacion(INTEGER, INTEGER) FROM anon, authenticated;
+        REVOKE ALL ON FUNCTION public.sp_emitir_nota_servicio(INTEGER, NUMERIC, INTEGER, VARCHAR, INTEGER) FROM anon, authenticated;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT EXECUTE ON FUNCTION public.fn_calcular_liquidacion(INTEGER, INTEGER) TO service_role;
+        GRANT EXECUTE ON FUNCTION public.sp_emitir_nota_servicio(INTEGER, NUMERIC, INTEGER, VARCHAR, INTEGER) TO service_role;
+    END IF;
+END $$;

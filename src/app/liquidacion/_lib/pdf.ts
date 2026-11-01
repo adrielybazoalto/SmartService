@@ -8,6 +8,7 @@
 
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
 import { etiquetaMetodoPago, formatearBs, formatearFecha, formatearFechaHora } from "./formato";
+import { formatearFechaHora as formatearTimestamp } from "@/lib/fechas";
 
 export async function descargarNotaServicioPDF(
   nota: NotaServicio,
@@ -60,6 +61,9 @@ export async function descargarNotaServicioPDF(
 
   // Mano de obra y totales
   const c = detalle.calculo;
+  const registrado = detalle.orden.anticipo_cotizacion;
+  const conAnticipo = registrado !== null && registrado.monto > 0;
+  const excedente = conAnticipo ? Math.round((registrado.monto - nota.anticipo_pagado) * 100) / 100 : 0;
   const pagoSaldo = !!nota.metodo_pago;
   const saldoNota = Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100;
   const saldo = nota.estado.toUpperCase() === "PAGADA" ? 0 : saldoNota;
@@ -72,7 +76,14 @@ export async function descargarNotaServicioPDF(
       ["Costo de materiales", formatearBs(c.costo_materiales)],
       [`Mano de obra (${c.horas_trabajadas} h x ${formatearBs(c.tarifa_hora)})`, formatearBs(c.costo_mano_obra)],
       ["MONTO TOTAL", formatearBs(nota.monto_total)],
-      ["Anticipo pagado", `- ${formatearBs(nota.anticipo_pagado)}`],
+      [
+        conAnticipo
+          ? `Anticipo pagado: ${etiquetaMetodoPago(registrado.metodo)} (${formatearTimestamp(registrado.fecha)})` +
+            (registrado.referencia ? ` Ref. ${registrado.referencia}` : "")
+          : "Anticipo pagado",
+        `- ${formatearBs(nota.anticipo_pagado)}`,
+      ],
+      ...(excedente > 0 ? [["Anticipo excedente", formatearBs(excedente)]] : []),
       ...(pagoSaldo
         ? [[
             `Saldo pagado: ${etiquetaMetodoPago(nota.metodo_pago)} (${formatearFechaHora(nota.fecha_pago ?? null)})` +

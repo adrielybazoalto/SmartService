@@ -1,7 +1,7 @@
 // =====================================================================
 //  CU13 - UI_Liquidacion (carga en el servidor)
 //  Pasos 2 y 3: recupera materiales, horas y calcula el monto total.
-//  Excepción: si la orden no está COMPLETADA muestra el mensaje del CU.
+//  Excepción: si la orden no está FINALIZADA muestra el mensaje del CU.
 // =====================================================================
 
 import Link from "next/link";

@@ -8,7 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test:bd": "node pruebas/bd/cu15-cu16.prueba.mjs",
-    "test:bd:sintaxis": "node pruebas/bd/sintaxis.mjs"
+    "test:bd:sintaxis": "node pruebas/bd/sintaxis.mjs",
+    "test:bd:cu12": "node pruebas/bd/cu12-reporte-campo.prueba.mjs",
+    "test:bd:anticipo": "node pruebas/bd/cu08-anticipo.prueba.mjs",
+    "test:anticipo:tarjeta": "node pruebas/ordenes/cu08-anticipo-tarjeta.prueba.mjs",
+    "test:bd:rbac": "node pruebas/bd/rbac-matriz.prueba.mjs",
+    "test:ordenes": "node pruebas/ordenes/cu11-cu12-fechas.prueba.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.1",

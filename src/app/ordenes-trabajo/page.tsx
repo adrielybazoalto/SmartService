@@ -1,5 +1,6 @@
 import { obtenerOrdenesTrabajoAccion, obtenerOrdenesTecnicoAccion } from '@/app/actions/ordenes-trabajo'
 import { getCurrentUser } from '@/lib/auth'
+import { tienePermisoModulo } from '@/lib/permisos'
 import { IU_GestionarOrdenesTrabajo } from './iu-gestionar-ordenes-trabajo'
 
 export const metadata = {
@@ -18,6 +19,10 @@ export default async function OrdenesTrabajoPage() {
   }
 
   const ordenes = resultado.ok ? resultado.data : []
+  const [gestionar, liquidar] = await Promise.all([
+    tienePermisoModulo('/asignar-tecnicos'),
+    tienePermisoModulo('/liquidacion'),
+  ])
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -33,7 +38,12 @@ export default async function OrdenesTrabajoPage() {
         </p>
       </header>
 
-      <IU_GestionarOrdenesTrabajo ordenes={ordenes} esTecnico={esTecnico} usuarioId={user?.id || 0} />
+      <IU_GestionarOrdenesTrabajo
+        ordenes={ordenes}
+        esTecnico={esTecnico}
+        usuarioId={user?.id || 0}
+        permisos={{ gestionar, liquidar }}
+      />
     </main>
   )
 }

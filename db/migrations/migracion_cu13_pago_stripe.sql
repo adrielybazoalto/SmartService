@@ -100,3 +100,15 @@ $$;
 -- Verificación (ejecutar aparte): deben aparecer las 3 columnas nuevas
 -- SELECT column_name, data_type FROM information_schema.columns
 --  WHERE table_name = 'nota_servicio' AND column_name IN ('metodo_pago', 'stripe_session_id', 'fecha_pago');
+
+-- Solo el servidor (service_role) puede ejecutar la función, no el navegador
+REVOKE ALL ON FUNCTION public.sp_registrar_pago_nota(INTEGER, VARCHAR, NUMERIC, INTEGER, VARCHAR) FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON FUNCTION public.sp_registrar_pago_nota(INTEGER, VARCHAR, NUMERIC, INTEGER, VARCHAR) FROM anon, authenticated;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT EXECUTE ON FUNCTION public.sp_registrar_pago_nota(INTEGER, VARCHAR, NUMERIC, INTEGER, VARCHAR) TO service_role;
+    END IF;
+END $$;

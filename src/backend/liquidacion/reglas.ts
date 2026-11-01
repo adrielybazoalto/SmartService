@@ -13,7 +13,7 @@ import {
 
 type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };
 
-/** Excepción del CU13: solo órdenes terminadas (COMPLETADA) y sin nota emitida. */
+/** Excepción del CU13: solo órdenes terminadas (FINALIZADA) y sin nota emitida. */
 export function verificarOrdenLiquidable(orden: OrdenConNota | null): OrdenPendienteLiquidar {
   if (!orden) throw new ErrorNegocio(MENSAJES.ORDEN_NO_EXISTE);
   if (!ESTADOS_ORDEN_TERMINADA.includes(orden.estado.toUpperCase())) {
@@ -31,6 +31,7 @@ export function verificarOrdenLiquidable(orden: OrdenConNota | null): OrdenPendi
     cotizacion_id: orden.cotizacion_id,
     numero_cotizacion: orden.numero_cotizacion,
     cliente_nombre: orden.cliente_nombre,
+    anticipo_cotizacion: orden.anticipo_cotizacion,
   };
 }
 

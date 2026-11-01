@@ -8,7 +8,11 @@ import {
   obtenerOrdenTrabajoDetalleAccion,
   listarProductosParaConsumoAccion,
   actualizarVentanaOrdenAccion,
+  cancelarOrdenAccion,
 } from '@/app/actions/ordenes-trabajo'
+import { textoAnticipo } from '@/app/cotizaciones/anticipo'
+import { formatearFechaHora } from '@/lib/fechas'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 interface Material {
@@ -25,13 +29,34 @@ interface Producto {
   stock_disponible: string
 }
 
+type NotaResumen = { numero_nota: string; estado: string; monto_total: number }
+
+/** Lo que devuelve obtenerOrdenTrabajoDetalleAccion. */
+interface DetalleOrden {
+  codigo_orden: string
+  estado: string
+  horas_trabajadas: number | null
+  observaciones_tecnico: string | null
+  cotizacion: Parameters<typeof textoAnticipo>[0]
+  orden_trabajo_tecnico?: { usuario_id: number; es_lider: boolean; usuario?: { nombre: string } | null }[]
+  detalle_consumo_material?: {
+    id: number
+    cantidad_utilizada: number
+    observacion: string | null
+    producto?: { nombre: string; unidad_medida: string } | null
+  }[]
+  nota_servicio?: NotaResumen | NotaResumen[] | null
+}
+
 interface Props {
   ordenes: any[]
   esTecnico: boolean
   usuarioId: number
+  /** Calculados en el servidor con los permisos de ROL_FUNCION. */
+  permisos: { gestionar: boolean; liquidar: boolean }
 }
 
-export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Props) {
+export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, permisos }: Props) {
   const router = useRouter()
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
@@ -43,6 +68,7 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
   const [productoSeleccionado, setProductoSeleccionado] = useState('')
   const [cantidadMaterial, setCantidadMaterial] = useState('')
   const [obsMaterial, setObsMaterial] = useState('')
+  const [detalle, setDetalle] = useState<DetalleOrden | null>(null)
 
   async function iniciarOrden(id: number) {
     setCargando(true)
@@ -147,25 +173,48 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
     }
   }
 
+  async function verDetalle(id: number) {
+    setCargando(true)
+    setMensaje(null)
+    const res = await obtenerOrdenTrabajoDetalleAccion(id)
+    setCargando(false)
+    if (res.ok) setDetalle(res.data)
+    else setMensaje({ tipo: 'error', texto: res.error })
+  }
+
+  async function cancelarOrden(orden: { id: number; codigo_orden: string }) {
+    if (!confirm(`¿Cancelar la orden ${orden.codigo_orden}? Esta acción no se puede deshacer.`)) return
+    setCargando(true)
+    setMensaje(null)
+    const res = await cancelarOrdenAccion(orden.id)
+    setCargando(false)
+    if (res.ok) {
+      setMensaje({ tipo: 'ok', texto: res.mensaje })
+      router.refresh()
+    } else {
+      setMensaje({ tipo: 'error', texto: res.error })
+    }
+  }
+
+  // nota_servicio es 1:1 con la orden (uq_nota_orden), pero puede llegar como lista.
+  const notaDe = (orden: Pick<DetalleOrden, 'nota_servicio'>) =>
+    Array.isArray(orden.nota_servicio) ? orden.nota_servicio[0] : orden.nota_servicio
+
   const getEstadoBadge = (estado: string) => {
     const estilos: Record<string, string> = {
       PROGRAMADA: 'bg-blue-100 text-blue-800',
       EN_PROGRESO: 'bg-yellow-100 text-yellow-800',
       FINALIZADA: 'bg-emerald-100 text-emerald-800',
-      COMPLETADA: 'bg-emerald-100 text-emerald-800',
       CANCELADA: 'bg-red-100 text-red-800',
     }
     return estilos[estado] || 'bg-gray-100 text-gray-800'
   }
 
+  const notaDetalle = detalle ? notaDe(detalle) : null
+
   const formatearVentana = (inicio: string | null, fin: string | null) => {
     if (!inicio || !fin) return <span className="text-amber-600 font-medium text-xs">Sin ventana</span>
-    const dIni = new Date(inicio)
-    const dFin = new Date(fin)
-    const fecha = dIni.toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const hIni = dIni.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
-    const hFin = dFin.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
-    return `${fecha} (${hIni} - ${hFin})`
+    return `${formatearFechaHora(inicio)} a ${formatearFechaHora(fin)}`
   }
 
   return (
@@ -221,10 +270,10 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
                     {formatearVentana(orden.fecha_inicio_programada, orden.fecha_fin_programada)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {orden.fecha_inicio_real ? new Date(orden.fecha_inicio_real).toLocaleString('es-BO') : '-'}
+                    {formatearFechaHora(orden.fecha_inicio_real)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                    {orden.fecha_fin_real ? new Date(orden.fecha_fin_real).toLocaleString('es-BO') : '-'}
+                    {formatearFechaHora(orden.fecha_fin_real)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                     {esTecnico && orden.estado === 'PROGRAMADA' && (
@@ -254,19 +303,32 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
                         </button>
                       </>
                     )}
-                    {!esTecnico && orden.estado === 'PROGRAMADA' && (
-                      <button
-                        onClick={async () => {
-                          if (confirm('¿Convertir esta cotización a orden de trabajo?')) {
-                            // Aquí se podría implementar desde otra vista
-                          }
-                        }}
-                        className="text-slate-400 cursor-not-allowed"
-                        title="Usar desde Cotizaciones"
-                      >
-                        -
-                      </button>
+                    {permisos.gestionar && orden.estado === 'PROGRAMADA' && (
+                      <>
+                        <Link href={`/asignar-tecnicos/${orden.id}`} className="text-blue-600 hover:text-blue-900">
+                          {orden.orden_trabajo_tecnico?.length ? 'Modificar cuadrilla' : 'Asignar cuadrilla'}
+                        </Link>
+                        <button
+                          onClick={() => cancelarOrden(orden)}
+                          disabled={cargando}
+                          className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                        >
+                          Cancelar orden
+                        </button>
+                      </>
                     )}
+                    {permisos.liquidar && orden.estado === 'FINALIZADA' && (
+                      <Link href={`/liquidacion/${orden.id}`} className="text-emerald-600 hover:text-emerald-900">
+                        {notaDe(orden) ? 'Ver nota' : 'Liquidar'}
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => verDetalle(orden.id)}
+                      disabled={cargando}
+                      className="text-slate-600 hover:text-slate-900 disabled:opacity-50"
+                    >
+                      Ver detalle
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -274,6 +336,81 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId }: Pr
           </table>
         </div>
       </section>
+
+      {/* Modal Detalle */}
+      {detalle && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="text-lg font-bold text-slate-900">Detalle - {detalle.codigo_orden}</h3>
+            </div>
+            <div className="p-6 space-y-4 text-sm text-slate-700">
+              <p>
+                <span className="font-semibold">Estado:</span> {detalle.estado}
+              </p>
+              <p>
+                <span className="font-semibold">Horas trabajadas:</span>{' '}
+                {detalle.horas_trabajadas === null ? '-' : `${detalle.horas_trabajadas} h`}
+              </p>
+              <p>
+                <span className="font-semibold">Anticipo:</span> {textoAnticipo(detalle.cotizacion)}
+              </p>
+              <div>
+                <p className="font-semibold">Diagnóstico</p>
+                <p className="whitespace-pre-wrap">{detalle.observaciones_tecnico || 'Sin diagnóstico'}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Cuadrilla</p>
+                {detalle.orden_trabajo_tecnico?.length ? (
+                  <ul className="list-disc pl-5">
+                    {detalle.orden_trabajo_tecnico.map((t) => (
+                      <li key={t.usuario_id}>
+                        {t.usuario?.nombre ?? `Técnico ${t.usuario_id}`}
+                        {t.es_lider ? ' (líder)' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Sin cuadrilla asignada</p>
+                )}
+              </div>
+              <div>
+                <p className="font-semibold">Materiales consumidos</p>
+                {detalle.detalle_consumo_material?.length ? (
+                  <ul className="list-disc pl-5">
+                    {detalle.detalle_consumo_material.map((m) => (
+                      <li key={m.id}>
+                        {m.producto?.nombre}: {m.cantidad_utilizada} {m.producto?.unidad_medida}
+                        {m.observacion ? ` (${m.observacion})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Sin materiales</p>
+                )}
+              </div>
+              <div>
+                <p className="font-semibold">Nota de servicio</p>
+                {notaDetalle ? (
+                  <p>
+                    {notaDetalle.numero_nota} · {notaDetalle.estado} · Bs {notaDetalle.monto_total}
+                  </p>
+                ) : (
+                  <p>Sin nota emitida</p>
+                )}
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setDetalle(null)}
+                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Reporte de Campo */}
       {mostrarReporte && ordenSeleccionada && (

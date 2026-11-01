@@ -1,27 +1,42 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { obtenerCotizacionesAccion, cambiarEstadoCotizacionAccion, eliminarCotizacionAccion } from '@/app/actions/cotizaciones'
+import {
+  obtenerCotizacionesAccion,
+  confirmarAnticipoTarjetaAction,
+  cambiarEstadoCotizacionAccion,
+  eliminarCotizacionAccion,
+  puedeProcesarCotizacionesAccion,
+} from '@/app/actions/cotizaciones'
 import { convertirCotizacionAOrdenAccion } from '@/app/actions/ordenes-trabajo'
+import { textoAnticipo } from './anticipo'
+import { ModalAnticipo, type CotizacionParaAprobar } from './modal-anticipo'
+
+const MSG_PAGO_NO_CONFIRMADO = 'El pago con tarjeta no fue confirmado. La cotización sigue pendiente.'
 
 interface CotizacionParaConvertir {
   id: number
   nro: string
   cliente: string
+  sinAnticipo: boolean
 }
 
 export default function CotizacionesPage() {
   const router = useRouter()
   const [cotizaciones, setCotizaciones] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
+  const [puedeProcesar, setPuedeProcesar] = useState(false)
+  const [cotizacionParaAprobar, setCotizacionParaAprobar] = useState<CotizacionParaAprobar | null>(null)
+  const [avisoPago, setAvisoPago] = useState<{ ok: boolean; texto: string } | null>(null)
+  const retornoAtendido = useRef(false)
 
   // Estado para el modal de programación y conversión (CU08 -> CU12 -> CU11)
   const [cotizacionParaConvertir, setCotizacionParaConvertir] = useState<CotizacionParaConvertir | null>(null)
   const [fechaProgramada, setFechaProgramada] = useState('')
-  const [horaInicio, setHoraInicio] = useState('08:00')
-  const [horaFin, setHoraFin] = useState('12:00')
+  const [horaInicio, setHoraInicio] = useState('')
+  const [horaFin, setHoraFin] = useState('')
   const [convirtiendo, setConvirtiendo] = useState(false)
 
   const cargarCotizaciones = async () => {
@@ -37,13 +52,33 @@ export default function CotizacionesPage() {
 
   useEffect(() => {
     cargarCotizaciones()
+    puedeProcesarCotizacionesAccion().then(setPuedeProcesar)
   }, [])
 
-  const handleCambiarEstado = async (id: number, nuevoEstado: string) => {
-    if (confirm(`¿Deseas cambiar el estado a ${nuevoEstado}?`)) {
+  // Retorno de Stripe (?anticipo=exito&session_id=... o ?anticipo=cancelado): se atiende una sola vez
+  useEffect(() => {
+    const parametros = new URLSearchParams(window.location.search)
+    const anticipo = parametros.get('anticipo')
+    if (!anticipo || retornoAtendido.current) return
+    retornoAtendido.current = true
+    const sessionId = parametros.get('session_id')
+    window.history.replaceState(null, '', window.location.pathname)
+
+    const resultado =
+      anticipo === 'exito' && sessionId
+        ? confirmarAnticipoTarjetaAction(sessionId)
+        : Promise.resolve({ success: false, message: MSG_PAGO_NO_CONFIRMADO })
+    resultado.then((r) => {
+      setAvisoPago({ ok: r.success, texto: r.message })
+      cargarCotizaciones()
+    })
+  }, [])
+
+  const handleRechazar = async (id: number, nro: string) => {
+    if (confirm(`¿Rechazar la cotización ${nro}?`)) {
       try {
-        await cambiarEstadoCotizacionAccion(id, nuevoEstado)
-        alert('Estado actualizado con éxito.')
+        await cambiarEstadoCotizacionAccion(id, 'RECHAZADA')
+        alert('Cotización rechazada.')
         cargarCotizaciones()
       } catch (err: any) {
         alert('Error: ' + err.message)
@@ -52,19 +87,14 @@ export default function CotizacionesPage() {
   }
 
   const handleAbrirModalConvertir = (cot: any) => {
-    // Por defecto, sugerir mañana de 08:00 a 12:00
-    const manana = new Date()
-    manana.setDate(manana.getDate() + 1)
-    const yyyy = manana.getFullYear()
-    const mm = String(manana.getMonth() + 1).padStart(2, '0')
-    const dd = String(manana.getDate()).padStart(2, '0')
-    setFechaProgramada(`${yyyy}-${mm}-${dd}`)
-    setHoraInicio('08:00')
-    setHoraFin('12:00')
+    setFechaProgramada('')
+    setHoraInicio('')
+    setHoraFin('')
     setCotizacionParaConvertir({
       id: cot.id,
       nro: cot.numero_cotizacion,
       cliente: cot.cliente?.nombre || `Cliente #${cot.cliente_id}`,
+      sinAnticipo: Number(cot.anticipo_monto ?? 0) <= 0,
     })
   }
 
@@ -92,8 +122,7 @@ export default function CotizacionesPage() {
       if (res.ok) {
         alert(res.mensaje)
         setCotizacionParaConvertir(null)
-        cargarCotizaciones()
-        router.push('/asignar-tecnicos')
+        router.push(`/asignar-tecnicos/${res.data.id}`)
       } else {
         alert(res.error)
       }
@@ -134,6 +163,17 @@ export default function CotizacionesPage() {
         </Link>
       </div>
 
+      {avisoPago && (
+        <p
+          role={avisoPago.ok ? 'status' : 'alert'}
+          className={`mb-4 rounded-xl border p-3 text-sm ${
+            avisoPago.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {avisoPago.texto}
+        </p>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -166,21 +206,43 @@ export default function CotizacionesPage() {
                     <td className="py-4 px-4">{cot.fecha_vencimiento || 'N/A'}</td>
                     <td className="py-4 px-4 font-semibold text-blue-600">Bs. {Number(cot.total).toFixed(2)}</td>
                     <td className="py-4 px-4">
-                      <select 
-                        value={cot.estado}
-                        onChange={(e) => handleCambiarEstado(cot.id, e.target.value)}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-md border focus:outline-none ${
+                      <span
+                        className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-md border ${
                           cot.estado === 'APROBADA' ? 'bg-green-100 text-green-800 border-green-300' :
                           cot.estado === 'RECHAZADA' ? 'bg-red-100 text-red-800 border-red-300' : 'bg-amber-100 text-amber-800 border-amber-300'
                         }`}
                       >
-                        <option value="PENDIENTE">PENDIENTE</option>
-                        <option value="APROBADA">APROBADA</option>
-                        <option value="RECHAZADA">RECHAZADA</option>
-                      </select>
+                        {cot.estado}
+                      </span>
+                      {cot.estado === 'APROBADA' && (
+                        <p className="mt-1 text-[11px] text-gray-500">Anticipo: {textoAnticipo(cot)}</p>
+                      )}
                     </td>
                     <td className="py-4 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {puedeProcesar && cot.estado === 'PENDIENTE' && (
+                          <>
+                            <button
+                              onClick={() =>
+                                setCotizacionParaAprobar({
+                                  id: cot.id,
+                                  nro: cot.numero_cotizacion,
+                                  cliente: cot.cliente?.nombre || `Cliente #${cot.cliente_id}`,
+                                  total: Number(cot.total),
+                                })
+                              }
+                              className="text-green-700 hover:underline text-xs font-medium bg-green-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
+                            >
+                              Aprobar
+                            </button>
+                            <button
+                              onClick={() => handleRechazar(cot.id, cot.numero_cotizacion)}
+                              className="text-red-700 hover:underline text-xs font-medium bg-red-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
+                            >
+                              Rechazar
+                            </button>
+                          </>
+                        )}
                         {cot.estado === 'APROBADA' && (
                           <button
                             onClick={() => handleAbrirModalConvertir(cot)}
@@ -222,6 +284,17 @@ export default function CotizacionesPage() {
         </div>
       </div>
 
+      {cotizacionParaAprobar && (
+        <ModalAnticipo
+          cotizacion={cotizacionParaAprobar}
+          onCerrar={() => setCotizacionParaAprobar(null)}
+          onAprobada={() => {
+            setCotizacionParaAprobar(null)
+            cargarCotizaciones()
+          }}
+        />
+      )}
+
       {/* Modal Programar y Crear Orden de Trabajo (CU08 -> CU12 -> CU11) */}
       {cotizacionParaConvertir && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -241,6 +314,12 @@ export default function CotizacionesPage() {
                 <div><span className="font-semibold">Cotización:</span> {cotizacionParaConvertir.nro}</div>
                 <div><span className="font-semibold">Cliente:</span> {cotizacionParaConvertir.cliente}</div>
               </div>
+
+              {cotizacionParaConvertir.sinAnticipo && (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+                  Esta cotización no tiene anticipo registrado. Puede continuar de todos modos.
+                </p>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">

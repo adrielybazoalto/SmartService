@@ -1,11 +1,12 @@
 // =====================================================================
 //  CU13 - UI_OrdenesFinalizadas
-//  Paso 1 del flujo principal: el Encargado ve las órdenes COMPLETADAS
+//  Paso 1 del flujo principal: el Encargado ve las órdenes FINALIZADAS
 //  sin nota de servicio y selecciona una para liquidar.
 // =====================================================================
 
 import Link from "next/link";
 import { crearLiquidacionController, type NotaPendientePago, type OrdenPendienteLiquidar } from "@/backend/liquidacion";
+import { formatearFechaHora } from "@/lib/fechas";
 import { formatearBs, formatearFecha } from "./_lib/formato";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +69,7 @@ export default async function OrdenesFinalizadasPage() {
                   <td className="px-4 py-3">{o.cliente_nombre ?? "—"}</td>
                   <td className="px-4 py-3">{o.tipo_trabajo}</td>
                   <td className="px-4 py-3">{o.numero_cotizacion ??"Sin cotización"}</td>
-                  <td className="px-4 py-3">{formatearFecha(o.fecha_fin_real)}</td>
+                  <td className="px-4 py-3">{formatearFechaHora(o.fecha_fin_real)}</td>
                   <td className="px-4 py-3 text-right">{o.horas_trabajadas}</td>
                   <td className="px-4 py-3 text-right">
                     <Link

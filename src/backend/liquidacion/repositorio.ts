@@ -21,7 +21,7 @@ import {
 
 const COLUMNAS_ORDEN = `
   id, codigo_orden, tipo_trabajo, estado, fecha_inicio_real, fecha_fin_real, cotizacion_id,
-  cotizacion ( numero_cotizacion, cliente ( nombre ) ),
+  cotizacion ( numero_cotizacion, anticipo_monto, anticipo_metodo, anticipo_referencia, anticipo_fecha, anticipo_stripe_session_id, cliente ( nombre ) ),
   nota_servicio ( id )
 `;
 
@@ -76,6 +76,16 @@ function mapearOrden(fila: any): OrdenConNota {
     cotizacion_id: fila.cotizacion_id,
     numero_cotizacion: cotizacion?.numero_cotizacion ?? null,
     cliente_nombre: cliente?.nombre ?? null,
+    anticipo_cotizacion: cotizacion
+      ? {
+          monto: Number(cotizacion.anticipo_monto ?? 0),
+          metodo: cotizacion.anticipo_metodo ?? null,
+          referencia:
+            cotizacion.anticipo_referencia ??
+            (cotizacion.anticipo_stripe_session_id ? `…${cotizacion.anticipo_stripe_session_id.slice(-8)}` : null),
+          fecha: cotizacion.anticipo_fecha ?? null,
+        }
+      : null,
     tieneNota: Array.isArray(nota) ? nota.length > 0 : Boolean(nota),
   };
 }
@@ -83,12 +93,12 @@ function mapearOrden(fila: any): OrdenConNota {
 export class LiquidacionRepositorio {
   constructor(private readonly db: SupabaseClient) {}
 
-  /** OrdenTrabajo: órdenes COMPLETADAS (terminadas en el CU12) sin nota de servicio. */
+  /** OrdenTrabajo: órdenes FINALIZADAS (terminadas en el CU12) sin nota de servicio. */
   async listarOrdenesSinNota(): Promise<OrdenPendienteLiquidar[]> {
     const { data, error } = await this.db
       .from("orden_trabajo")
       .select(COLUMNAS_ORDEN)
-      .or("estado.ilike.completada,estado.ilike.finalizada")
+      .ilike("estado", "finalizada")
       .order("fecha_fin_real", { ascending: false });
 
     if (error) throw new Error(`No se pudieron listar las órdenes: ${error.message}`);

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { listarOrdenesAction } from '@/app/actions/asignaciones'
+import { formatearFechaHora } from '@/lib/fechas'
 import { PageHeaderBadge } from '@/components/page-header-badge'
 import { FiltrosOrdenes } from './filtros-ordenes'
 
@@ -12,10 +13,6 @@ const CUADRILLAS = ['todas', 'sin_asignar', 'asignadas'] as const
 
 interface PageProps {
   searchParams: Promise<{ q?: string; estado?: string; cuadrilla?: string; ok?: string }>
-}
-
-function formatearTs(ts: string | null): string {
-  return ts ? ts.replace('T', ' ').slice(0, 16) : '—'
 }
 
 const ETIQUETA_ESTADO: Record<string, string> = {
@@ -102,7 +99,7 @@ export default async function AsignarTecnicosPage({ searchParams }: PageProps) {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {orden.fecha_inicio_programada && orden.fecha_fin_programada
-                        ? `${formatearTs(orden.fecha_inicio_programada)} a ${formatearTs(orden.fecha_fin_programada)}`
+                        ? `${formatearFechaHora(orden.fecha_inicio_programada)} a ${formatearFechaHora(orden.fecha_fin_programada)}`
                         : 'Sin ventana definida'}
                     </td>
                     <td className="px-4 py-3">

@@ -70,6 +70,27 @@ export async function tienePermisoModulo(ruta: string): Promise<boolean> {
 }
 
 /**
+ * ¿El rol del usuario autenticado tiene esta acción sobre el módulo (FUNCION.clave)?
+ * Para operaciones que LEER no distingue. Fail-closed ante cualquier error.
+ */
+export async function tieneAccionModulo(clave: string, accion: string): Promise<boolean> {
+  const usuario = await getCurrentUser()
+  if (!usuario) return false
+
+  const db = getSupabaseServiceClient()
+  const { data, error } = await db
+    .from('rol_funcion')
+    .select('funcion:funcion_id(clave), accion:accion_id(nombre)')
+    .eq('rol_id', usuario.rol_id)
+
+  if (error) {
+    console.warn(`[RBAC] No se pudieron leer permisos del rol ${usuario.rol_id}: ${error.message}`)
+    return false
+  }
+  return (data ?? []).some((fila) => fila.funcion?.clave === clave && fila.accion?.nombre === accion)
+}
+
+/**
  * Nivel 2 — Protección de rutas: valida que el usuario autenticado tenga el
  * permiso de la ruta. Si no, redirige a la pantalla principal con el aviso
  * 'No tiene permisos para acceder a este módulo'. Usar al inicio de layouts o

@@ -14,5 +14,5 @@ export type NotaServicio = Tables<'nota_servicio'>
 export type NuevaNotaServicio = TablesInsert<'nota_servicio'>
 
 /** Convención de la aplicación (el esquema no define CHECK en ORDEN_TRABAJO). */
-export const ESTADO_ORDEN = ['PROGRAMADA', 'EN_PROGRESO', 'FINALIZADA', 'COMPLETADA', 'CANCELADA'] as const
+export const ESTADO_ORDEN = ['PROGRAMADA', 'EN_PROGRESO', 'FINALIZADA', 'CANCELADA'] as const
 export type EstadoOrden = (typeof ESTADO_ORDEN)[number]

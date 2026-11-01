@@ -9,6 +9,7 @@ import {
   ModuloPermiso,
 } from "../actions/roles";
 import { IconoModulo } from "@/components/icono-modulo";
+import { MODULOS_PROTEGIDOS_ADMIN } from "@/lib/navigation";
 import { PageHeaderBadge } from "@/components/page-header-badge";
 
 /**
@@ -223,6 +224,8 @@ export default function RolesPage() {
             <div className="grid max-h-[620px] grid-cols-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-2">
               {modulos.map((modulo) => {
                 const activo = activosDelRol.has(modulo.nombre);
+                const protegido =
+                  rolSeleccionado?.nombre === "ADMINISTRADOR" && MODULOS_PROTEGIDOS_ADMIN.includes(modulo.nombre);
                 return (
                   <div
                     key={modulo.id}
@@ -255,12 +258,12 @@ export default function RolesPage() {
                         aria-checked={activo}
                         aria-label={`Permitir ${modulo.etiqueta}`}
                         onClick={() => toggleModulo(modulo.nombre)}
-                        disabled={rolBloqueado}
+                        disabled={rolBloqueado || protegido}
                         className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                           activo
                             ? "bg-lime-400"
                             : "bg-slate-200"
-                        } ${rolBloqueado ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                        } ${rolBloqueado || protegido ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                       >
                         <span
                           className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${

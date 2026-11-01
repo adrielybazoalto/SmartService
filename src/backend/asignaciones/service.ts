@@ -5,7 +5,8 @@ import {
   type FiltrarOrdenesInput,
   type GuardarCuadrillaInput,
 } from './schema'
-import { aMs, cruzaVentana, formatearTs, motivosJornada } from './disponibilidad'
+import { formatearFechaHora } from '@/lib/fechas'
+import { aMs, cruzaVentana, motivosJornada } from './disponibilidad'
 import {
   ESTADO_CANCELADA,
   ESTADO_FINALIZADA,
@@ -96,7 +97,7 @@ async function evaluarTecnicos(
     motivos.push(...motivosJornada((jor.data ?? []).filter((j) => j.usuario_id === t.id), iniMs, finMs))
 
     for (const b of (blo.data ?? []).filter((x) => x.usuario_id === t.id)) {
-      motivos.push(`Bloqueo (${b.tipo ?? 'sin tipo'}) del ${formatearTs(b.fecha_inicio)} al ${formatearTs(b.fecha_fin)}`)
+      motivos.push(`Bloqueo (${b.tipo ?? 'sin tipo'}) del ${formatearFechaHora(b.fecha_inicio)} al ${formatearFechaHora(b.fecha_fin)}`)
     }
 
     for (const f of (ocu.data ?? []).filter((x) => x.usuario_id === t.id)) {
@@ -105,13 +106,22 @@ async function evaluarTecnicos(
       if (!o.fecha_inicio_programada || !o.fecha_fin_programada) continue
       if (cruzaVentana(iniMs, finMs, aMs(o.fecha_inicio_programada), aMs(o.fecha_fin_programada))) {
         motivos.push(
-          `Asignado a la orden ${o.codigo_orden} (${formatearTs(o.fecha_inicio_programada)} a ${formatearTs(o.fecha_fin_programada)})`,
+          `Asignado a la orden ${o.codigo_orden} (${formatearFechaHora(o.fecha_inicio_programada)} a ${formatearFechaHora(o.fecha_fin_programada)})`,
         )
       }
     }
     resultado[t.id] = motivos
   }
   return resultado
+}
+
+/**
+ * Primero las órdenes sin cuadrilla, de la más reciente a la más antigua; después las
+ * que ya la tienen, en el orden recibido (por fecha programada).
+ */
+export function ordenarPorPendientes(filas: OrdenListada[]): OrdenListada[] {
+  const sinCuadrilla = filas.filter((r) => r.totalTecnicos === 0).sort((a, b) => b.orden.id - a.orden.id)
+  return [...sinCuadrilla, ...filas.filter((r) => r.totalTecnicos > 0)]
 }
 
 /**
@@ -145,14 +155,14 @@ export async function listarOrdenes(db: Db, filtros: FiltrarOrdenesInput = {}): 
     .in('orden_trabajo_id', ordenes.map((o) => o.id))
   if (e2) throw fallo(e2, 'cargar las cuadrillas')
 
-  const filas = ordenes.map((orden) => {
+  const filas = ordenarPorPendientes(ordenes.map((orden) => {
     const miembros = (cuadrillas ?? []).filter((c) => c.orden_trabajo_id === orden.id)
     return {
       orden,
       totalTecnicos: miembros.length,
       liderNombre: miembros.find((c) => c.es_lider)?.usuario?.nombre ?? null,
     }
-  })
+  }))
   if (f.cuadrilla === 'sin_asignar') return filas.filter((r) => r.totalTecnicos === 0)
   if (f.cuadrilla === 'asignadas') return filas.filter((r) => r.totalTecnicos > 0)
   return filas

@@ -5,10 +5,9 @@
 // =====================================================================
 
 /**
- * Estados con los que el CU12 deja una orden terminada.
- * El CU12 del proyecto usa "COMPLETADA"; se acepta también "FINALIZADA".
+ * Estado con el que el CU12 deja una orden terminada.
  */
-export const ESTADOS_ORDEN_TERMINADA = ["COMPLETADA", "FINALIZADA"];
+export const ESTADOS_ORDEN_TERMINADA = ["FINALIZADA"];
 
 /** Tabla orden_trabajo (solo los atributos que usa el CU13). */
 export interface OrdenTrabajo {
@@ -23,10 +22,20 @@ export interface OrdenTrabajo {
   cotizacion_id: number | null;
 }
 
+/** Anticipo registrado al aprobar la cotización (CU08). */
+export interface AnticipoCotizacion {
+  monto: number;
+  metodo: string | null;
+  referencia: string | null;
+  fecha: string | null;
+}
+
 /** Orden finalizada sin nota, con datos del cliente para el listado. */
 export interface OrdenPendienteLiquidar extends OrdenTrabajo {
   numero_cotizacion: string | null;
   cliente_nombre: string | null;
+  /** null en órdenes correctivas (sin cotización). */
+  anticipo_cotizacion: AnticipoCotizacion | null;
 }
 
 /** Tabla detalle_consumo_material + producto (materiales usados en campo). */

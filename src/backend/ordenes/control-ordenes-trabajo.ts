@@ -2,6 +2,8 @@ import type { Db } from '@/lib/supabase/types'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { obtenerIpOrigen } from '@/lib/ip'
 import { registrarEvento } from '@/backend/bitacora'
+import { aMs } from '@/backend/asignaciones/disponibilidad'
+import { ahoraBolivia, ventanaBolivia } from '@/lib/fechas'
 import { procesarReporteCampoSchema, type ProcesarReporteCampoInput } from './schema'
 import type { OrdenTrabajo } from './types'
 
@@ -10,11 +12,9 @@ function num(v: number, decimales = 2): string {
 }
 
 export interface VentanaHorariaInput {
-  fecha_programada?: string
-  hora_inicio?: string
-  hora_fin?: string
-  fecha_inicio_programada?: string
-  fecha_fin_programada?: string
+  fecha_programada: string
+  hora_inicio: string
+  hora_fin: string
 }
 
 /**
@@ -29,10 +29,16 @@ export class ControlOrdenesTrabajo {
   static async convertirCotizacionAOrdenBD(
     db: Db,
     cotizacionId: number,
-    usuarioId?: number,
-    ip?: string | null,
-    ventana?: VentanaHorariaInput,
+    usuarioId: number | undefined,
+    ip: string | null | undefined,
+    ventana: VentanaHorariaInput,
   ): Promise<OrdenTrabajo> {
+    // Ventana obligatoria (CU11 requiere inicio y fin válidos), en hora de Bolivia
+    if (!ventana?.fecha_programada || !ventana.hora_inicio || !ventana.hora_fin) {
+      throw new Error('La ventana horaria es obligatoria para crear la orden de trabajo')
+    }
+    const { inicio, fin } = ventanaBolivia(ventana.fecha_programada, ventana.hora_inicio, ventana.hora_fin)
+
     // Obtener la cotización
     const { data: cotizacion, error: errCot } = await db
       .from('cotizacion')
@@ -60,7 +66,7 @@ export class ControlOrdenesTrabajo {
     }
 
     // Generar código correlativo único OT-YYYY-XXX
-    const anio = new Date().getFullYear()
+    const anio = ahoraBolivia().slice(0, 4)
     const prefijo = `OT-${anio}-`
 
     const { data: otsAnio } = await db
@@ -83,32 +89,6 @@ export class ControlOrdenesTrabajo {
 
     const codigoOrden = `${prefijo}${String(maxSec + 1).padStart(3, '0')}`
 
-    // Determinar ventana horaria programada (CU11 requiere inicio y fin válidos)
-    let inicioIso: string
-    let finIso: string
-
-    if (ventana?.fecha_inicio_programada && ventana?.fecha_fin_programada) {
-      inicioIso = new Date(ventana.fecha_inicio_programada).toISOString()
-      finIso = new Date(ventana.fecha_fin_programada).toISOString()
-    } else if (ventana?.fecha_programada && ventana?.hora_inicio && ventana?.hora_fin) {
-      const dIni = new Date(`${ventana.fecha_programada}T${ventana.hora_inicio}:00`)
-      const dFin = new Date(`${ventana.fecha_programada}T${ventana.hora_fin}:00`)
-      if (isNaN(dIni.getTime()) || isNaN(dFin.getTime()) || dFin.getTime() <= dIni.getTime()) {
-        throw new Error('La hora de fin programada debe ser posterior a la hora de inicio')
-      }
-      inicioIso = dIni.toISOString()
-      finIso = dFin.toISOString()
-    } else {
-      // Valor por defecto garantizado: día siguiente de 08:00 a 12:00
-      const manana = new Date()
-      manana.setDate(manana.getDate() + 1)
-      const yyyy = manana.getFullYear()
-      const mm = String(manana.getMonth() + 1).padStart(2, '0')
-      const dd = String(manana.getDate()).padStart(2, '0')
-      inicioIso = new Date(`${yyyy}-${mm}-${dd}T08:00:00`).toISOString()
-      finIso = new Date(`${yyyy}-${mm}-${dd}T12:00:00`).toISOString()
-    }
-
     // Crear orden de trabajo con ventana horaria garantizada
     const { data: orden, error: errOt } = await db
       .from('orden_trabajo')
@@ -117,8 +97,8 @@ export class ControlOrdenesTrabajo {
         codigo_orden: codigoOrden,
         tipo_trabajo: 'SERVICIO',
         estado: 'PROGRAMADA',
-        fecha_inicio_programada: inicioIso,
-        fecha_fin_programada: finIso,
+        fecha_inicio_programada: inicio,
+        fecha_fin_programada: fin,
       })
       .select()
       .single()
@@ -134,7 +114,7 @@ export class ControlOrdenesTrabajo {
         await registrarEvento(db, {
           usuario_id: usuarioId,
           accion: 'CREAR_ORDEN_TRABAJO',
-          descripcion: `Se creó la Orden de Trabajo ${codigoOrden} a partir de la cotización #${cotizacionId} (Ventana: ${inicioIso} a ${finIso})`,
+          descripcion: `Se creó la Orden de Trabajo ${codigoOrden} a partir de la cotización #${cotizacionId} (Ventana: ${inicio} a ${fin})`,
         }, ipOrigen)
       } catch (e) {
         console.warn('[CU12] Error al auditar creación de OT:', e)
@@ -175,6 +155,40 @@ export class ControlOrdenesTrabajo {
   }
 
   /**
+   * Cancela una orden. Solo en PROGRAMADA: el filtro por estado en el UPDATE evita
+   * cancelar una orden que un técnico acaba de iniciar.
+   */
+  static async cancelarOrden(
+    db: Db,
+    ordenId: number,
+    usuarioId: number,
+    ip?: string | null,
+  ): Promise<OrdenTrabajo> {
+    const { data: orden, error } = await db
+      .from('orden_trabajo')
+      .update({ estado: 'CANCELADA' })
+      .eq('id', ordenId)
+      .eq('estado', 'PROGRAMADA')
+      .select()
+      .maybeSingle()
+
+    if (error) throw new Error(`No se pudo cancelar la orden: ${error.message}`)
+    if (!orden) throw new Error('Solo se pueden cancelar órdenes en estado Programada')
+
+    try {
+      await registrarEvento(db, {
+        usuario_id: usuarioId,
+        accion: 'CANCELAR_ORDEN_TRABAJO',
+        descripcion: `Se canceló la Orden de Trabajo ${orden.codigo_orden}`,
+      }, ip && ip.trim() ? ip.trim() : await obtenerIpOrigen())
+    } catch (e) {
+      console.warn('[CU12] Error al auditar cancelación de OT:', e)
+    }
+
+    return orden
+  }
+
+  /**
    * Captura la marca de tiempo de inicio de la orden
    */
   static async registrarMarcaTiempoInicio(
@@ -204,7 +218,7 @@ export class ControlOrdenesTrabajo {
     const { data: updated, error: errUpd } = await db
       .from('orden_trabajo')
       .update({
-        fecha_inicio_real: new Date().toISOString(),
+        fecha_inicio_real: ahoraBolivia(),
         estado: 'EN_PROGRESO',
       })
       .eq('id', ordenId)
@@ -262,13 +276,12 @@ export class ControlOrdenesTrabajo {
       throw new Error('La orden ya tiene marca de tiempo de fin registrada')
     }
 
-    const fechaFin = new Date()
-    const fechaInicio = new Date(orden.fecha_inicio_real)
-    const diffMs = fechaFin.getTime() - fechaInicio.getTime()
+    const fechaFin = ahoraBolivia()
+    const diffMs = aMs(fechaFin) - aMs(orden.fecha_inicio_real)
     const horasTecnicas = Math.max(0, diffMs / (1000 * 60 * 60))
 
     const updateData: any = {
-      fecha_fin_real: fechaFin.toISOString(),
+      fecha_fin_real: fechaFin,
       estado: orden.estado === 'EN_PROGRESO' ? 'EN_PROGRESO' : orden.estado,
     }
 
@@ -356,7 +369,7 @@ export class ControlOrdenesTrabajo {
       throw new Error(`No se encontró la orden de trabajo: ${errOrd?.message}`)
     }
 
-    if (orden.estado === 'FINALIZADA' || orden.estado === 'COMPLETADA') {
+    if (orden.estado === 'FINALIZADA') {
       throw new Error('La orden ya se encuentra finalizada')
     }
 
@@ -455,7 +468,7 @@ export class ControlOrdenesTrabajo {
         .from('orden_trabajo')
         .update({
           estado: 'FINALIZADA',
-          fecha_fin_real: orden.fecha_fin_real || new Date().toISOString(),
+          fecha_fin_real: orden.fecha_fin_real || ahoraBolivia(),
           observaciones_tecnico: diagnostico,
         })
         .eq('id', ordenId)

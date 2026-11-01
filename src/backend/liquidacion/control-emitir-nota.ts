@@ -36,7 +36,7 @@ export class LiquidacionController {
     return this.repositorio.listarOrdenesSinNota();
   }
 
-  /** Excepción del CU13: orden COMPLETADA y sin nota. */
+  /** Excepción del CU13: orden FINALIZADA y sin nota. */
   async verificarEstadoOrden(ordenTrabajoId: number): Promise<OrdenPendienteLiquidar> {
     return verificarOrdenLiquidable(await this.repositorio.obtenerOrden(ordenTrabajoId));
   }
@@ -177,8 +177,11 @@ export class LiquidacionController {
       throw new ErrorNegocio(MENSAJES.FALTA_SERVICIO);
     }
 
-    const calculo = await this.repositorio.calcularLiquidacion(input.ordenTrabajoId, input.servicioId);
-    validarAnticipo(input.anticipo, calculo.total_liquidacion);
+    // Con cotización, el anticipo lo pone la base (sp_emitir_nota_servicio) y aquí se ignora.
+    if (orden.cotizacion_id === null) {
+      const calculo = await this.repositorio.calcularLiquidacion(input.ordenTrabajoId, input.servicioId);
+      validarAnticipo(input.anticipo, calculo.total_liquidacion);
+    }
 
     // La base vuelve a validar todo dentro de una sola transacción.
     return this.repositorio.emitirNota({

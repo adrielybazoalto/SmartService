@@ -1,8 +1,25 @@
 'use server'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { obtenerIpOrigen } from '@/lib/ip'
 import { getCurrentUser } from '@/lib/auth'
+import { tieneAccionModulo } from '@/lib/permisos'
+import {
+  MSG_FALTA_MIGRACION,
+  confirmarAnticipoTarjeta,
+  faltaMigracionAnticipo,
+  iniciarAnticipoTarjeta,
+} from '@/backend/cotizaciones/anticipo-tarjeta'
+import { PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago'
+
+const CLAVE_MODULO = 'COTIZACIONES'
+const MSG_SIN_PERMISO = 'No autorizado: tu rol no tiene el permiso de este módulo.'
+
+// Cambiar el estado es PROCESAR: LEER también lo tiene el Técnico.
+export async function puedeProcesarCotizacionesAccion() {
+  return tieneAccionModulo(CLAVE_MODULO, 'PROCESAR')
+}
 
 // Obtener lista de clientes
 export async function obtenerClientesAccion() {
@@ -142,15 +159,89 @@ export async function obtenerCotizacionPorIdAccion(id: number) {
   }
 }
 
-// Cambiar estado de cotización (Pendiente, Aprobada, Rechazada)
+// Aprobar la cotización y registrar el anticipo en una transacción (fn_aprobar_cotizacion).
+// El usuario sale de la sesión, nunca del formulario.
+export async function aprobarCotizacionAccion(
+  id: number,
+  anticipo: { monto: number; metodo: string | null; referencia: string | null },
+) {
+  try {
+    const usuario = await getCurrentUser()
+    if (!usuario) throw new Error('Sesión expirada. Vuelva a iniciar sesión.')
+    if (!(await puedeProcesarCotizacionesAccion())) throw new Error(MSG_SIN_PERMISO)
+
+    // database.types.ts aún no declara las funciones SQL (se regenera en la Fase 10)
+    const supabase = getSupabaseServiceClient() as unknown as SupabaseClient
+    const { error } = await supabase.rpc('fn_aprobar_cotizacion', {
+      p_usuario_id: usuario.id,
+      p_cotizacion_id: id,
+      p_anticipo: anticipo.monto,
+      p_metodo: anticipo.metodo,
+      p_referencia: anticipo.referencia,
+      p_ip: await obtenerIpOrigen(),
+    })
+    if (error) throw new Error(faltaMigracionAnticipo(error) ? MSG_FALTA_MIGRACION : error.message)
+    return { success: true, message: 'Cotización aprobada.' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo aprobar la cotización.'
+    console.error('Error al aprobar cotización:', message)
+    return { success: false, message }
+  }
+}
+
+// Anticipo con tarjeta: crea el cobro en Stripe y devuelve su enlace
+export async function iniciarAnticipoTarjetaAction(cotizacionId: number, monto: number) {
+  try {
+    if (!(await getCurrentUser())) throw new Error('Sesión expirada. Vuelva a iniciar sesión.')
+    if (!(await puedeProcesarCotizacionesAccion())) throw new Error(MSG_SIN_PERMISO)
+
+    const db = getSupabaseServiceClient() as unknown as SupabaseClient
+    const { url } = await iniciarAnticipoTarjeta(db, new PasarelaPago(), { cotizacionId, monto }, await obtenerUrlBase())
+    return { success: true, message: 'Redirigiendo a la pasarela de pago', url }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo iniciar el pago con tarjeta.'
+    console.error('Error al iniciar anticipo con tarjeta:', message)
+    return { success: false, message, url: null }
+  }
+}
+
+// Al volver de Stripe: verifica el pago y recién entonces aprueba la cotización
+export async function confirmarAnticipoTarjetaAction(sessionId: string) {
+  try {
+    const usuario = await getCurrentUser()
+    if (!usuario) throw new Error('Sesión expirada. Vuelva a iniciar sesión.')
+    if (!(await puedeProcesarCotizacionesAccion())) throw new Error(MSG_SIN_PERMISO)
+
+    const db = getSupabaseServiceClient() as unknown as SupabaseClient
+    await confirmarAnticipoTarjeta(db, new PasarelaPago(), {
+      sessionId: String(sessionId),
+      usuarioId: usuario.id,
+      ip: await obtenerIpOrigen(),
+    })
+    return { success: true, message: 'Pago con tarjeta confirmado: cotización aprobada.' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo confirmar el pago con tarjeta.'
+    console.error('Error al confirmar anticipo con tarjeta:', message)
+    return { success: false, message }
+  }
+}
+
+// Rechazar cotización: solo desde PENDIENTE. Aprobar pasa por aprobarCotizacionAccion.
 export async function cambiarEstadoCotizacionAccion(id: number, nuevoEstado: string) {
+  if (nuevoEstado !== 'RECHAZADA') throw new Error('Estado no permitido')
+  if (!(await puedeProcesarCotizacionesAccion())) throw new Error(MSG_SIN_PERMISO)
+
   const supabase = getSupabaseServiceClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('cotizacion')
     .update({ estado: nuevoEstado })
     .eq('id', id)
+    .eq('estado', 'PENDIENTE')
+    .select('id')
+    .maybeSingle()
 
   if (error) throw new Error(error.message)
+  if (!data) throw new Error('Solo se pueden rechazar cotizaciones en estado PENDIENTE')
 
   try {
     const u = (await getCurrentUser()) as any
@@ -172,6 +263,12 @@ export async function cambiarEstadoCotizacionAccion(id: number, nuevoEstado: str
 // Eliminar cotización
 export async function eliminarCotizacionAccion(id: number) {
   const supabase = getSupabaseServiceClient()
+  // Borrarla perdería el registro del dinero recibido
+  const { data: cot } = await supabase.from('cotizacion').select('anticipo_monto').eq('id', id).maybeSingle()
+  if (Number(cot?.anticipo_monto ?? 0) > 0) {
+    throw new Error('No se puede eliminar una cotización con anticipo registrado')
+  }
+
   const { error } = await supabase
     .from('cotizacion')
     .delete()
@@ -333,18 +430,22 @@ export async function actualizarCotizacionCompletaAccion(cotizacionId: number, f
   productos: { producto_id: number; cantidad: number; precio_unitario: number; subtotal: number }[];
   servicios: { servicio_id: number; horas_estimadas: number; precio_hora: number; subtotal: number }[];
   total: number;
-  estado: string;
 }) {
   const supabase = getSupabaseServiceClient()
   try {
+    // El estado no se edita aquí: aprobar exige registrar el anticipo
+    const { data: actual } = await supabase.from('cotizacion').select('anticipo_monto').eq('id', cotizacionId).maybeSingle()
+    if (formData.total < Number(actual?.anticipo_monto ?? 0)) {
+      throw new Error('El total no puede ser menor que el anticipo registrado')
+    }
+
     // 1. Actualizar cabecera
     const { error: cotError } = await supabase
       .from('cotizacion')
       .update({
         cliente_id: formData.cliente_id,
         establecimiento_id: formData.establecimiento_id ? Number(formData.establecimiento_id) : null,
-        total: formData.total as any,
-        estado: formData.estado
+        total: String(formData.total)
       })
       .eq('id', cotizacionId)
 

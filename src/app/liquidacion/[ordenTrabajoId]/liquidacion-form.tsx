@@ -22,6 +22,7 @@ import { PanelTransferencia } from "@/components/pagos/panel-transferencia";
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
 import { descargarNotaServicioPDF } from "../_lib/pdf";
 import { etiquetaMetodoPago, formatearBs, formatearFechaHora } from "../_lib/formato";
+import { formatearFechaHora as formatearTimestamp } from "@/lib/fechas";
 export function LiquidacionForm({
   detalleInicial,
   notaInicial = null,
@@ -104,8 +105,15 @@ export function LiquidacionForm({
   }
 
   const { orden, materiales, calculo } = detalle;
-  const anticipo = Number(anticipoTexto.replace(",", "."));
+  // Con cotización el anticipo viene de la base y se aplica hasta el total; sin ella es manual.
+  const registrado = orden.anticipo_cotizacion;
+  const anticipo = nota
+    ? nota.anticipo_pagado
+    : registrado
+      ? Math.min(registrado.monto, calculo.total_liquidacion)
+      : Number(anticipoTexto.replace(",", "."));
   const anticipoValido = Number.isFinite(anticipo) && anticipo >= 0 && anticipo <= calculo.total_liquidacion;
+  const excedente = registrado ? Math.round((registrado.monto - calculo.total_liquidacion) * 100) / 100 : 0;
   const saldo = useMemo(
     () => (anticipoValido ? Math.round((calculo.total_liquidacion - anticipo) * 100) / 100 : null),
     [anticipo, anticipoValido, calculo.total_liquidacion],
@@ -229,19 +237,36 @@ export function LiquidacionForm({
             <dd className="text-right">{formatearBs(calculo.tarifa_hora)}</dd>
           </dl>
 
-          <label className="block text-sm">
-            <span className="mb-1 block text-gray-700">Anticipo entregado por el cliente (Bs)</span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              className={`w-full rounded-md border px-3 py-2 ${anticipoValido ? "border-gray-300" : "border-red-400"}`}
-              value={anticipoTexto}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setAnticipoTexto(e.target.value)}
-              disabled={pendiente || !!nota}
-            />
-          </label>
+          {registrado ? (
+            <div className="text-sm">
+              <p className="mb-1 text-gray-700">Anticipo registrado en la cotización</p>
+              <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                {registrado.monto > 0
+                  ? `${formatearBs(registrado.monto)} · ${etiquetaMetodoPago(registrado.metodo)} · ${formatearTimestamp(registrado.fecha)}` +
+                    (registrado.referencia ? ` · Ref. ${registrado.referencia}` : "")
+                  : "Sin anticipo"}
+              </p>
+              {excedente > 0 && (
+                <p role="status" className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                  El anticipo supera el total liquidado en {formatearBs(excedente)}
+                </p>
+              )}
+            </div>
+          ) : (
+            <label className="block text-sm">
+              <span className="mb-1 block text-gray-700">Anticipo entregado por el cliente (Bs)</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                className={`w-full rounded-md border px-3 py-2 ${anticipoValido ? "border-gray-300" : "border-red-400"}`}
+                value={anticipoTexto}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setAnticipoTexto(e.target.value)}
+                disabled={pendiente || !!nota}
+              />
+            </label>
+          )}
         </div>
 
         {/* Totales */}

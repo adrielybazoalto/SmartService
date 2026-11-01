@@ -26,6 +26,7 @@ const SUSTITUCIONES = {
   'next/headers': 'next-headers.mjs',
   'next/cache': 'next-cache.mjs',
   react: 'react.mjs',
+  'server-only': 'server-only.mjs',
 }
 
 function archivoTs(base) {

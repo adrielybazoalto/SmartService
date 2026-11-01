@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
 import { ACCION_ACCESO, moduloPorRuta, tienePermisoModulo } from "@/lib/permisos";
+import { quitaModuloProtegido } from "@/lib/navigation";
 import { registrarEvento } from "@/backend/bitacora";
 import { obtenerIpOrigen } from "@/lib/ip";
 
@@ -142,6 +143,9 @@ export async function guardarPermisosRol(
   }
 
   const unicos = [...new Set(nombresPermisos)];
+  if (quitaModuloProtegido(rol.nombre, unicos)) {
+    return { ok: false, mensaje: "El rol Administrador Principal no puede perder permisos del sistema" };
+  }
 
   // Catálogo de módulos = FUNCION con clave; acceso = acción LEER.
   const { data: funciones, error: ef } = await db

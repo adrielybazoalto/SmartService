@@ -3,6 +3,7 @@
 --  Capa de datos (PostgreSQL / Supabase)
 --
 --  Ejecutar en Supabase: SQL Editor > New query > pegar > Run.
+--  OBSOLETA: usar migracion_cu12_reporte_campo_v2.sql; esta falla al declarar materiales.
 --  Es idempotente (CREATE OR REPLACE FUNCTION).
 --
 --  Garantiza atomicidad estricta (todo o nada):
@@ -177,3 +178,15 @@ BEGIN
     );
 END;
 $$;
+
+-- Solo el servidor (service_role) puede ejecutar la función, no el navegador
+REVOKE ALL ON FUNCTION public.fn_procesar_reporte_campo(INTEGER, TEXT, JSONB, INTEGER, TEXT) FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON FUNCTION public.fn_procesar_reporte_campo(INTEGER, TEXT, JSONB, INTEGER, TEXT) FROM anon, authenticated;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT EXECUTE ON FUNCTION public.fn_procesar_reporte_campo(INTEGER, TEXT, JSONB, INTEGER, TEXT) TO service_role;
+    END IF;
+END $$;

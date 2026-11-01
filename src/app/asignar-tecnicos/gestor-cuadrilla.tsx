@@ -4,10 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OrdenConTecnicos } from '@/backend/asignaciones'
 import { asignarCuadrillaAction, modificarCuadrillaAction } from '@/app/actions/asignaciones'
-
-function formatearTs(ts: string | null): string {
-  return ts ? ts.replace('T', ' ').slice(0, 16) : '—'
-}
+import { formatearFechaHora } from '@/lib/fechas'
 
 export function GestorCuadrilla({ datos }: { datos: OrdenConTecnicos }) {
   const router = useRouter()
@@ -179,7 +176,7 @@ function ResumenOrden({ datos }: { datos: OrdenConTecnicos }) {
         <p className="text-xs font-medium text-slate-500">Ventana programada</p>
         <p className="text-slate-900">
           {datos.ventanaDefinida
-            ? `${formatearTs(orden.fecha_inicio_programada)} a ${formatearTs(orden.fecha_fin_programada)}`
+            ? `${formatearFechaHora(orden.fecha_inicio_programada)} a ${formatearFechaHora(orden.fecha_fin_programada)}`
             : 'Sin ventana definida'}
         </p>
       </div>

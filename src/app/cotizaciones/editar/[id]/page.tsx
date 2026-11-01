@@ -180,8 +180,7 @@ export default function EditarCotizacionPage() {
       usuario_id: 1,
       productos: productosSeleccionados,
       servicios: serviciosSeleccionados,
-      total: totalGeneral,
-      estado: estado
+      total: totalGeneral
     })
 
     if (res.success) {
@@ -310,11 +309,7 @@ export default function EditarCotizacionPage() {
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-gray-600 mb-1">Estado</label>
-              <select value={estado} onChange={(e) => setEstado(e.target.value)} className="w-full border rounded-lg p-2 text-xs bg-white font-bold text-amber-700">
-                <option value="PENDIENTE">PENDIENTE</option>
-                <option value="APROBADA">APROBADA</option>
-                <option value="RECHAZADA">RECHAZADA</option>
-              </select>
+              <p className="w-full border rounded-lg p-2 text-xs bg-gray-50 font-bold text-amber-700">{estado}</p>
             </div>
           </div>
 

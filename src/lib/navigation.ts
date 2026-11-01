@@ -11,8 +11,8 @@
  * P2: GESTIÓN COMERCIAL, CLIENTES, CATÁLOGO Y VENTAS → habilitado
  *     (CU07 clientes, CU08 cotizaciones, CU09 ventas, CU14 proveedores,
  *      CU15 compras, CU16 inventario, CU17 servicios).
- * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → deshabilitado
- *     (CU10–CU13, aún sin pantallas).
+ * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → habilitado
+ *     (CU10 personal técnico, CU11 asignar técnicos, CU12 órdenes, CU13 notas).
  * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → deshabilitado
  *     (CU18–CU20, aún sin pantallas).
  *
@@ -168,7 +168,7 @@ export const PAQUETES: PaqueteNav[] = [
         id: 'personal-tecnico',
         etiqueta: 'Disponibilidad y Jornadas (CU10)',
         ruta: '/personal-tecnico',
-        clave: 'ORDENES_TRABAJO',
+        clave: 'PERSONAL_TECNICO',
         cu: 'CU10',
         descripcion: 'Supervisión de técnicos, horarios de trabajo y control de ausencias.',
       },
@@ -212,7 +212,7 @@ export const PAQUETES: PaqueteNav[] = [
 // `MODULOS` es la vista que consume el RBAC (lib/permisos.ts): una entrada por
 // ítem con clave de permiso, en el orden de PAQUETES. Se derivan solo los
 // ítems de paquetes HABILITADOS y con clave no vacía (excluye "Inicio", que no
-// aplica RBAC, y los paquetes P3/P4 aún sin pantallas). Así, habilitar un
+// aplica RBAC, y el paquete P4 aún sin pantallas). Así, habilitar un
 // paquete en PAQUETES actualiza el menú, el panel y el RBAC a la vez.
 // ---------------------------------------------------------------------------
 
@@ -238,6 +238,14 @@ export const MODULOS: ModuloRegistrado[] = PAQUETES.filter(
       descripcion: item.descripcion ?? '',
     })),
 )
+
+/** Módulos que el rol ADMINISTRADOR nunca puede perder (CU04). */
+export const MODULOS_PROTEGIDOS_ADMIN = ['ROLES', 'USUARIOS']
+
+/** ¿Esta asignación le quita al Administrador un módulo protegido? */
+export function quitaModuloProtegido(rolNombre: string, claves: string[]): boolean {
+  return rolNombre === 'ADMINISTRADOR' && MODULOS_PROTEGIDOS_ADMIN.some((c) => !claves.includes(c))
+}
 
 export function moduloPorRuta(ruta: string): ModuloRegistrado | undefined {
   return MODULOS.find((m) => m.ruta === ruta)

@@ -117,13 +117,14 @@ ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 -- Matriz por defecto:
 --   ADMINISTRADOR: todos los módulos (ya tiene todas las acciones arriba)
 --   ENCARGADO:     perfil, clientes, proveedores, compras, inventario,
---                  cotizaciones, servicios, órdenes, asignar técnicos,
+--                  cotizaciones, personal técnico, órdenes, asignar técnicos,
 --                  caja, ventas y notas de servicio
 --   TECNICO:       perfil, cotizaciones (lectura), órdenes de trabajo
 -- ============================================================
 UPDATE FUNCION SET clave = 'USUARIOS',        ruta = '/usuarios'        WHERE id = 1;
 UPDATE FUNCION SET clave = 'ROLES',           ruta = '/roles'           WHERE id = 2;
 UPDATE FUNCION SET clave = 'BITACORA',        ruta = '/bitacora'        WHERE id = 3;
+UPDATE FUNCION SET clave = 'PERSONAL_TECNICO', ruta = '/personal-tecnico' WHERE id = 4;
 UPDATE FUNCION SET clave = 'CLIENTES',        ruta = '/clientes'        WHERE id = 5;
 UPDATE FUNCION SET clave = 'INVENTARIO',      ruta = '/inventario'      WHERE id = 6;
 UPDATE FUNCION SET clave = 'COTIZACIONES',    ruta = '/cotizaciones'    WHERE id = 7;
@@ -152,7 +153,13 @@ INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
 SELECT 2, f.id, a.id, 'Acceso al módulo'
 FROM FUNCION f JOIN ACCION a ON a.nombre = 'LEER'
 WHERE f.clave IN ('PERFIL', 'CLIENTES', 'PROVEEDORES', 'COMPRAS', 'INVENTARIO', 'COTIZACIONES',
-                  'SERVICIOS', 'ORDENES_TRABAJO', 'ASIGNAR_TECNICOS', 'CAJA', 'VENTAS', 'NOTAS_SERVICIO')
+                  'PERSONAL_TECNICO', 'ORDENES_TRABAJO', 'ASIGNAR_TECNICOS', 'CAJA', 'VENTAS', 'NOTAS_SERVICIO')
+ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
+-- ENCARGADO: jornadas y bloqueos (CU10)
+INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
+SELECT 2, f.id, a.id, 'Jornadas y bloqueos (CU10)'
+FROM FUNCION f JOIN ACCION a ON a.nombre IN ('CREAR', 'ACTUALIZAR', 'ELIMINAR')
+WHERE f.clave = 'PERSONAL_TECNICO'
 ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 -- ENCARGADO: registrar compras (CU15)
 INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
