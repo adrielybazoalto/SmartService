@@ -68,7 +68,7 @@ export function SidebarShell({
             Móvil/tablet: panel deslizante (off-canvas).
             md+: fijo a la izquierda (sticky), igual que en escritorio. */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 flex h-screen w-64 flex-col overflow-hidden border-r border-slate-200/80 bg-white shadow-xl transition-transform duration-300 ease-out md:sticky md:top-0 md:z-auto md:translate-x-0 md:shadow-none ${
+          className={`fixed inset-y-0 left-0 z-40 flex h-[100dvh] w-72 max-w-[85vw] flex-col overflow-hidden border-r border-slate-200/80 bg-white shadow-2xl transition-transform duration-300 ease-out md:sticky md:top-0 md:z-auto md:h-screen md:w-64 md:translate-x-0 md:shadow-none ${
             abierto ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -109,13 +109,13 @@ export function SidebarShell({
             </div>
           </div>
 
-          {/* Sección inferior: usuario, rol y cerrar sesión (siempre visible) */}
-          <div className="flex-shrink-0 space-y-3 border-t border-slate-200/80 p-4">
-            <div className="flex items-center gap-3 px-3">
+          {/* Sección inferior: usuario, rol y cerrar sesión (siempre visible, adaptado para móviles) */}
+          <div className="flex-shrink-0 space-y-3 border-t border-slate-200/80 p-4 pb-6 md:pb-4 bg-white">
+            <div className="flex items-center gap-3 px-2">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold uppercase text-slate-700">
                 {nombre.trim().charAt(0) || '?'}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-900">{nombre}</p>
                 <BadgeRol rol={rolNombre} className="mt-1" />
               </div>
@@ -124,7 +124,7 @@ export function SidebarShell({
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 hover:text-rose-700"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"

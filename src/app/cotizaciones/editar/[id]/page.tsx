@@ -195,8 +195,8 @@ export default function EditarCotizacionPage() {
   if (cargando) return <div className="p-12 text-center text-gray-500">Cargando editor de proforma...</div>
 
   return (
-    <div className="p-8 max-w-7xl mx-auto font-sans">
-      <div className="flex justify-between items-center mb-4">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto font-sans">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <span className="inline-block bg-[#eefccb] text-[#558a06] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
           P2: GESTIÓN COMERCIAL · CU08 · MODIFICAR COTIZACIÓN ({numeroCotizacion})
         </span>
@@ -211,9 +211,9 @@ export default function EditarCotizacionPage() {
         <div className="lg:col-span-2 space-y-6">
           
           {/* Catálogo de Equipos */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-sm font-bold text-gray-800 uppercase mb-4">Catálogo de Equipos y Materiales</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
               {productosDisponibles.map(prod => {
                 const precio = ((prod.precio_compra_actual || 100) * (1 + (prod.margen_ganancia || 20) / 100)).toFixed(2)
                 const imgUrl = Array.isArray(prod.imagen_producto) && prod.imagen_producto.length > 0
@@ -221,28 +221,32 @@ export default function EditarCotizacionPage() {
                   : (prod.url_imagen || prod.imagenUrl || null)
 
                 return (
-                  <div key={prod.id} className="border p-3 rounded-lg flex justify-between items-center bg-gray-50 text-xs gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                  <div key={prod.id} className="border border-gray-200 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 text-xs gap-3 hover:border-gray-300 transition-colors">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {imgUrl ? (
                         <img 
                           src={imgUrl} 
                           alt={prod.nombre} 
-                          className="w-11 h-11 object-cover rounded-md border border-gray-200 bg-white shrink-0"
+                          className="w-12 h-12 object-cover rounded-md border border-gray-200 bg-white shrink-0"
                           onError={(e) => {
                             (e.target as HTMLElement).style.display = 'none'
                           }}
                         />
                       ) : (
-                        <div className="w-11 h-11 bg-gray-100 rounded-md border border-gray-200 flex items-center justify-center text-base shrink-0">
+                        <div className="w-12 h-12 bg-gray-100 rounded-md border border-gray-200 flex items-center justify-center text-base shrink-0">
                           📦
                         </div>
                       )}
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-800 truncate">{prod.nombre}</p>
-                        <p className="text-blue-600 font-bold">Bs. {precio}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-800 truncate" title={prod.nombre}>{prod.nombre}</p>
+                        <p className="text-blue-600 font-bold mt-0.5">Bs. {precio}</p>
                       </div>
                     </div>
-                    <button onClick={() => agregarProducto(prod)} className="bg-gray-900 text-[#9fe82e] font-bold px-3 py-1.5 rounded text-[10px] hover:bg-gray-800 cursor-pointer shrink-0">
+                    <button 
+                      type="button"
+                      onClick={() => agregarProducto(prod)} 
+                      className="bg-gray-900 text-[#9fe82e] font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-gray-800 cursor-pointer shrink-0 w-full sm:w-auto text-center transition-colors"
+                    >
                       + Agregar
                     </button>
                   </div>
@@ -252,16 +256,20 @@ export default function EditarCotizacionPage() {
           </div>
 
           {/* Catálogo de Servicios Técnicos */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-sm font-bold text-gray-800 uppercase mb-4">Catálogo de Servicios Técnicos / Mano de Obra</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
               {serviciosDisponibles.map(serv => (
-                <div key={serv.id} className="border p-3 rounded-lg flex justify-between items-center bg-gray-50 text-xs">
-                  <div>
-                    <p className="font-semibold text-gray-800">{serv.nombre}</p>
-                    <p className="text-blue-600 font-bold">Bs. {serv.precio_base || 70} / hora</p>
+                <div key={serv.id} className="border border-gray-200 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 text-xs gap-3 hover:border-gray-300 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-800 truncate" title={serv.nombre}>{serv.nombre}</p>
+                    <p className="text-blue-600 font-bold mt-0.5">Bs. {serv.precio_base || 70} / hora</p>
                   </div>
-                  <button onClick={() => agregarServicio(serv)} className="bg-gray-900 text-[#9fe82e] font-bold px-3 py-1.5 rounded text-[10px] hover:bg-gray-800 cursor-pointer">
+                  <button 
+                    type="button"
+                    onClick={() => agregarServicio(serv)} 
+                    className="bg-gray-900 text-[#9fe82e] font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-gray-800 cursor-pointer shrink-0 w-full sm:w-auto text-center transition-colors"
+                  >
                     + Agregar
                   </button>
                 </div>

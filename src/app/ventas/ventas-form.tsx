@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { descargarNotaVenta, registrarVenta } from '@/app/actions/ventas';
+import { confirmarPagoTarjetaAction, descargarNotaVenta, iniciarPagoTarjetaAction, registrarVenta } from '@/app/actions/ventas';
 import type {
   ClienteVenta,
   ComprobanteVenta,
@@ -9,6 +9,9 @@ import type {
   TipoComprobante,
   TipoPago,
 } from '@/backend/ventas';
+// Paneles de cobro compartidos con el CU13 (QR del negocio y transferencia)
+import { PanelQr } from '@/components/pagos/panel-qr';
+import { PanelTransferencia } from '@/components/pagos/panel-transferencia';
 
 /**
  * Paso 8: obtiene la nota de venta (PDF en base64) y la abre en otra pestaña.
@@ -65,17 +68,14 @@ const bs = (n: number) =>
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const fmtCant = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
-/** Métodos de pago habilitados: efectivo y QR */
+/** Métodos de pago: efectivo, QR y transferencia (los confirma el cajero) y tarjeta (pasarela Stripe) */
 const PAGOS: { valor: TipoPago; etiqueta: string }[] = [
   { valor: 'EFECTIVO', etiqueta: 'Efectivo' },
   { valor: 'QR', etiqueta: 'QR' },
+  { valor: 'TRANSFERENCIA', etiqueta: 'Transferencia' },
+  { valor: 'TARJETA', etiqueta: 'Tarjeta' },
 ];
 
-/**
- * Imagen opcional del QR de cobro del negocio (el que entrega el banco).
- * Si existe public/qr-cobro.png se muestra esa; si no, se genera un QR con el monto.
- */
-const QR_COBRO_NEGOCIO = '/qr-cobro.png';
 
 const COMPROBANTES: { valor: TipoComprobante; etiqueta: string }[] = [
   { valor: 'NOTA_VENTA', etiqueta: 'Nota de venta' },
@@ -107,6 +107,8 @@ export default function VentasForm({
   const [busquedaCliente, setBusquedaCliente] = useState('');
   const [tipoPago, setTipoPago] = useState<TipoPago>('EFECTIVO');
   const [pagoQrConfirmado, setPagoQrConfirmado] = useState(false);
+  const [referenciaTransferencia, setReferenciaTransferencia] = useState('');
+  const [transferenciaConfirmada, setTransferenciaConfirmada] = useState(false);
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('NOTA_VENTA');
   const [descuento, setDescuento] = useState('');
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
@@ -114,6 +116,39 @@ export default function VentasForm({
   const [error, setError] = useState<string | null>(null);
   const [ultimaVenta, setUltimaVenta] = useState<ComprobanteVenta | null>(null);
   const buscadorRef = useRef<HTMLInputElement>(null);
+  const retornoProcesado = useRef(false);
+
+  // retornarAlSistema(sessionId): Stripe vuelve a /ventas?pago=exito&session_id=...
+  // Recién aquí se registra la venta pagada con tarjeta (una sola vez).
+  useEffect(() => {
+    if (retornoProcesado.current) return;
+    retornoProcesado.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const pago = q.get('pago');
+    const sessionId = q.get('session_id');
+    if (!pago) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    if (pago === 'cancelado') {
+      setError('Pago con tarjeta cancelado: la venta no se registró.');
+      notificar('error', 'Pago con tarjeta cancelado');
+      return;
+    }
+    if (pago === 'exito' && sessionId) {
+      setGuardando(true);
+      confirmarPagoTarjetaAction(sessionId).then((res) => {
+        setGuardando(false);
+        if (!res.ok) {
+          setError(res.error);
+          notificar('error', res.error);
+          return;
+        }
+        setUltimaVenta(res.data);
+        notificar('ok', res.mensaje);
+        onVentaRegistrada();
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- Catálogo de productos (paso 3) -----------------------------------------
   const opciones = useMemo<Opcion[]>(
@@ -157,7 +192,11 @@ export default function VentasForm({
   // Si cambia el monto, el pago por QR debe confirmarse de nuevo
   useEffect(() => {
     setPagoQrConfirmado(false);
+    setTransferenciaConfirmada(false);
   }, [total]);
+  const faltaConfirmarPago =
+    (tipoPago === 'QR' && !pagoQrConfirmado) ||
+    (tipoPago === 'TRANSFERENCIA' && (!transferenciaConfirmada || referenciaTransferencia.trim() === ''));
   const hayExcesoStock = lineas.some((l) => l.cantidad > l.stock);
 
   // ---- Manejo del carrito ---------------------------------------------------
@@ -198,6 +237,8 @@ export default function VentasForm({
     setBusquedaCliente('');
     setTipoPago('EFECTIVO');
     setPagoQrConfirmado(false);
+    setReferenciaTransferencia('');
+    setTransferenciaConfirmada(false);
     setTipoComprobante('NOTA_VENTA');
     setError(null);
   };
@@ -212,6 +253,30 @@ export default function VentasForm({
     if (hayExcesoStock) return setError('Hay productos con cantidad mayor al stock disponible');
     if (cambio !== null && cambio < 0) return setError('El efectivo recibido es menor al total');
     if (tipoPago === 'QR' && !pagoQrConfirmado) return setError('Confirme que recibió el pago por QR');
+    if (tipoPago === 'TRANSFERENCIA' && referenciaTransferencia.trim() === '')
+      return setError('Ingrese el número de referencia de la transferencia');
+    if (tipoPago === 'TRANSFERENCIA' && !transferenciaConfirmada)
+      return setError('Confirme que la transferencia llegó a la cuenta de la empresa');
+
+    // Tarjeta: se cobra en Stripe y la venta se registra al volver (retornarAlSistema)
+    if (tipoPago === 'TARJETA') {
+      setGuardando(true);
+      const pago = await iniciarPagoTarjetaAction({
+        clienteId,
+        tipoPago,
+        tipoComprobante,
+        descuento: descuentoNum,
+        items: lineas.map((l) => ({ productoId: l.id, cantidad: l.cantidad })),
+      });
+      if (!pago.ok) {
+        setGuardando(false);
+        setError(pago.error);
+        notificar('error', pago.error);
+        return;
+      }
+      window.location.assign(pago.data.url); // redirigirPago(url)
+      return;
+    }
 
     setGuardando(true);
     const res = await registrarVenta({
@@ -219,6 +284,7 @@ export default function VentasForm({
       tipoPago,
       tipoComprobante,
       descuento: descuentoNum,
+      referenciaPago: tipoPago === 'TRANSFERENCIA' ? referenciaTransferencia.trim() : undefined,
       items: lineas.map((l) => ({ productoId: l.id, cantidad: l.cantidad })),
     });
     setGuardando(false);
@@ -364,62 +430,79 @@ export default function VentasForm({
                 const excede = l.cantidad > l.stock;
                 const paso = 1;
                 return (
-                  <li key={l.key} className="grid grid-cols-12 items-center gap-3 px-4 py-3">
-                    <div className="col-span-12 flex min-w-0 items-center gap-3 sm:col-span-5">
-                      <Miniatura url={l.imagen} nombre={l.nombre} />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-900">{l.nombre}</p>
-                        <p className={`text-xs ${excede ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-                          Disponible: {fmtCant(l.stock)} {l.unidad}
-                          {excede && ' · excede el stock'}
-                        </p>
+                  <li key={l.key} className="flex flex-col gap-2 p-3 sm:grid sm:grid-cols-12 sm:items-center sm:gap-3 sm:px-4 sm:py-3">
+                    <div className="flex items-center justify-between gap-3 sm:col-span-5 sm:min-w-0">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Miniatura url={l.imagen} nombre={l.nombre} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{l.nombre}</p>
+                          <p className={`text-xs ${excede ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+                            Disponible: {fmtCant(l.stock)} {l.unidad}
+                            {excede && ' · excede el stock'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <span className="col-span-4 text-sm text-slate-600 sm:col-span-2 sm:text-right">{bs(l.precio)}</span>
-                    <div className="col-span-4 flex items-center justify-center sm:col-span-2">
-                      <div className="flex items-center rounded-lg border border-gray-200 bg-[#f8fafc]">
-                        <button
-                          type="button"
-                          onClick={() => cambiarCantidad(l.key, l.cantidad - paso)}
-                          className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
-                          aria-label="Disminuir"
-                        >
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          min={0.01}
-                          step="any"
-                          inputMode="decimal"
-                          value={l.cantidad}
-                          onChange={(e) => cambiarCantidad(l.key, Number(e.target.value))}
-                          className="w-14 bg-transparent text-center text-sm font-semibold text-slate-900 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                          aria-label={`Cantidad de ${l.nombre}`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            cambiarCantidad(l.key, l.stock === null ? l.cantidad + paso : Math.min(l.cantidad + paso, l.stock))
-                          }
-                          className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
-                          aria-label="Aumentar"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    <span className="col-span-3 text-right text-sm font-semibold text-slate-900 sm:col-span-2">
-                      {bs(r2(l.precio * l.cantidad))}
-                    </span>
-                    <div className="col-span-1 flex justify-end">
                       <button
                         type="button"
                         onClick={() => quitar(l.key)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 sm:hidden"
                         aria-label={`Quitar ${l.nombre}`}
                       >
                         ✕
                       </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 sm:border-0 sm:pt-0 sm:contents">
+                      <span className="text-sm text-slate-600 sm:col-span-2 sm:text-right">
+                        <span className="text-xs text-slate-400 sm:hidden">P. unit: </span>
+                        {bs(l.precio)}
+                      </span>
+                      <div className="flex items-center justify-center sm:col-span-2">
+                        <div className="flex items-center rounded-lg border border-gray-200 bg-[#f8fafc]">
+                          <button
+                            type="button"
+                            onClick={() => cambiarCantidad(l.key, l.cantidad - paso)}
+                            className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
+                            aria-label="Disminuir"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min={0.01}
+                            step="any"
+                            inputMode="decimal"
+                            value={l.cantidad}
+                            onChange={(e) => cambiarCantidad(l.key, Number(e.target.value))}
+                            className="w-14 bg-transparent text-center text-sm font-semibold text-slate-900 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                            aria-label={`Cantidad de ${l.nombre}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              cambiarCantidad(l.key, l.stock === null ? l.cantidad + paso : Math.min(l.cantidad + paso, l.stock))
+                            }
+                            className="px-2.5 py-1.5 text-slate-600 hover:text-slate-900"
+                            aria-label="Aumentar"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <span className="text-right text-sm font-semibold text-slate-900 sm:col-span-2">
+                        <span className="text-xs font-normal text-slate-400 sm:hidden">Total: </span>
+                        {bs(r2(l.precio * l.cantidad))}
+                      </span>
+                      <div className="hidden justify-end sm:col-span-1 sm:flex">
+                        <button
+                          type="button"
+                          onClick={() => quitar(l.key)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          aria-label={`Quitar ${l.nombre}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );
@@ -481,7 +564,7 @@ export default function VentasForm({
         {/* Método de pago */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">Método de pago</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {PAGOS.map((p) => (
               <button
                 key={p.valor}
@@ -489,6 +572,7 @@ export default function VentasForm({
                 onClick={() => {
                   setTipoPago(p.valor);
                   setPagoQrConfirmado(false);
+                  setTransferenciaConfirmada(false);
                 }}
                 className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
                   tipoPago === p.valor
@@ -534,6 +618,28 @@ export default function VentasForm({
             </div>
           )}
         </div>
+        {/* Cobro con tarjeta (Stripe) */}
+        {tipoPago === 'TARJETA' && lineas.length > 0 && !descuentoInvalido && (
+          <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+            Al confirmar se abre la página de pago de Stripe (modo prueba). La venta se registra solo cuando el pago
+            queda aprobado. Tarjeta de prueba: 4242 4242 4242 4242, cualquier fecha futura y CVC.
+          </p>
+        )}
+
+        {/* Cobro por transferencia */}
+        {tipoPago === 'TRANSFERENCIA' && lineas.length > 0 && !descuentoInvalido && (
+          <PanelTransferencia
+            total={total}
+            referencia={referenciaTransferencia}
+            onReferencia={(v) => {
+              setReferenciaTransferencia(v);
+              if (!v.trim()) setTransferenciaConfirmada(false);
+            }}
+            confirmado={transferenciaConfirmada}
+            onConfirmar={setTransferenciaConfirmada}
+          />
+        )}
+
         {/* Cobro por QR */}
         {tipoPago === 'QR' && lineas.length > 0 && !descuentoInvalido && (
           <PanelQr total={total} confirmado={pagoQrConfirmado} onConfirmar={setPagoQrConfirmado} />
@@ -567,88 +673,15 @@ export default function VentasForm({
         type="button"
         onClick={confirmar}
         disabled={
-          deshabilitado || lineas.length === 0 || descuentoInvalido || hayExcesoStock || (tipoPago === 'QR' && !pagoQrConfirmado)
+          deshabilitado || lineas.length === 0 || descuentoInvalido || hayExcesoStock || faltaConfirmarPago
         }
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#8cd600] px-5 py-3.5 text-base font-semibold text-gray-900 shadow-sm transition hover:bg-[#73b800] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {guardando && <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />}
-        {guardando ? 'Registrando…' : `Confirmar venta · ${bs(total)}`}
+        {guardando
+          ? tipoPago === 'TARJETA' ? 'Conectando con la pasarela…' : 'Registrando…'
+          : tipoPago === 'TARJETA' ? `Pagar con tarjeta · ${bs(total)}` : `Confirmar venta · ${bs(total)}`}
       </button>
-    </div>
-  );
-}
-
-/**
- * Cobro por QR: muestra el QR y el monto a pagar. El cajero confirma cuando
- * ve el pago acreditado en la app del banco; recién entonces se registra la venta.
- */
-function PanelQr({
-  total,
-  confirmado,
-  onConfirmar,
-}: {
-  total: number;
-  confirmado: boolean;
-  onConfirmar: (v: boolean) => void;
-}) {
-  const [usarImagenNegocio, setUsarImagenNegocio] = useState(true);
-  const [qrGenerado, setQrGenerado] = useState<string | null>(null);
-  const monto = total.toFixed(2);
-
-  // QR con los datos del cobro (se usa si no existe public/qr-cobro.png)
-  useEffect(() => {
-    if (usarImagenNegocio) return;
-    let vigente = true;
-    const contenido = `SmartService | Cobro por QR | Monto: Bs ${monto} | ${new Date().toLocaleString('es-BO')}`;
-    import('qrcode')
-      .then((m) => ((m as any).default ?? m).toDataURL(contenido, { width: 260, margin: 1 }) as Promise<string>)
-      .then((url) => vigente && setQrGenerado(url))
-      .catch(() => vigente && setQrGenerado(null));
-    return () => {
-      vigente = false;
-    };
-  }, [usarImagenNegocio, monto]);
-
-  return (
-    <div className="rounded-xl border border-[#8cd600]/50 bg-[#8cd600]/5 p-4">
-      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-        <div className="flex h-44 w-44 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white p-2">
-          {usarImagenNegocio ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={QR_COBRO_NEGOCIO}
-              alt="QR de cobro del negocio"
-              className="h-full w-full object-contain"
-              onError={() => setUsarImagenNegocio(false)}
-            />
-          ) : qrGenerado ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={qrGenerado} alt={`QR de cobro por Bs ${monto}`} className="h-full w-full object-contain" />
-          ) : (
-            <span className="text-center text-xs text-slate-400">Generando QR…</span>
-          )}
-        </div>
-        <div className="min-w-0 flex-1 text-center sm:text-left">
-          <p className="text-sm font-medium text-slate-600">Monto a pagar por QR</p>
-          <p className="text-3xl font-bold text-slate-900">{bs(total)}</p>
-          <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-left text-xs text-slate-500">
-            <li>El cliente escanea el QR con la app de su banco.</li>
-            <li>Paga exactamente {bs(total)}.</li>
-            <li>Verifique el pago acreditado en la app del negocio y confírmelo aquí.</li>
-          </ol>
-          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={confirmado}
-              onChange={(e) => onConfirmar(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-[#8cd600]"
-            />
-            <span>
-              Confirmo que recibí el pago por QR de <strong>{bs(total)}</strong>
-            </span>
-          </label>
-        </div>
-      </div>
     </div>
   );
 }

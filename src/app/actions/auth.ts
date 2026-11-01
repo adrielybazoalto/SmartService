@@ -132,11 +132,15 @@ export async function loginAction(
 
     // BITÁCORA (Equivalente al mensaje 1.4: registrarAcceso del diagrama)
     try {
-      await registrarEvento(db, {
-        usuario_id: usuario.id,
-        accion: 'INICIO_SESION',
-        descripcion: `Inicio de sesión exitoso de ${usuario.correo}`,
-      }, ip)
+      await registrarEvento(
+        db,
+        {
+          usuario_id: usuario.id,
+          accion: 'INICIO_SESION',
+          descripcion: `Inicio de sesión exitoso de ${usuario.correo}`,
+        },
+        ip,
+      )
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
     }
@@ -167,11 +171,15 @@ export async function logoutAction() {
       const ip = await obtenerIpOrigen()
 
       // Equivalente al mensaje 2.2: registrarAcceso con 'CIERRE_SESION' e IP
-      await registrarEvento(db, {
-        usuario_id: usuario.id,
-        accion: 'CIERRE_SESION',
-        descripcion: `Cierre de sesión de ${usuario.correo}`,
-      }, ip)
+      await registrarEvento(
+        db,
+        {
+          usuario_id: usuario.id,
+          accion: 'CIERRE_SESION',
+          descripcion: `Cierre de sesión de ${usuario.correo}`,
+        },
+        ip,
+      )
     } catch (e) {
       console.error('Error al registrar en bitácora:', e)
     }

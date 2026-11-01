@@ -94,6 +94,23 @@ export async function verificarDocumentoCompraAction(
     'Documento verificado.', 'No se pudo verificar el documento.')
 }
 
+export async function sugerirNumeroDocumentoCompraAction(
+  tipoDocumento: 'FACTURA' | 'NOTA',
+  proveedorId?: string | number | null,
+): Promise<ResultadoCompras<string>> {
+  return ejecutar(
+    'LEER',
+    (_u, db) =>
+      ControlRegistrarCompra.sugerirNumeroDocumento(
+        db,
+        tipoDocumento,
+        proveedorId ? Number(proveedorId) : null,
+      ),
+    'Número sugerido.',
+    'No se pudo sugerir el número de documento.',
+  )
+}
+
 export async function calcularResumenCompraAction(input: ResumenCompraInput): Promise<ResultadoCompras<ResumenCompraDTO>> {
   return ejecutar('LEER', () => ControlRegistrarCompra.calcularResumen(input),
     'Resumen calculado.', 'No se pudo calcular el total.')

@@ -143,14 +143,14 @@ export default function NuevaCotizacionPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
       <div className="mb-4">
         <span className="inline-block bg-[#eefccb] text-[#558a06] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
           CU08 · ELABORAR COTIZACIONES (NUEVA PROPUESTA)
         </span>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Emitir Nueva Cotización</h1>
         <Link href="/cotizaciones" className="text-sm text-gray-600 hover:underline font-medium">
           ← Volver al listado
@@ -208,8 +208,8 @@ export default function NuevaCotizacionPage() {
                   : (prod.url_imagen || prod.imagenUrl || null)
 
                 return (
-                  <div key={prod.id} className="border border-gray-200 rounded-lg p-2.5 flex justify-between items-center bg-gray-50 gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                  <div key={prod.id} className="border border-gray-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 gap-3 hover:border-gray-300 transition-colors">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {imgUrl ? (
                         <img 
                           src={imgUrl} 
@@ -224,14 +224,15 @@ export default function NuevaCotizacionPage() {
                           📦
                         </div>
                       )}
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">{prod.nombre}</p>
-                        <p className="text-xs font-bold text-blue-600">Bs. {precioVenta.toFixed(2)}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-gray-800 truncate" title={prod.nombre}>{prod.nombre}</p>
+                        <p className="text-xs font-bold text-blue-600 mt-0.5">Bs. {precioVenta.toFixed(2)}</p>
                       </div>
                     </div>
                     <button 
+                      type="button"
                       onClick={() => agregarProducto(prod)}
-                      className="bg-gray-900 hover:bg-gray-800 text-white px-2.5 py-1 rounded text-xs font-medium shrink-0 cursor-pointer"
+                      className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 cursor-pointer w-full sm:w-auto text-center transition-colors"
                     >
                       + Agregar
                     </button>
@@ -246,14 +247,15 @@ export default function NuevaCotizacionPage() {
             <h2 className="text-base font-semibold text-gray-800 mb-4">3. Servicios Técnicos / Mano de Obra</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
               {servicios.map(serv => (
-                <div key={serv.id} className="border border-gray-200 rounded-lg p-2.5 flex justify-between items-center bg-gray-50">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">{serv.nombre}</p>
-                    <p className="text-xs font-bold text-emerald-600">Bs. {Number(serv.tarifa_por_hora || 70).toFixed(2)} / hora</p>
+                <div key={serv.id} className="border border-gray-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 gap-3 hover:border-gray-300 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate" title={serv.nombre}>{serv.nombre}</p>
+                    <p className="text-xs font-bold text-emerald-600 mt-0.5">Bs. {Number(serv.tarifa_por_hora || 70).toFixed(2)} / hora</p>
                   </div>
                   <button 
+                    type="button"
                     onClick={() => agregarServicio(serv)}
-                    className="bg-gray-900 hover:bg-gray-800 text-white px-2.5 py-1 rounded text-xs font-medium"
+                    className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 cursor-pointer w-full sm:w-auto text-center transition-colors"
                   >
                     + Agregar
                   </button>
