@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { listarBitacoraAction } from '@/app/actions/bitacora'
 import { FiltrosBitacora } from './filtros-bitacora'
 import { FechaHoraBolivia } from './fecha-hora'
@@ -14,6 +15,7 @@ interface PageProps {
     usuario_id?: string
     accion?: string
     ip?: string
+    pagina?: string
   }>
 }
 
@@ -26,15 +28,26 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
     usuario_id: params.usuario_id ? Number(params.usuario_id) : undefined,
     accion: params.accion || undefined,
     ip: params.ip || undefined,
+    pagina: params.pagina ? Number(params.pagina) : undefined,
   }
 
-  let eventos: Awaited<ReturnType<typeof listarBitacoraAction>> = []
+  let resultado: Awaited<ReturnType<typeof listarBitacoraAction>> | null = null
   let errorMensaje: string | null = null
 
   try {
-    eventos = await listarBitacoraAction(filtros)
+    resultado = await listarBitacoraAction(filtros)
   } catch (err) {
     errorMensaje = err instanceof Error ? err.message : 'Error al cargar la bitácora.'
+  }
+
+  const eventos = resultado?.eventos ?? []
+  const pagina = resultado?.pagina ?? 1
+  const totalPaginas = resultado ? Math.max(1, Math.ceil(resultado.total / resultado.porPagina)) : 1
+  const enlacePagina = (n: number) => {
+    const q = new URLSearchParams()
+    for (const [clave, valor] of Object.entries(params)) if (valor && clave !== 'pagina') q.set(clave, valor)
+    q.set('pagina', String(n))
+    return `/bitacora?${q}`
   }
 
   return (
@@ -89,7 +102,7 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
                   <td className="px-4 py-3">{evento.usuario_id}</td>
                   <td className="px-4 py-3 font-semibold text-slate-800">{evento.accion}</td>
                   <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-slate-600">
-                    {evento.ip && evento.ip !== 'null' && evento.ip.trim() !== '' ? evento.ip : '127.0.0.1'}
+                    {evento.ip && evento.ip !== 'null' && evento.ip.trim() !== '' ? evento.ip : 'No disponible'}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{evento.descripcion || '—'}</td>
                 </tr>
@@ -97,6 +110,14 @@ export default async function BitacoraPage({ searchParams }: PageProps) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {totalPaginas > 1 && (
+        <nav aria-label="Páginas de la bitácora" className="flex items-center justify-between text-sm text-slate-600">
+          {pagina > 1 ? <Link href={enlacePagina(pagina - 1)} className="text-lime-700 hover:underline">← Anterior</Link> : <span />}
+          <span>Página {pagina} de {totalPaginas}</span>
+          {pagina < totalPaginas ? <Link href={enlacePagina(pagina + 1)} className="text-lime-700 hover:underline">Siguiente →</Link> : <span />}
+        </nav>
       )}
     </main>
   )

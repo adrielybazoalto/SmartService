@@ -56,6 +56,7 @@ export type Database = {
           telefono: string | null
           telefono_alternativo: string | null
           fecha_registro: string
+          estado: boolean
         }
         Insert: {
           id?: number
@@ -67,6 +68,7 @@ export type Database = {
           telefono?: string | null
           telefono_alternativo?: string | null
           fecha_registro?: string
+          estado?: boolean
         }
         Update: {
           id?: number
@@ -78,6 +80,7 @@ export type Database = {
           telefono?: string | null
           telefono_alternativo?: string | null
           fecha_registro?: string
+          estado?: boolean
         }
         Relationships: []
       }
@@ -284,6 +287,7 @@ export type Database = {
           tipo_inmueble: string | null
           latitud: string | null
           longitud: string | null
+          estado: boolean
         }
         Insert: {
           id?: number
@@ -293,6 +297,7 @@ export type Database = {
           tipo_inmueble?: string | null
           latitud?: string | null
           longitud?: string | null
+          estado?: boolean
         }
         Update: {
           id?: number
@@ -302,6 +307,7 @@ export type Database = {
           tipo_inmueble?: string | null
           latitud?: string | null
           longitud?: string | null
+          estado?: boolean
         }
         Relationships: [
           {

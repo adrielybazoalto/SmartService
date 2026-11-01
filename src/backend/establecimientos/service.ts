@@ -72,6 +72,12 @@ export async function actualizarEstablecimiento(
   return data
 }
 
+export async function cambiarEstadoEstablecimiento(db: Db, id: number, estado: boolean): Promise<Establecimiento> {
+  const { data, error } = await db.from('establecimiento').update({ estado }).eq('id', id).select().single()
+  if (error) throw new Error(`No se pudo cambiar el estado del establecimiento: ${error.message}`)
+  return data
+}
+
 export async function eliminarEstablecimiento(db: Db, id: number): Promise<void> {
   const { error } = await db.from('establecimiento').delete().eq('id', id)
   if (error) throw new Error(`No se pudo eliminar el establecimiento: ${error.message}`)

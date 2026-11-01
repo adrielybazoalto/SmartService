@@ -7,15 +7,15 @@ export interface EnviarCorreoRecuperacionParams {
 }
 
 /**
- * Obtiene el transporte de Nodemailer leyendo las credenciales SMTP desde el entorno
- * (.env: HOST, PORT, USER, PASS o SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS).
+ * Transporte de Nodemailer con las variables SMTP_* del entorno. No usa HOST, PORT ni
+ * USER: esos nombres los define también el sistema operativo o la plataforma.
  */
 export function getEmailTransporter(): Transporter {
-  const host = process.env.HOST || process.env.SMTP_HOST || 'smtp.gmail.com'
-  const port = parseInt(process.env.PORT || process.env.SMTP_PORT || '587', 10)
-  const secure = process.env.SECURE === 'true' || process.env.SMTP_SECURE === 'true' || port === 465
-  const user = process.env.USER || process.env.SMTP_USER
-  const pass = process.env.PASS || process.env.SMTP_PASS
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com'
+  const port = parseInt(process.env.SMTP_PORT || '587', 10)
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
 
   return nodemailer.createTransport({
     host,
@@ -35,14 +35,13 @@ export function getEmailTransporter(): Transporter {
  * Envía el correo electrónico real con el enlace de recuperación de contraseña usando Nodemailer.
  */
 export async function enviarCorreoRecuperacion({ para, enlace }: EnviarCorreoRecuperacionParams): Promise<void> {
-  const user = process.env.USER || process.env.SMTP_USER
-  const pass = process.env.PASS || process.env.SMTP_PASS
-  const remitente = process.env.FROM || process.env.SMTP_FROM || user || 'SmartService <no-reply@smartservice.com>'
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  const remitente = process.env.SMTP_FROM || user || 'SmartService <no-reply@smartservice.com>'
 
-  // Si no hay credenciales SMTP configuradas, registrar en log para evitar bloqueos indefinidos por socket timeout
+  // El enlace da acceso a la cuenta: nunca se escribe en el log
   if (!user || !pass) {
-    console.warn(`[EMAIL] Advertencia: USER o PASS no están configurados en el .env. Enlace de recuperación para ${para}: ${enlace}`)
-    return
+    throw new Error('El envío de correo no está configurado. Contacte al administrador.')
   }
 
   const transporter = getEmailTransporter()

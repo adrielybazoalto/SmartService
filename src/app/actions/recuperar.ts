@@ -1,9 +1,9 @@
 'use server'
 
 import { z } from 'zod'
-import { headers } from 'next/headers'
-import nodemailer, { type Transporter } from 'nodemailer'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { enviarCorreoRecuperacion } from '@/lib/email'
+import { obtenerIpOrigen } from '@/lib/ip'
 import { ControlRecuperarContrasena } from '@/backend/recuperar'
 
 export interface SolicitarRecuperacionState {
@@ -31,32 +31,10 @@ function errorVisible(e: unknown, fallback: string): string {
 }
 
 /**
- * Obtiene y configura el transporter de Nodemailer leyendo las credenciales SMTP desde el entorno
- * (.env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, o sus variantes HOST, PORT, USER, PASS).
- */
-export async function getEmailTransporter(): Promise<Transporter> {
-  const host = process.env.SMTP_HOST || process.env.HOST || 'smtp.gmail.com'
-  const port = parseInt(process.env.SMTP_PORT || process.env.PORT || '587', 10)
-  const secure = process.env.SMTP_SECURE === 'true' || process.env.SECURE === 'true' || port === 465
-  const user = process.env.SMTP_USER || process.env.USER
-  const pass = process.env.SMTP_PASS || process.env.PASS
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: user && pass ? {
-      user,
-      pass,
-    } : undefined,
-  })
-}
-
-/**
  * CU02 — Formulario 1 (mostrarFormularioEmail).
  * Server Action para solicitar el enlace de recuperación.
- * Configura el transporter de Nodemailer con las variables de entorno (.env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)
- * y ejecuta transporter.sendMail enviando el enlace de recuperación directamente al correo ingresado.
+ * Genera el enlace con APP_URL (nunca con la cabecera Host, que la controla quien hace
+ * la petición) y lo envía al correo ingresado con src/lib/email.ts.
  */
 export async function solicitarRecuperacionAction(
   _prevState: SolicitarRecuperacionState,
@@ -82,66 +60,19 @@ export async function solicitarRecuperacionAction(
     }
 
     const db = getSupabaseServiceClient()
-    const headerList = await headers()
-    const hostHeader = headerList.get('host') || 'localhost:3000'
-    const proto = headerList.get('x-forwarded-proto') || (hostHeader.startsWith('localhost') ? 'http' : 'https')
-    const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || `${proto}://${hostHeader}`
+    const baseUrl = process.env.APP_URL?.trim()
+    if (!baseUrl) throw new Error('Falta configurar APP_URL en el servidor.')
 
     // 1. Generar token seguro en BD y construir el enlace de recuperación
     const resultado = await ControlRecuperarContrasena.solicitarRecuperacion(
       db,
       { correo },
       baseUrl,
+      await obtenerIpOrigen(),
     )
 
-    const enlaceRecuperacion = resultado.enlace
-
-    // 2. Configurar transporter con las variables de entorno de .env
-    const host = process.env.SMTP_HOST || process.env.HOST || 'smtp.gmail.com'
-    const port = parseInt(process.env.SMTP_PORT || process.env.PORT || '587', 10)
-    const secure = process.env.SMTP_SECURE === 'true' || process.env.SECURE === 'true' || port === 465
-    const user = process.env.SMTP_USER || process.env.USER
-    const pass = process.env.SMTP_PASS || process.env.PASS
-    const from = process.env.SMTP_FROM || process.env.FROM || user || 'SmartService <no-reply@smartservice.com>'
-
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: user && pass ? {
-        user,
-        pass,
-      } : undefined,
-    })
-
-    // 3. Ejecutar el envío real del correo mediante transporter.sendMail
-    await transporter.sendMail({
-      from,
-      to: correo,
-      subject: 'Recuperación de contraseña — SmartService',
-      text: `Hola,\n\nHas solicitado restablecer tu contraseña para acceder a SmartService.\n\nPuedes restablecerla ingresando al siguiente enlace:\n${enlaceRecuperacion}\n\nEste enlace caduca en 15 minutos y solo puede ser utilizado una vez.\n\nSi no realizaste esta solicitud, puedes ignorar este mensaje.\n\nAtentamente,\nEl equipo de SmartService`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-          <h2 style="color: #0f172a; margin-bottom: 16px;">Recuperación de contraseña</h2>
-          <p style="color: #334155; font-size: 15px; line-height: 1.5;">
-            Has solicitado restablecer tu contraseña en <strong>SmartService</strong> para la cuenta <strong>${correo}</strong>.
-          </p>
-          <div style="margin: 28px 0; text-align: center;">
-            <a href="${enlaceRecuperacion}" target="_blank" style="background-color: #a3e635; color: #0f172a; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 10px; display: inline-block;">
-              Restablecer contraseña
-            </a>
-          </div>
-          <p style="color: #64748b; font-size: 13px;">
-            O accede directamente mediante este enlace:<br/>
-            <a href="${enlaceRecuperacion}" style="color: #65a30d; word-break: break-all;">${enlaceRecuperacion}</a>
-          </p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-          <p style="color: #94a3b8; font-size: 12px;">
-            Este enlace caducará en 15 minutos y solo puede utilizarse una vez.
-          </p>
-        </div>
-      `,
-    })
+    // 2. Envío real del correo
+    await enviarCorreoRecuperacion({ para: correo, enlace: resultado.enlace })
 
     return {
       success: true,
@@ -186,6 +117,7 @@ export async function restablecerContrasenaAction(
       db,
       token,
       { contrasena, confirmacion },
+      await obtenerIpOrigen(),
     )
 
     return {

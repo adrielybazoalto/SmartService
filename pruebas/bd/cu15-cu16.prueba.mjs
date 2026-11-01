@@ -17,7 +17,7 @@ import { PGlite } from '@electric-sql/pglite';
 // SMARTSERVICE_RAIZ (opcional) permite apuntar a otra copia del repositorio.
 const RAIZ = process.env.SMARTSERVICE_RAIZ ?? fileURLToPath(new URL('../../', import.meta.url));
 // Los .sql viven en db/ (raíz, seeds, migrations, legacy, diagnostics).
-const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics'];
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/migrations/aplicadas', 'db/legacy', 'db/diagnostics'];
 const leer = (archivo) => {
   for (const dir of DIRS_SQL) {
     const ruta = join(RAIZ, dir, archivo);

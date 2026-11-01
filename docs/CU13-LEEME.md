@@ -52,14 +52,14 @@ Si sus pantallas están dentro de un grupo con layout (por ejemplo
 8. `reglas.ts` → `verificarOrdenLiquidable()` (FINALIZADA y sin nota)
 9. `repositorio.ts` → `obtenerOrden()`, `listarMaterialesConsumidos()`, `calcularLiquidacion()`
 10. **SQL** `fn_calcular_liquidacion` → materiales + mano de obra = total
-11. `liquidacion-form.tsx` → muestra el formulario; el saldo se calcula al escribir el anticipo
+11. `liquidacion-form.tsx` → muestra el formulario. Con cotización, el anticipo viene de la base y es de solo lectura; en una orden correctiva se escribe a mano
 
 ### 3. Emitir la nota
 12. `liquidacion-form.tsx` → `confirmarEmision()`
 13. `acciones.ts` → `emitirNotaServicioAction()` (obtiene la IP con `integracion.ts` → `@/lib/ip`)
 14. `schema.ts` → `validarEmitirNotaInput()`
 15. `control-emitir-nota.ts` → `emitirNotaServicio()`
-16. `integracion.ts` → usuario logueado (`@/lib/auth`) y `autorizacion.ts` → `verificarPermisoEmitirNota()`
+16. `integracion.ts` → usuario logueado (`@/lib/auth`) y `autorizacion.ts` → `verificarPermisoNota()`
 17. `reglas.ts` → `validarAnticipo()`
 18. `repositorio.ts` → `emitirNota()`
 19. **SQL** `sp_emitir_nota_servicio` → número NS-2026-001 + nota + bitácora (una transacción)

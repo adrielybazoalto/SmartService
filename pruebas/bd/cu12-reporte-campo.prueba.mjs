@@ -6,14 +6,17 @@
 //
 // Ejecutar desde la raíz:  node pruebas/bd/cu12-reporte-campo.prueba.mjs
 // ============================================================
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 
 const RAIZ = process.env.SMARTSERVICE_RAIZ ?? fileURLToPath(new URL('../../', import.meta.url));
 const leer = (...ruta) => readFileSync(join(RAIZ, 'db', ...ruta), 'utf8');
-const migracion = (archivo) => leer('migrations', archivo);
+const migracion = (a) => {
+  const pendiente = join(RAIZ, 'db', 'migrations', a);
+  return readFileSync(existsSync(pendiente) ? pendiente : join(RAIZ, 'db', 'migrations', 'aplicadas', a), 'utf8');
+};
 
 let ok = 0, fallos = 0;
 function resultado(nombre, paso, detalle) {

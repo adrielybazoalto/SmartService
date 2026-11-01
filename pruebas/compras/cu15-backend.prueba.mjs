@@ -326,7 +326,7 @@ await sim('Registro: UNA llamada a fn_registrar_compra con el usuario de la SESI
   const esperado = {
     p_usuario_id: 2, p_proveedor_id: 1, p_tipo_documento: 'FACTURA', p_nro_documento: '001-2345', p_fecha_compra: HOY,
     p_items: [{ producto_id: 2, cantidad: 100, costo_unitario: 2.5 }, { producto_id: 1, cantidad: 3, costo_unitario: 95.1 }],
-    p_observacion: 'Reposición mensual', p_ip: '10.0.0.7',
+    p_observacion: 'Reposición mensual', p_ip: '172.16.0.1',
   }
   afirmar(json(rpcs[0].args) === json(esperado), json(rpcs[0].args))
   afirmar(rpcs[0].args.p_items.every((i) => typeof i.cantidad === 'number' && typeof i.costo_unitario === 'number'), 'cantidades como number')
@@ -497,7 +497,7 @@ await sim('CU16: el kárdex muestra el documento con el formato que deja la comp
 
 // ============================ 8. Integración backend → función SQL REAL (PGlite)
 const RAIZ = new URL('../../', import.meta.url)
-const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics']
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/migrations/aplicadas', 'db/legacy', 'db/diagnostics']
 const leer = (archivo) => {
   for (const dir of DIRS_SQL) {
     const ruta = new URL(`${dir}/${archivo}`, RAIZ)

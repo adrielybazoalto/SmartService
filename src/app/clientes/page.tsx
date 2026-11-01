@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  cambiarEstadoClienteAction,
+  cambiarEstadoEstablecimientoAction,
   listarClientesAction,
+  obtenerHistorialClienteAction,
   procesarRegistroCliente,
   procesarActualizacionCliente,
   validarDocumentoUnico,
@@ -44,6 +47,10 @@ export default function GestionarClientesPage() {
   const [editTelefonoAlternativo, setEditTelefonoAlternativo] = useState("");
   const [editCorreo, setEditCorreo] = useState("");
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [historial, setHistorial] = useState<{
+    cliente: string;
+    filas: Awaited<ReturnType<typeof obtenerHistorialClienteAction>>;
+  } | null>(null);
 
   // ── Campos de estado (Diagrama): datos del establecimiento ───────────────
   const [nombreEstablecimiento, setNombreEstablecimiento] = useState("");
@@ -211,6 +218,28 @@ export default function GestionarClientesPage() {
   };
 
   /** Envía el formulario completo → procesarRegistroCliente (Controlador). */
+  const verHistorial = async (c: ClienteEntity) => {
+    try {
+      setHistorial({ cliente: c.nombre, filas: await obtenerHistorialClienteAction(c.id) });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo cargar el historial.");
+    }
+  };
+
+  const cambiarEstadoCliente = async (c: ClienteEntity) => {
+    if (!confirm(`¿${c.estado ? "Desactivar" : "Activar"} al cliente ${c.nombre}?`)) return;
+    const r = await cambiarEstadoClienteAction(c.id, !c.estado);
+    alert(r.mensaje);
+    if (r.ok) window.location.reload();
+  };
+
+  const cambiarEstadoEstablecimiento = async (id: number, nombre: string, activo: boolean) => {
+    if (!confirm(`¿${activo ? "Desactivar" : "Activar"} el establecimiento ${nombre}?`)) return;
+    const r = await cambiarEstadoEstablecimientoAction(id, !activo);
+    alert(r.mensaje);
+    if (r.ok) window.location.reload();
+  };
+
   const handleRegistrarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     setLblMensajeError(null);
@@ -658,6 +687,13 @@ export default function GestionarClientesPage() {
                             )}
                           </p>
                           <p className="text-sm text-slate-500">{e.direccion}</p>
+                          <button
+                            type="button"
+                            onClick={() => cambiarEstadoEstablecimiento(e.id, e.nombre_establecimiento, e.estado)}
+                            className="mt-1 text-xs font-medium text-rose-700 hover:underline cursor-pointer"
+                          >
+                            {e.estado ? "Desactivar establecimiento" : "Activar establecimiento"}
+                          </button>
                         </div>
                         <p className="text-xs text-slate-400">
                           Lat {e.latitud ?? "—"} · Lon {e.longitud ?? "—"}
@@ -807,6 +843,20 @@ export default function GestionarClientesPage() {
                             👁
                           </button>
                           <button
+                            onClick={() => verHistorial(c)}
+                            className="p-1.5 text-slate-400 hover:text-sky-700 rounded-lg hover:bg-sky-50 transition-all cursor-pointer"
+                            title="Ver historial del cliente"
+                          >
+                            🕘
+                          </button>
+                          <button
+                            onClick={() => cambiarEstadoCliente(c)}
+                            className="p-1.5 text-slate-400 hover:text-rose-700 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
+                            title={c.estado ? "Desactivar cliente" : "Activar cliente"}
+                          >
+                            {c.estado ? "⏸" : "▶"}
+                          </button>
+                          <button
                             onClick={() => abrirEdicionCliente(c)}
                             className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-all cursor-pointer"
                             title="Editar datos del cliente"
@@ -823,6 +873,40 @@ export default function GestionarClientesPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Historial del cliente (CU07) ──────────────────────────────── */}
+      {historial && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6">
+            <h3 className="text-base font-bold text-slate-900">Historial de {historial.cliente}</h3>
+            {historial.filas.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">El cliente aún no tiene cotizaciones.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100 text-sm">
+                {historial.filas.map((c) => (
+                  <li key={c.id} className="py-2">
+                    <p className="font-medium text-slate-800">
+                      {c.numero_cotizacion} · {c.estado} · Bs. {Number(c.total).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-slate-500">Emitida el {c.fecha_emision}</p>
+                    {c.orden_trabajo.map((o) => (
+                      <p key={o.id} className="text-xs text-slate-600">
+                        Orden {o.codigo_orden} ({o.estado})
+                        {[o.nota_servicio].flat().map((n) => n && ` · Nota ${n.numero_nota} (${n.estado}, Bs. ${Number(n.monto_total).toFixed(2)})`)}
+                      </p>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setHistorial(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal de Edición de Cliente (CU07) ─────────────────────────── */}
       {clienteAEditar && (

@@ -21,6 +21,21 @@ export interface LoginActionState {
   error?: string
 }
 
+/** Un fallo de auditoría no debe impedir responder al intento de ingreso. */
+async function auditarAcceso(
+  db: ReturnType<typeof getSupabaseServiceClient>,
+  usuarioId: number,
+  accion: 'INICIO_SESION_FALLIDO' | 'CUENTA_BLOQUEADA',
+  descripcion: string,
+  ip: string | null,
+) {
+  try {
+    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion }, ip)
+  } catch (e) {
+    console.error('Error al registrar en bitácora:', e)
+  }
+}
+
 async function actContadores(
   db: ReturnType<typeof getSupabaseServiceClient>,
   usuarioId: number,
@@ -39,7 +54,7 @@ function destinoSeguro(next: string | null): string {
 // ---------------------------------------------------------------------------
 // FUNCIÓN ADAPTADA: Se llama 'validarCredenciales' para hacer match con el diagrama
 // ---------------------------------------------------------------------------
-async function validarCredenciales(correo: string, passwordPlain: string, ip: string) {
+async function validarCredenciales(correo: string, passwordPlain: string, ip: string | null) {
   const db = getSupabaseServiceClient()
   
   // Equivale al mensaje 1.3: verificarUsuario en la BD
@@ -78,12 +93,14 @@ async function validarCredenciales(correo: string, passwordPlain: string, ip: st
     if (intentos >= CU01.maxIntentos) {
       const bloqueadoHasta = new Date(ahora + CU01.minutosBloqueo * 60_000).toISOString()
       await actContadores(db, usuario.id, { intentos_fallidos: 0, bloqueado_hasta: bloqueadoHasta })
+      await auditarAcceso(db, usuario.id, 'CUENTA_BLOQUEADA', `Cuenta ${correo} bloqueada por ${CU01.minutosBloqueo} min tras ${CU01.maxIntentos} intentos fallidos`, ip)
       return {
         success: false,
         error: `Has superado el límite de ${CU01.maxIntentos} intentos. Cuenta bloqueada por ${CU01.minutosBloqueo} min.`,
       }
     }
     await actContadores(db, usuario.id, { intentos_fallidos: intentos })
+    await auditarAcceso(db, usuario.id, 'INICIO_SESION_FALLIDO', `Contraseña incorrecta para ${correo} (intento ${intentos} de ${CU01.maxIntentos})`, ip)
     return { success: false, error: 'Contraseña incorrecta.' }
   }
 

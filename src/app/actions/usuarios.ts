@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { tieneAccionModulo, type AccionPermiso } from "@/lib/permisos";
-import { registrarBitacora } from "@/backend/bitacora";
+import { registrarEvento } from "@/backend/bitacora";
 import { obtenerIpOrigen } from "@/lib/ip";
 import {
   crearUsuario,
@@ -70,7 +70,7 @@ function usuarioAEntidad(u: Usuario, roles: Rol[]): UsuarioEntity {
 async function registrarAuditoria(db: Db, usuarioId: number, accion: string, detalle: string) {
   try {
     const ip = await obtenerIpOrigen();
-    await registrarBitacora(db, { usuario_id: usuarioId, accion, descripcion: detalle }, ip);
+    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion: detalle }, ip);
   } catch (e) {
     console.error("Error al registrar en bitácora:", e);
   }
@@ -123,7 +123,7 @@ export async function registrarUsuario(
     const nuevo = await crearUsuario(db, {
       rol_id: Number(rol_id),
       nombre: nombre.trim(),
-      correo: correo.trim(),
+      correo: correo.trim().toLowerCase(),
       telefono: telefono.trim() || null,
       estado: true,
       contrasena,
@@ -162,7 +162,7 @@ export async function actualizarUsuario(
     const db = getSupabaseServiceClient();
     await actualizarUsuarioEnBD(db, usuarioId, {
       nombre: datos.nombre.trim(),
-      correo: datos.correo.trim(),
+      correo: datos.correo.trim().toLowerCase(),
       telefono: datos.telefono.trim() || null,
       rol_id: Number(datos.rol_id),
     });

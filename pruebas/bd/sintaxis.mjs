@@ -19,7 +19,7 @@ const ARCHIVOS = process.argv.slice(2).length > 0
   : ['diagnostico_cu15_cu16.sql', 'migracion_cu16_inventario.sql', 'migracion_cu15_compras.sql'];
 
 // Los .sql viven en db/ (raíz, seeds, migrations, legacy, diagnostics).
-const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics'];
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/migrations/aplicadas', 'db/legacy', 'db/diagnostics'];
 const leerSql = (archivo) => {
   for (const dir of DIRS_SQL) {
     const ruta = join(RAIZ, dir, archivo);

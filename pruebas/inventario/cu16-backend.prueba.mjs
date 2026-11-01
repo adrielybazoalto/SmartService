@@ -380,7 +380,7 @@ await prueba('Ajuste: llama a fn_registrar_ajuste con el usuario de la SESIÓN y
   const r = await A.registrarAjusteAction({ producto_id: 7, stock_contado: '25', justificacion: 'conteo físico mensual' })
   afirmar(r.ok && r.data.motivo === 'AJUSTE_POSITIVO' && r.data.stockResultante === 25, json(r))
   const llamada = db.llamadas.find((l) => l.rpc)
-  afirmar(llamada.rpc === 'fn_registrar_ajuste' && json(llamada.args) === json({ p_usuario_id: 1, p_producto_id: 7, p_stock_contado: 25, p_justificacion: 'conteo físico mensual', p_ip: '10.0.0.7' }), json(llamada))
+  afirmar(llamada.rpc === 'fn_registrar_ajuste' && json(llamada.args) === json({ p_usuario_id: 1, p_producto_id: 7, p_stock_contado: 25, p_justificacion: 'conteo físico mensual', p_ip: '172.16.0.1' }), json(llamada))
   afirmar(escrituras(db, 'producto').length === 0 && escrituras(db, 'movimiento_kardex').length === 0, 'el backend NO debe escribir stock ni kárdex directamente')
 })
 await prueba('Ajuste: errores de la función SQL llegan al usuario (sin diferencia / no autorizado)', async () => {

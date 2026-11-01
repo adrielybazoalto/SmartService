@@ -10,7 +10,7 @@ const MSG_FALTA_MIGRACION = 'Falta aplicar la migración de cotizaciones en la b
 // ---------------------------------------------------------------------------
 
 export async function listarClientes(db: Db) {
-  const { data } = await db.from('cliente').select('id, nombre, documento_identidad')
+  const { data } = await db.from('cliente').select('id, nombre, documento_identidad').eq('estado', true)
   return data ?? []
 }
 
@@ -19,6 +19,7 @@ export async function listarEstablecimientosDeCliente(db: Db, clienteId: number)
     .from('establecimiento')
     .select('*')
     .eq('cliente_id', clienteId)
+    .eq('estado', true)
     .order('id', { ascending: true })
 
   if (error) {

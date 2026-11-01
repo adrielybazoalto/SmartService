@@ -27,7 +27,7 @@ import { PGlite } from '@electric-sql/pglite'
 
 const RAIZ = fileURLToPath(new URL('../../', import.meta.url))
 // Los .sql viven en db/ (raíz, seeds, migrations, legacy, diagnostics).
-const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics']
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/migrations/aplicadas', 'db/legacy', 'db/diagnostics']
 const leer = (archivo) => {
   for (const dir of DIRS_SQL) {
     const ruta = join(RAIZ, dir, archivo)
@@ -75,7 +75,10 @@ async function baseMain({ antesDeMigrar = '', seed = leer('seed.sql') } = {}) {
     CREATE ROLE service_role NOLOGIN BYPASSRLS; CREATE ROLE dueno NOLOGIN;
     GRANT CREATE ON DATABASE postgres TO dueno; ALTER SCHEMA public OWNER TO dueno; SET ROLE dueno;`)
   await db.exec(leer('schema.sql'))
-  await db.exec('ALTER TABLE rol_permiso ADD COLUMN descripcion VARCHAR(255); -- = migracion_rbac.sql')
+  // Tablas retiradas de schema.sql: las migraciones CU15/CU16 aún las exigen.
+  await db.exec(`
+    CREATE TABLE permiso (id SERIAL PRIMARY KEY, nombre VARCHAR(100) UNIQUE, ruta VARCHAR(255), descripcion VARCHAR(255));
+    CREATE TABLE rol_permiso (id SERIAL PRIMARY KEY, rol_id INTEGER NOT NULL, permiso_id INTEGER NOT NULL, descripcion VARCHAR(255));`)
   await db.exec(seed)
   if (antesDeMigrar) await db.exec(antesDeMigrar)
   return db

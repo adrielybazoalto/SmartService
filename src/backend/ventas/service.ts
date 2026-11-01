@@ -369,7 +369,7 @@ export async function listarProductosVenta(db: Db): Promise<ProductoVenta[]> {
 
 /** Clientes para la venta (solo lectura; venta.cliente_id es obligatorio) */
 export async function listarClientesVenta(db: Db, limite = 500): Promise<ClienteVenta[]> {
-  const { data, error } = await db.from('cliente').select('*').limit(limite);
+  const { data, error } = await db.from('cliente').select('*').eq('estado', true).limit(limite);
   if (error) throw errorBD(error, 'No se pudieron cargar los clientes');
   return ((data ?? []) as any[])
     .map((c) => ({

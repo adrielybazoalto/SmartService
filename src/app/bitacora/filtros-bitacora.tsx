@@ -1,5 +1,6 @@
 'use client'
 
+import { ACCIONES_BITACORA } from '@/backend/bitacora/acciones'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
 
@@ -94,11 +95,17 @@ export function FiltrosBitacora({ valoresIniciales }: FiltrosBitacoraProps) {
         <input
           id="accion"
           type="text"
+          list="acciones-bitacora"
           placeholder="Ej: INICIO_SESION"
           value={filtros.accion}
           onChange={(e) => setFiltros({ ...filtros, accion: e.target.value })}
           className="w-full sm:w-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition-all focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50"
         />
+        <datalist id="acciones-bitacora">
+          {ACCIONES_BITACORA.map((a) => (
+            <option key={a} value={a} />
+          ))}
+        </datalist>
       </div>
       
       <div className="flex flex-col gap-1 w-full sm:w-auto">

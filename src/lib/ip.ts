@@ -1,130 +1,40 @@
 import { headers } from 'next/headers'
-import os from 'os'
 
 // Solo dígitos, letras a-f, ":" y ".": cubre IPv4, IPv6 e IPv6 mapeada a IPv4.
 const PATRON_IP = /^[0-9a-fA-F:.]{3,45}$/
 
-/**
- * Obtiene la dirección IPv4 de la red local (ej. 192.168.0.12)
- * de la interfaz de red activa de la máquina.
- */
-export function obtenerIpRedLocal(): string | null {
-  try {
-    const nets = os.networkInterfaces()
-    for (const name of Object.keys(nets)) {
-      const netList = nets[name]
-      if (!netList) continue
-      for (const net of netList) {
-        if (net.family === 'IPv4' && !net.internal && net.address && net.address !== '127.0.0.1') {
-          return net.address
-        }
-      }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
+const LOOPBACK = ['::1', '::', '127.0.0.1']
 
 /**
- * Normaliza y limpia una dirección IP obtenida de los encabezados o del socket.
- * - Si viene una lista por proxy ("client, proxy1"), extrae la primera IP.
- * - Si viene con puerto o corchetes, los remueve.
- * - Si es IPv6 localhost ("::1") o IPv4 mapeada ("::ffff:127.0.0.1") o localhost,
- *   obtiene la IP real de la red si está disponible (ej: 192.168.0.12) o fallback a "127.0.0.1".
- * - Si es IPv6 mapeada a IPv4 pública (ej. "::ffff:190.181.25.10"), extrae la IPv4.
- * - Si está vacía o es inválida, retorna la IP de red local o "127.0.0.1".
+ * Limpia una IP de encabezado: quita corchetes, puerto y el prefijo IPv6 mapeado.
+ * Devuelve null si no es válida o es loopback: esa no identifica al cliente.
  */
-export function normalizarIp(ipRaw?: string | null): string {
-  const redLocal = obtenerIpRedLocal() || '127.0.0.1'
-
-  if (!ipRaw || typeof ipRaw !== 'string') return redLocal
-
+export function normalizarIp(ipRaw?: string | null): string | null {
+  if (!ipRaw) return null
   let ip = ipRaw.trim()
 
-  // Si viene una lista separada por comas (ej: "client, proxy1, proxy2"), tomar la primera
-  if (ip.includes(',')) {
-    ip = ip.split(',')[0].trim()
-  }
-
-  // Quitar corchetes de IPv6 si los tiene (ej: "[::1]:8080" o "[::1]")
   if (ip.startsWith('[') && ip.includes(']')) {
-    ip = ip.substring(1, ip.indexOf(']'))
+    ip = ip.slice(1, ip.indexOf(']'))
   } else if (ip.includes(':') && ip.includes('.')) {
-    // IPv6 mapeada a IPv4, ej: "::ffff:192.168.1.1" o "::ffff:127.0.0.1"
-    const partes = ip.split(':')
-    const ultima = partes[partes.length - 1]
-    if (PATRON_IP.test(ultima) && ultima.includes('.')) {
-      ip = ultima
-    }
+    // "::ffff:190.181.25.10" o "190.181.25.10:443"
+    ip = ip.split(':').find((parte) => parte.includes('.')) ?? ip
   }
 
-  // Manejo explícito de localhost en IPv6 o texto -> usar IP real de la red local
-  if (ip === '::1' || ip === '::' || ip === 'localhost' || ip === '127.0.0.1') {
-    return redLocal
-  }
-
-  // Validar formato
-  if (PATRON_IP.test(ip)) {
-    return ip
-  }
-
-  return redLocal
+  if (LOOPBACK.includes(ip) || !PATRON_IP.test(ip)) return null
+  return ip
 }
 
 /**
- * Obtiene la dirección IP real de origen de forma centralizada y segura.
- * Soporta peticiones HTTP explícitas (Request, NextRequest, IncomingMessage con req.headers, req.socket, req.ip)
- * o consulta automáticamente los headers() de Next.js en Server Actions y componentes del servidor.
- *
- * Prioriza la IP de proxy/remota, resolviendo la IP real de la red en localhost y garantizando
- * que nunca sea nula ni se muestre "No disponible".
+ * IP de origen de la petición (CU06): x-real-ip o el ÚLTIMO valor de x-forwarded-for,
+ * el que agregó nuestro proxy; los anteriores los puede inventar el cliente.
+ * Si no se sabe, null: nunca la IP de la red local del servidor.
  */
-export async function obtenerIpOrigen(req?: any): Promise<string> {
-  const redLocal = obtenerIpRedLocal() || '127.0.0.1'
+export async function obtenerIpOrigen(): Promise<string | null> {
   try {
-    // 1. Si se pasa un objeto de petición (Request, NextRequest, req de Express/Node)
-    if (req) {
-      if (typeof req.headers?.get === 'function') {
-        const xForwardedFor = req.headers.get('x-forwarded-for')
-        const xRealIp = req.headers.get('x-real-ip')
-        const cfConnectingIp = req.headers.get('cf-connecting-ip')
-        const trueClientIp = req.headers.get('true-client-ip')
-        const xClientIp = req.headers.get('x-client-ip')
-        const ipCandidata = xForwardedFor || xRealIp || cfConnectingIp || trueClientIp || xClientIp || req.ip
-        if (ipCandidata) return normalizarIp(ipCandidata)
-      } else if (req.headers && typeof req.headers === 'object') {
-        const xForwardedFor = req.headers['x-forwarded-for']
-        const xRealIp = req.headers['x-real-ip']
-        const cfConnectingIp = req.headers['cf-connecting-ip']
-        const trueClientIp = req.headers['true-client-ip']
-        const xClientIp = req.headers['x-client-ip']
-        const ipCandidata =
-          (Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor) ||
-          (Array.isArray(xRealIp) ? xRealIp[0] : xRealIp) ||
-          cfConnectingIp ||
-          trueClientIp ||
-          xClientIp ||
-          req.ip ||
-          req.socket?.remoteAddress ||
-          req.connection?.remoteAddress
-        if (ipCandidata) return normalizarIp(ipCandidata)
-      } else if (req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress) {
-        return normalizarIp(req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress)
-      }
-    }
-
-    // 2. Consultar encabezados mediante headers() de Next.js
     const h = await headers()
-    const xForwardedFor = h.get('x-forwarded-for')
-    const xRealIp = h.get('x-real-ip')
-    const cfConnectingIp = h.get('cf-connecting-ip')
-    const trueClientIp = h.get('true-client-ip')
-    const xClientIp = h.get('x-client-ip')
-
-    const ip = xForwardedFor || xRealIp || cfConnectingIp || trueClientIp || xClientIp
-    return normalizarIp(ip)
+    const reenviada = h.get('x-forwarded-for')?.split(',').pop()
+    return normalizarIp(h.get('x-real-ip')) ?? normalizarIp(reenviada)
   } catch {
-    return redLocal
+    return null
   }
 }
