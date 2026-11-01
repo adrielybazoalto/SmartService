@@ -53,10 +53,17 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
     };
   }, [modo]);
 
+  const parseDecimal = (val: string): number => {
+    if (!val || val.trim() === '') return NaN;
+    const normalizado = val.trim().replace(',', '.');
+    return Number(normalizado);
+  };
+
   const totalConteo = r2(
     DENOMINACIONES.reduce((acc, d) => acc + d * (Math.max(0, Math.floor(Number(conteo[d]) || 0))), 0)
   );
-  const contado = usarConteo ? totalConteo : Number(monto);
+  const montoNumerico = parseDecimal(monto);
+  const contado = usarConteo ? totalConteo : (Number.isFinite(montoNumerico) ? r2(montoNumerico) : NaN);
   const montoValido = usarConteo ? true : monto.trim() !== '' && Number.isFinite(contado) && contado >= 0;
   const diferencia = resumen && montoValido ? r2(contado - resumen.efectivo_esperado) : null;
   const requiereObs = diferencia !== null && diferencia !== 0;
@@ -223,13 +230,16 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
               ) : (
                 <input
                   id="monto"
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
                   inputMode="decimal"
                   autoFocus
                   value={monto}
-                  onChange={(e) => setMonto(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*[.,]?\d{0,2}$/.test(val)) {
+                      setMonto(val);
+                    }
+                  }}
                   placeholder="0.00"
                   className={`${inputCls} text-lg font-semibold`}
                 />

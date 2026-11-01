@@ -1,50 +1,27 @@
+import 'server-only'
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { moduloPorRuta } from '@/lib/navigation'
 
 /**
  * RBAC por rutas (Nivel 1 y 2).
- * La matriz de permisos VIVE EN LA BASE DE DATOS (PERMISO ⋈ ROL_PERMISO):
- * la interfaz del menú consulta aquí los módulos activos de cada rol, de modo
- * que el Administrador podrá editar los permisos desde /roles (futuro) sin
- * tocar el código. Cualquier error de lectura opera en modo "fail-closed"
- * (sin permisos) por seguridad.
+ *
+ * El catálogo de módulos (`MODULOS`) y `moduloPorRuta()` viven en
+ * `src/lib/navigation.ts`, la **única fuente de verdad** del alcance del
+ * sistema (compartida con el Sidebar y el panel principal). Este módulo solo
+ * aporta la parte de servidor: la matriz de permisos VIVE EN LA BASE DE DATOS
+ * (PERMISO ⋈ ROL_PERMISO), de modo que el Administrador podrá editar los
+ * permisos desde /roles sin tocar el código. Cualquier error de lectura opera
+ * en modo "fail-closed" (sin permisos) por seguridad.
+ *
+ * Se reexportan `MODULOS`, `moduloPorRuta` y `ModuloRegistrado` para los
+ * consumidores existentes.
  */
 
-export interface ModuloRegistrado {
-  /** Clave del permiso en PERMISO.nombre (p. ej. 'USUARIOS'). */
-  clave: string
-  ruta: string
-  etiqueta: string
-  /** Breve descripción mostrada en las tarjetas del panel principal. */
-  descripcion: string
-}
-
-/**
- * Catálogo de módulos. La fila en PERMISO (BD) otorga el acceso; el orden
- * aquí define el orden de los enlaces del navbar y de las tarjetas del panel.
- */
-export const MODULOS: ModuloRegistrado[] = [
-  { clave: 'USUARIOS', ruta: '/usuarios', etiqueta: 'Usuarios', descripcion: 'Gestión de usuarios del sistema' },
-  { clave: 'ROLES', ruta: '/roles', etiqueta: 'Roles', descripcion: 'Roles y matriz de permisos' },
-  { clave: 'BITACORA', ruta: '/bitacora', etiqueta: 'Bitácora', descripcion: 'Auditoría de eventos y accesos' },
-  { clave: 'CLIENTES', ruta: '/clientes', etiqueta: 'Clientes', descripcion: 'Gestión de clientes y establecimientos' },
-  { clave: 'COTIZACIONES', ruta: '/cotizaciones', etiqueta: 'Cotizaciones', descripcion: 'Cotizaciones y servicios' },
-  { clave: 'SERVICIOS', ruta: '/servicios', etiqueta: 'Servicios', descripcion: 'Catálogo de servicios técnicos y tarifas' },
-  { clave: 'PROVEEDORES', ruta: '/proveedores', etiqueta: 'Proveedores', descripcion: 'Gestión de proveedores y catálogo de mayoristas' },
-  { clave: 'COMPRAS', ruta: '/compras', etiqueta: 'Compras', descripcion: 'Registro de compras de equipos e insumos' },
-  { clave: 'INVENTARIO', ruta: '/inventario', etiqueta: 'Inventario', descripcion: 'Stock, movimientos de kárdex y ajustes' },
-  { clave: 'ORDENES_TRABAJO', ruta: '/ordenes-trabajo', etiqueta: 'Órdenes de trabajo', descripcion: 'Órdenes de trabajo y asignaciones' },
-  { clave: 'ASIGNAR_TECNICOS', ruta: '/asignar-tecnicos', etiqueta: 'Asignar técnicos', descripcion: 'Programación y asignación de cuadrillas técnicas' },
-  { clave: 'CAJA', ruta: '/caja', etiqueta: 'Caja', descripcion: 'Control y arqueo de caja' },
-  { clave: 'VENTAS', ruta: '/ventas', etiqueta: 'Ventas', descripcion: 'Registro de ventas' },
-  { clave: 'PERFIL', ruta: '/perfil', etiqueta: 'Mi perfil', descripcion: 'Configuración de perfil personal' },
-]
-
-export function moduloPorRuta(ruta: string): ModuloRegistrado | undefined {
-  return MODULOS.find((m) => m.ruta === ruta)
-}
+export { MODULOS, moduloPorRuta } from '@/lib/navigation'
+export type { ModuloRegistrado } from '@/lib/navigation'
 
 /** Permisos (claves) activos de un rol, leídos de ROL_PERMISO ⋈ PERMISO. */
 export const getPermisosDeRol = cache(async (rolId: number): Promise<string[]> => {

@@ -13,6 +13,7 @@
  * del DDL; así funciona tenga o no la tabla una columna `id`.
  */
 import { validarItemCatalogo, validarProveedor } from './schema';
+import { obtenerIpOrigen } from '@/lib/ip';
 import {
   ProveedorError,
   type AccionProveedor,
@@ -136,11 +137,12 @@ export async function registrarEventoProveedor(
   accion: AccionProveedor,
   descripcion: string
 ): Promise<void> {
+  const ipOrigen = (auditoria.ip && auditoria.ip.trim()) ? auditoria.ip.trim() : (await obtenerIpOrigen());
   const { error } = await db.from('bitacora').insert({
     usuario_id: auditoria.usuarioId,
     accion,
     descripcion,
-    ip: auditoria.ip,
+    ip: ipOrigen,
   } as any);
   if (error) {
     console.error(

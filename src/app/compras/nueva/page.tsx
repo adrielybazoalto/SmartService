@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { listarProductosCompraAction, listarProveedoresCompraAction } from '@/app/actions/compras'
+import { listarProveedoresCompraAction } from '@/app/actions/compras'
 import { fechaHoyNegocio } from '@/backend/compras/reglas'
 import { obtenerCapacidadesCompras } from '../acceso'
 import { InsigniaCU15 } from '../componentes'
@@ -17,9 +17,7 @@ export const metadata = {
 export default async function NuevaCompraPage() {
   const { registrar } = await obtenerCapacidadesCompras()
 
-  const [proveedores, productos] = registrar
-    ? await Promise.all([listarProveedoresCompraAction(), listarProductosCompraAction()])
-    : [null, null]
+  const proveedores = registrar ? await listarProveedoresCompraAction() : null
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -49,8 +47,8 @@ export default async function NuevaCompraPage() {
       ) : (
         <FormularioCompra
           proveedores={proveedores.data}
-          productosIniciales={productos?.ok ? productos.data : []}
-          errorProductosInicial={productos && !productos.ok ? productos.mensaje : null}
+          productosIniciales={[]}
+          errorProductosInicial={null}
           hoy={fechaHoyNegocio()}
         />
       )}

@@ -1,9 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { z } from 'zod'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { obtenerIpOrigen } from '@/lib/ip'
 import type { UsuarioConRol } from '@/lib/auth'
 import type { Db } from '@/lib/supabase/types'
 import {
@@ -47,11 +47,9 @@ function mensajeDeError(e: unknown, fallback: string): string {
   return fallback
 }
 
-/** IP de origen para la bitácora (cabeceras del proxy). Solo informativa. */
-async function ipCliente(): Promise<string | null> {
-  const h = await headers()
-  const ip = (h.get('x-forwarded-for')?.split(',')[0] ?? h.get('x-real-ip') ?? '').trim()
-  return /^[0-9a-fA-F:.]{3,45}$/.test(ip) ? ip : null
+/** IP de origen para la bitácora centralizada (CU06). */
+async function ipCliente(): Promise<string> {
+  return obtenerIpOrigen()
 }
 
 async function ejecutar<T>(

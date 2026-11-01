@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth'
 import { tienePermisoModulo } from '@/lib/permisos'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { registrarEvento } from '@/backend/bitacora'
+import { obtenerIpOrigen } from '@/lib/ip'
 import type { Db } from '@/lib/supabase/types'
 import {
   actualizarServicio,
@@ -30,7 +31,8 @@ const tarifa = (valor: string | number) => Number(valor).toFixed(2)
 /** Bitácora (CU06): un fallo de auditoría no interrumpe la operación. */
 async function auditar(db: Db, usuarioId: number, accion: string, descripcion: string) {
   try {
-    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion })
+    const ip = await obtenerIpOrigen()
+    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion }, ip)
   } catch (e) {
     console.error('Error al registrar en bitácora:', e)
   }

@@ -3,12 +3,12 @@
 //
 // SEGURIDAD: crea bases PostgreSQL EFÍMERAS en memoria (new PGlite() sin
 // directorio de datos). No lee .env, no usa claves, no abre conexiones de
-// red y no toca Supabase. Solo LEE los .sql de la raíz del repositorio.
+// red y no toca Supabase. Solo LEE los .sql de la carpeta db/ del repositorio.
 //
 // Ejecutar desde la raíz:  node pruebas/bd/cu15-cu16.prueba.mjs
 // Detalles: pruebas/bd/README.md
 // ============================================================
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
@@ -16,7 +16,15 @@ import { PGlite } from '@electric-sql/pglite';
 // Raíz del repo = dos niveles por encima de este archivo.
 // SMARTSERVICE_RAIZ (opcional) permite apuntar a otra copia del repositorio.
 const RAIZ = process.env.SMARTSERVICE_RAIZ ?? fileURLToPath(new URL('../../', import.meta.url));
-const leer = (archivo) => readFileSync(join(RAIZ, archivo), 'utf8');
+// Los .sql viven en db/ (raíz, seeds, migrations, legacy, diagnostics).
+const DIRS_SQL = ['', 'db', 'db/seeds', 'db/migrations', 'db/legacy', 'db/diagnostics'];
+const leer = (archivo) => {
+  for (const dir of DIRS_SQL) {
+    const ruta = join(RAIZ, dir, archivo);
+    if (existsSync(ruta)) return readFileSync(ruta, 'utf8');
+  }
+  throw new Error(`No se encontró el archivo SQL: ${archivo}`);
+};
 
 let ok = 0, fallos = 0;
 const log = [];
