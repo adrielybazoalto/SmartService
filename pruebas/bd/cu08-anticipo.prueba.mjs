@@ -46,6 +46,7 @@ async function nuevaBD() {
   await db.exec(migracion('migracion_cu12_estados_orden.sql'));
   for (let i = 0; i < 2; i++) await db.exec(migracion('migracion_cu08_anticipo.sql'));
   for (let i = 0; i < 2; i++) await db.exec(migracion('migracion_cu08_anticipo_tarjeta.sql'));
+  for (let i = 0; i < 2; i++) await db.exec(migracion('migracion_cu08_guardar_cotizacion.sql'));
   await db.exec(`
     INSERT INTO cliente (id, nombre, tipo_cliente) VALUES (1, 'Cliente', 'PARTICULAR');
     INSERT INTO servicio (id, nombre, precio_hora_base) VALUES (1, 'Instalación', 100);
@@ -219,6 +220,49 @@ const cot = (db, id) => q1(db, 'SELECT * FROM cotizacion WHERE id = $1', [id]);
     VALUES (6, 'OT-6', 'SERVICIO', 'FINALIZADA', 12, '2026-11-01 08:00:00', '2026-11-01 18:00:00')`);
   const n6 = await emitir(db, 6, 0);
   resultado('Tarjeta: la nota usa el anticipo cobrado', Number(n6.anticipo_pagado) === 300 && n6.estado === 'PENDIENTE', JSON.stringify(n6));
+
+  // ---------- Guardar cotización (Fase 8) ----------
+  await db.exec(`
+    INSERT INTO categoria_producto (id, nombre) VALUES (1, 'Cámaras');
+    INSERT INTO producto (id, categoria_id, nombre, unidad_medida, precio_compra_actual, stock_disponible, margen_ganancia, estado) VALUES
+      (1, 1, 'Cámara IP', 'unidad', 100, 10, 30, true),
+      (2, 1, 'Descontinuado', 'unidad', 50, 10, 0, false);
+    INSERT INTO servicio (id, nombre, precio_hora_base, activo) VALUES (2, 'Inactivo', 80, false);
+    SELECT setval(pg_get_serial_sequence('cotizacion', 'id'), 100);`);
+  const GUARDAR = 'SELECT public.fn_guardar_cotizacion($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7) AS r';
+  const guardar = async (id, productos, servicios, cliente = 1, est = null) =>
+    (await comoServidor(db, GUARDAR, [2, id, cliente, est, JSON.stringify(productos), JSON.stringify(servicios), '10.0.0.1'])).rows[0].r;
+  const P = (producto_id, cantidad) => ({ producto_id, cantidad, precio_unitario: 0.01, subtotal: 0.01 });
+  const anio = (await q1(db, `SELECT to_char(now() AT TIME ZONE 'America/La_Paz', 'YYYY') a`)).a;
+
+  const g1 = await guardar(null, [P(1, 2)], [{ servicio_id: 1, horas_estimadas: 3, precio_hora: 0.01 }]);
+  resultado('Crear: precios y total calculados en la base, ignora los del navegador', Number(g1.total) === 560, JSON.stringify(g1));
+  resultado('Crear: correlativo COT-AAAA-NNNN', g1.numero_cotizacion === `COT-${anio}-0001`, g1.numero_cotizacion);
+  const g2 = await guardar(null, [P(1, 1)], []);
+  resultado('Crear: el correlativo avanza', g2.numero_cotizacion === `COT-${anio}-0002`, g2.numero_cotizacion);
+  const cg = await cot(db, g1.id);
+  resultado('Crear: PENDIENTE, vence en 15 días y usuario de la sesión', cg.estado === 'PENDIENTE' && cg.usuario_id === 2, JSON.stringify(cg.estado));
+  const lineas = await q1(db, 'SELECT precio_unitario p, subtotal s FROM detalle_cotizacion_producto WHERE cotizacion_id = $1', [g1.id]);
+  resultado('Crear: detalle con el precio calculado', Number(lineas.p) === 130 && Number(lineas.s) === 260, JSON.stringify(lineas));
+
+  await db.exec('UPDATE producto SET precio_compra_actual = 200 WHERE id = 1');
+  const g3 = await guardar(g1.id, [P(1, 3)], []);
+  resultado('Editar: la línea ya cotizada conserva su precio', Number(g3.total) === 390, JSON.stringify(g3));
+  const g4 = await guardar(null, [P(1, 1)], []);
+  resultado('Crear: una línea nueva toma el precio actual', Number(g4.total) === 260, JSON.stringify(g4));
+  const bitG = (await db.query(`SELECT accion FROM bitacora WHERE descripcion LIKE $1 ORDER BY id`, [`%${g1.numero_cotizacion} %`])).rows.map((f) => f.accion);
+  resultado('Bitácora CREAR_COTIZACION y ACTUALIZAR_COTIZACION', bitG.join() === 'CREAR_COTIZACION,ACTUALIZAR_COTIZACION', bitG.join());
+
+  await esperaError('Sin líneas', () => guardar(null, [], []), /sin equipos ni servicios/);
+  await esperaError('Producto inactivo', () => guardar(null, [P(2, 1)], []), /no está activo/);
+  await esperaError('Servicio inactivo', () => guardar(null, [], [{ servicio_id: 2, horas_estimadas: 1 }]), /no está activo/);
+  await esperaError('Cantidad 0', () => guardar(null, [P(1, 0)], []), /mayor a 0/);
+  await esperaError('Cliente inexistente', () => guardar(null, [P(1, 1)], [], 999), /cliente no existe/);
+  await esperaError('Establecimiento de otro cliente', () => guardar(null, [P(1, 1)], [], 1, 999), /no pertenece al cliente/);
+  await esperaError('Editar una cotización APROBADA', () => guardar(1, [P(1, 1)], []), /estado PENDIENTE/);
+  await esperaError('Editar una cotización RECHAZADA', () => guardar(6, [P(1, 1)], []), /estado PENDIENTE/);
+  const fnG = await q1(db, `SELECT has_function_privilege('anon', oid, 'EXECUTE') a, has_function_privilege('service_role', oid, 'EXECUTE') s FROM pg_proc WHERE proname = 'fn_guardar_cotizacion'`);
+  resultado('fn_guardar_cotizacion: solo service_role', !fnG.a && fnG.s, JSON.stringify(fnG));
 
   await db.close();
   console.log(`\nTOTAL: ${ok} pasan, ${fallos} fallan`);

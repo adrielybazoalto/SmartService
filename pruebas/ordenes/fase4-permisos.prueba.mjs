@@ -75,8 +75,7 @@ await rechaza('Jornadas: eliminarBloqueoAction', () => J.eliminarBloqueoAction(1
 await rechaza('Órdenes: el Técnico no convierte cotizaciones', () => O.convertirCotizacionAOrdenAccion(1, {}))
 await rechaza('Órdenes: el Técnico no cambia la ventana', () => O.actualizarVentanaOrdenAccion(1, '2026-11-02', '08:00', '09:00'))
 await rechaza('Órdenes: el Técnico no cancela', () => O.cancelarOrdenAccion(1))
-await rechaza('Cotizaciones: eliminarCotizacionAccion', () => C.eliminarCotizacionAccion(1))
-await rechaza('Cotizaciones: generarSiguienteNumeroCotizacionAccion', () => C.generarSiguienteNumeroCotizacionAccion())
+await rechaza('Cotizaciones: rechazarCotizacionAccion', () => C.rechazarCotizacionAccion(1))
 await rechaza('Cotizaciones: crearCotizacionCompletaAccion', () => C.crearCotizacionCompletaAccion({ productos: [], servicios: [] }))
 await rechaza('Cotizaciones: actualizarCotizacionCompletaAccion', () => C.actualizarCotizacionCompletaAccion(1, { productos: [], servicios: [] }))
 

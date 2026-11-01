@@ -177,10 +177,8 @@ export default function EditarCotizacionPage() {
     const res = await actualizarCotizacionCompletaAccion(Number(params.id), {
       cliente_id: clienteId,
       establecimiento_id: establecimientoId,
-      usuario_id: 1,
-      productos: productosSeleccionados,
-      servicios: serviciosSeleccionados,
-      total: totalGeneral
+      productos: productosSeleccionados.map(p => ({ producto_id: p.producto_id, cantidad: p.cantidad })),
+      servicios: serviciosSeleccionados.map(s => ({ servicio_id: s.servicio_id, horas_estimadas: s.horas_estimadas }))
     })
 
     if (res.success) {

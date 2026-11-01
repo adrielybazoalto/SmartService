@@ -117,20 +117,14 @@ export default function NuevaCotizacionPage() {
     const res = await crearCotizacionCompletaAccion({
       cliente_id: Number(clienteId),
       establecimiento_id: Number(establecimientoId),
-      usuario_id: 1, // ID de usuario Administrador / Encargado de sesión
       productos: carritoProductos.map(p => ({
         producto_id: p.id,
-        cantidad: p.cantidad,
-        precio_unitario: p.precio_unitario,
-        subtotal: p.cantidad * p.precio_unitario
+        cantidad: p.cantidad
       })),
       servicios: carritoServicios.map(s => ({
         servicio_id: s.id,
-        horas_estimadas: s.horas_estimadas,
-        precio_hora: s.precio_hora,
-        subtotal: s.horas_estimadas * s.precio_hora
-      })),
-      total: totalGeneral
+        horas_estimadas: s.horas_estimadas
+      }))
     })
 
     setCargando(false)

@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation'
 import {
   obtenerCotizacionesAccion,
   confirmarAnticipoTarjetaAction,
-  cambiarEstadoCotizacionAccion,
-  eliminarCotizacionAccion,
+  rechazarCotizacionAccion,
   permisosCotizacionesAccion,
 } from '@/app/actions/cotizaciones'
 import { convertirCotizacionAOrdenAccion } from '@/app/actions/ordenes-trabajo'
@@ -27,7 +26,7 @@ export default function CotizacionesPage() {
   const router = useRouter()
   const [cotizaciones, setCotizaciones] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
-  const [permisos, setPermisos] = useState({ crear: false, actualizar: false, eliminar: false, crearOrden: false, procesar: false })
+  const [permisos, setPermisos] = useState({ crear: false, actualizar: false, crearOrden: false, procesar: false })
   const [cotizacionParaAprobar, setCotizacionParaAprobar] = useState<CotizacionParaAprobar | null>(null)
   const [avisoPago, setAvisoPago] = useState<{ ok: boolean; texto: string } | null>(null)
   const retornoAtendido = useRef(false)
@@ -77,7 +76,7 @@ export default function CotizacionesPage() {
   const handleRechazar = async (id: number, nro: string) => {
     if (confirm(`¿Rechazar la cotización ${nro}?`)) {
       try {
-        await cambiarEstadoCotizacionAccion(id, 'RECHAZADA')
+        await rechazarCotizacionAccion(id)
         alert('Cotización rechazada.')
         cargarCotizaciones()
       } catch (err: any) {
@@ -130,18 +129,6 @@ export default function CotizacionesPage() {
       alert('Error: ' + err.message)
     } finally {
       setConvirtiendo(false)
-    }
-  }
-
-  const handleEliminar = async (id: number, nro: string) => {
-    if (confirm(`¿Estás segura de eliminar la cotización ${nro}?`)) {
-      try {
-        await eliminarCotizacionAccion(id)
-        alert('Cotización eliminada.')
-        cargarCotizaciones()
-      } catch (err: any) {
-        alert('Error: ' + err.message)
-      }
     }
   }
 
@@ -263,7 +250,7 @@ export default function CotizacionesPage() {
                           📄 Ver PDF
                         </a>
 
-                        {permisos.actualizar && (
+                        {permisos.actualizar && cot.estado === 'PENDIENTE' && (
                           <button 
                           onClick={() => router.push(`/cotizaciones/editar/${cot.id}`)}
                           className="text-amber-600 hover:underline text-xs font-medium bg-amber-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
@@ -272,14 +259,6 @@ export default function CotizacionesPage() {
                         </button>
                         )}
 
-                        {permisos.eliminar && (
-                          <button 
-                          onClick={() => handleEliminar(cot.id, cot.numero_cotizacion)}
-                          className="text-red-600 hover:underline text-xs font-medium bg-red-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
-                        >
-                          Eliminar
-                        </button>
-                        )}
                       </div>
                     </td>
                   </tr>
