@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Db } from '@/lib/supabase/types'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { obtenerIpOrigen } from '@/lib/ip'
@@ -6,10 +7,6 @@ import { aMs } from '@/backend/asignaciones/disponibilidad'
 import { ahoraBolivia, ventanaBolivia } from '@/lib/fechas'
 import { procesarReporteCampoSchema, type ProcesarReporteCampoInput } from './schema'
 import type { OrdenTrabajo } from './types'
-
-function num(v: number, decimales = 2): string {
-  return v.toFixed(decimales)
-}
 
 export interface VentanaHorariaInput {
   fecha_programada: string
@@ -211,6 +208,10 @@ export class ControlOrdenesTrabajo {
       throw new Error(`No se encontró la orden de trabajo: ${errOrd?.message}`)
     }
 
+    if (orden.estado !== 'PROGRAMADA') {
+      throw new Error('Solo se puede iniciar una orden en estado Programada')
+    }
+
     if (orden.fecha_inicio_real) {
       throw new Error('La orden ya tiene marca de tiempo de inicio registrada')
     }
@@ -222,6 +223,7 @@ export class ControlOrdenesTrabajo {
         estado: 'EN_PROGRESO',
       })
       .eq('id', ordenId)
+      .eq('estado', 'PROGRAMADA')
       .select()
       .single()
 
@@ -317,31 +319,6 @@ export class ControlOrdenesTrabajo {
   }
 
   /**
-   * Validar stock suficiente para los materiales
-   */
-  static async validarStockMateriales(
-    db: Db,
-    materiales: Array<{ producto_id: number; cantidad_utilizada: number }>,
-  ): Promise<void> {
-    for (const mat of materiales) {
-      const { data: producto, error } = await db
-        .from('producto')
-        .select('id, nombre, stock_disponible')
-        .eq('id', mat.producto_id)
-        .single()
-
-      if (error || !producto) {
-        throw new Error(`No se encontró el producto con ID ${mat.producto_id}`)
-      }
-
-      const stock = parseFloat(producto.stock_disponible || '0')
-      if (mat.cantidad_utilizada > stock) {
-        throw new Error(`Stock insuficiente para el producto "${producto.nombre}". Disponible: ${stock}, Solicitado: ${mat.cantidad_utilizada}`)
-      }
-    }
-  }
-
-  /**
    * Procesar reporte de campo de forma atómica y estandarizar a FINALIZADA
    */
   static async procesarReporteCampo(
@@ -373,132 +350,23 @@ export class ControlOrdenesTrabajo {
       throw new Error('La orden ya se encuentra finalizada')
     }
 
+    if (orden.estado !== 'EN_PROGRESO') {
+      throw new Error('Debe iniciar la labor antes de reportar')
+    }
+
     const ipOrigen = ip && ip.trim() ? ip.trim() : await obtenerIpOrigen()
 
-    // 3. Intentar ejecución atómica mediante RPC en PostgreSQL
-    try {
-      const { data: rpcRes, error: rpcErr } = await (db as any).rpc('fn_procesar_reporte_campo', {
-        p_orden_id: ordenId,
-        p_diagnostico: diagnostico,
-        p_materiales: materiales,
-        p_usuario_id: usuarioId,
-        p_ip: ipOrigen,
-      })
+    // 3. Ejecución atómica en PostgreSQL: si falla, se revierte todo y se muestra el error
+    const { data: rpcRes, error: rpcErr } = await (db as unknown as SupabaseClient).rpc('fn_procesar_reporte_campo', {
+      p_orden_id: ordenId,
+      p_diagnostico: diagnostico,
+      p_materiales: materiales,
+      p_usuario_id: usuarioId,
+      p_ip: ipOrigen,
+    })
 
-      if (!rpcErr && rpcRes) {
-        return {
-          orden: rpcRes.orden,
-          consumos: rpcRes.consumos || [],
-        }
-      }
-      if (rpcErr) {
-        const msg = rpcErr.message || ''
-        const esFuncionFaltante = msg.includes('does not exist') || (msg.includes('function') && msg.includes('not found'))
-        if (!esFuncionFaltante) {
-          throw new Error(msg)
-        }
-      }
-    } catch (e: any) {
-      const msg = e.message || ''
-      const esFuncionFaltante = msg.includes('does not exist') || (msg.includes('function') && msg.includes('not found'))
-      if (!esFuncionFaltante) {
-        throw e
-      }
-    }
-
-    // 4. Fallback con validación previa de stock y compensación
-    if (materiales.length > 0) {
-      await this.validarStockMateriales(db, materiales)
-    }
-
-    const consumosRegistrados = []
-    const movimientosHechos: { productoId: number; stockAnterior: number }[] = []
-
-    try {
-      for (const mat of materiales) {
-        const { data: producto } = await db
-          .from('producto')
-          .select('stock_disponible')
-          .eq('id', mat.producto_id)
-          .single()
-
-        if (!producto) continue
-
-        const stockAnterior = parseFloat(producto.stock_disponible || '0')
-        if (mat.cantidad_utilizada > stockAnterior) {
-          throw new Error(`Stock insuficiente para el producto ID ${mat.producto_id}`)
-        }
-        const stockNuevo = stockAnterior - mat.cantidad_utilizada
-
-        const { error: errMov } = await db.from('movimiento_kardex').insert({
-          producto_id: mat.producto_id,
-          usuario_id: usuarioId,
-          tipo_movimiento: 'SALIDA',
-          cantidad: num(mat.cantidad_utilizada),
-          stock_anterior: num(stockAnterior),
-          origen_movimiento: `orden_trabajo:${ordenId}`,
-          observacion: `Consumo en OT ${orden.codigo_orden} - ${mat.observacion || 'Sin observación'}`,
-        })
-        if (errMov) throw new Error(`No se pudo registrar movimiento kardex: ${errMov.message}`)
-        movimientosHechos.push({ productoId: mat.producto_id, stockAnterior })
-
-        const { error: errStock } = await db
-          .from('producto')
-          .update({ stock_disponible: num(stockNuevo) })
-          .eq('id', mat.producto_id)
-        if (errStock) throw new Error(`No se pudo actualizar stock: ${errStock.message}`)
-
-        const { data: detalle, error: errDet } = await db
-          .from('detalle_consumo_material')
-          .insert({
-            orden_trabajo_id: ordenId,
-            producto_id: mat.producto_id,
-            cantidad_utilizada: num(mat.cantidad_utilizada),
-            observacion: mat.observacion || null,
-          })
-          .select('*, producto(*)')
-          .single()
-
-        if (errDet) throw new Error(`No se pudo registrar consumo de material: ${errDet.message}`)
-        consumosRegistrados.push(detalle)
-      }
-
-      // Actualizar estado a 'FINALIZADA'
-      const { data: ordenFinalizada, error: errFin } = await db
-        .from('orden_trabajo')
-        .update({
-          estado: 'FINALIZADA',
-          fecha_fin_real: orden.fecha_fin_real || ahoraBolivia(),
-          observaciones_tecnico: diagnostico,
-        })
-        .eq('id', ordenId)
-        .select()
-        .single()
-
-      if (errFin || !ordenFinalizada) {
-        throw new Error(`No se pudo finalizar la orden: ${errFin?.message}`)
-      }
-
-      try {
-        await registrarEvento(db, {
-          usuario_id: usuarioId,
-          accion: 'FINALIZAR_ORDEN_TRABAJO',
-          descripcion: `Se finalizó la Orden de Trabajo ${orden.codigo_orden} con diagnóstico: ${diagnostico.substring(0, 100)}${diagnostico.length > 100 ? '...' : ''}. Materiales consumidos: ${materiales.length}`,
-        }, ipOrigen)
-      } catch (e) {
-        console.warn('[CU12] Error al auditar finalización de OT:', e)
-      }
-
-      return { orden: ordenFinalizada, consumos: consumosRegistrados }
-    } catch (e) {
-      // Revertir stocks afectados en caso de error
-      for (const mov of movimientosHechos) {
-        try {
-          await db.from('producto').update({ stock_disponible: num(mov.stockAnterior) }).eq('id', mov.productoId)
-        } catch {}
-      }
-      throw e
-    }
+    if (rpcErr) throw new Error(rpcErr.message)
+    return { orden: rpcRes.orden, consumos: rpcRes.consumos || [] }
   }
 }
 

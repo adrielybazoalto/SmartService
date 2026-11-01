@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
+import { tienePermisoModulo } from '@/lib/permisos'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { registrarEvento } from '@/backend/bitacora'
 import { obtenerIpOrigen } from '@/lib/ip'
@@ -17,6 +18,12 @@ import {
 
 const RUTA_MODULO = '/personal-tecnico'
 
+async function exigirModulo() {
+  if (!(await tienePermisoModulo(RUTA_MODULO))) {
+    throw new Error('No autorizado: tu rol no tiene el permiso de este módulo.')
+  }
+}
+
 /** Helper para auditar en bitácora sin interrumpir la operación si falla */
 async function auditar(db: Db, usuarioId: number, accion: string, descripcion: string) {
   try {
@@ -29,18 +36,21 @@ async function auditar(db: Db, usuarioId: number, accion: string, descripcion: s
 
 // 1. Listar el personal técnico
 export async function listarTecnicos() {
+  await exigirModulo()
   const db = getSupabaseServiceClient()
   return listarTecnicosService(db)
 }
 
 // 1.1. Obtener resumen global para el estado actual de los técnicos
 export async function obtenerResumenPersonalTecnico() {
+  await exigirModulo()
   const db = getSupabaseServiceClient()
   return obtenerResumenPersonalTecnicoService(db)
 }
 
 // 1.2. Obtener los bloqueos activos de un técnico específico (para poder desbloquearlo)
 export async function obtenerBloqueosTecnico(usuarioId: number) {
+  await exigirModulo()
   const db = getSupabaseServiceClient()
   return obtenerBloqueosTecnicoService(db, usuarioId)
 }
@@ -56,6 +66,7 @@ export async function guardarJornada(
   if (!usuarioActual || !usuarioActual.id) {
     throw new Error('Sesión requerida: debe iniciar sesión para configurar jornadas laborales.')
   }
+  await exigirModulo()
   const db = getSupabaseServiceClient()
 
   const resultado = await guardarJornadaService(db, {
@@ -93,6 +104,7 @@ export async function registrarBloqueo(
   if (!usuarioActual || !usuarioActual.id) {
     throw new Error('Sesión requerida: debe iniciar sesión para registrar bloqueos de técnicos.')
   }
+  await exigirModulo()
   const db = getSupabaseServiceClient()
 
   const resultado = await registrarBloqueoService(db, {
@@ -125,6 +137,7 @@ export async function eliminarBloqueoAction(bloqueoId: number) {
   if (!usuarioActual || !usuarioActual.id) {
     throw new Error('Sesión requerida: debe iniciar sesión para eliminar bloqueos de técnicos.')
   }
+  await exigirModulo()
   const db = getSupabaseServiceClient()
 
   const resultado = await eliminarBloqueoService(db, bloqueoId)

@@ -52,6 +52,9 @@ async function validarCredenciales(correo: string, passwordPlain: string, ip: st
   if (error) throw new Error('No se pudo consultar el usuario.')
   if (!usuario) return { success: false, error: 'Correo o contraseña incorrectos.' }
 
+  // Cuenta inactiva: mismo mensaje que un correo inexistente y no suma intentos
+  if (!usuario.estado) return { success: false, error: 'Correo o contraseña incorrectos.' }
+
   const ahora = Date.now()
 
   // (1) Bloqueo vigente (CU01)
@@ -82,10 +85,6 @@ async function validarCredenciales(correo: string, passwordPlain: string, ip: st
     }
     await actContadores(db, usuario.id, { intentos_fallidos: intentos })
     return { success: false, error: 'Contraseña incorrecta.' }
-  }
-
-  if (!usuario.estado) {
-    return { success: false, error: 'Correo o contraseña incorrectos.' }
   }
 
   // (3) Contraseña correcta -> Reiniciar contadores

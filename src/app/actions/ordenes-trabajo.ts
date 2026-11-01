@@ -26,6 +26,7 @@ async function contexto() {
   const u = (await getCurrentUser()) as any
   const id = Number(u?.id ?? u?.uid)
   if (!u || !Number.isInteger(id) || id <= 0) throw new Error('Sesión expirada. Vuelva a iniciar sesión.')
+  await exigirModulo('/ordenes-trabajo')
   return {
     db: getSupabaseServiceClient() as unknown as Db,
     usuarioId: id,
@@ -80,7 +81,6 @@ export async function obtenerOrdenesTrabajoAccion(): Promise<RespuestaAccion<any
 export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<RespuestaAccion<any>> {
   try {
     const { db, usuarioId } = await contexto()
-    await exigirModulo('/ordenes-trabajo')
     await ControlOrdenesTrabajo.validarTecnicoAsignado(db, id, usuarioId)
     const { data, error } = await db
       .from('orden_trabajo')
@@ -103,7 +103,6 @@ export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<Resp
 export async function cancelarOrdenAccion(ordenId: number): Promise<RespuestaAccion<OrdenTrabajo>> {
   try {
     const { db, usuarioId, ip } = await contexto()
-    await exigirModulo('/ordenes-trabajo')
     await exigirModulo('/asignar-tecnicos')
     const orden = await ControlOrdenesTrabajo.cancelarOrden(db, ordenId, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')

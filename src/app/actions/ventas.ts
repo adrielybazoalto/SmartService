@@ -12,6 +12,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
+import { tienePermisoModulo } from '@/lib/permisos';
 import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
 import { ErrorPago, PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago';
@@ -59,6 +60,7 @@ async function contexto(): Promise<Contexto> {
   const u = (await getCurrentUser()) as any;
   const id = Number(u?.id ?? u?.uid);
   if (!u || !Number.isInteger(id) || id <= 0) throw new VentaError('Sesión expirada. Vuelva a iniciar sesión.');
+  if (!(await tienePermisoModulo('/ventas'))) throw new VentaError('No autorizado: tu rol no tiene el permiso de este módulo.');
   const rol: string = typeof u.rol === 'string' ? u.rol : (u.rol?.nombre ?? u.rol_nombre ?? '');
   return {
     db: getSupabaseServiceClient() as unknown as Db,

@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { obtenerIpOrigen } from '@/lib/ip'
 import { getCurrentUser } from '@/lib/auth'
-import { tieneAccionModulo } from '@/lib/permisos'
+import { tieneAccionModulo, tienePermisoModulo } from '@/lib/permisos'
 import {
   MSG_FALTA_MIGRACION,
   confirmarAnticipoTarjeta,
@@ -16,6 +16,10 @@ import { PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago'
 const CLAVE_MODULO = 'COTIZACIONES'
 const MSG_SIN_PERMISO = 'No autorizado: tu rol no tiene el permiso de este módulo.'
 
+async function exigirModulo() {
+  if (!(await tienePermisoModulo('/cotizaciones'))) throw new Error(MSG_SIN_PERMISO)
+}
+
 // Cambiar el estado es PROCESAR: LEER también lo tiene el Técnico.
 export async function puedeProcesarCotizacionesAccion() {
   return tieneAccionModulo(CLAVE_MODULO, 'PROCESAR')
@@ -23,6 +27,7 @@ export async function puedeProcesarCotizacionesAccion() {
 
 // Obtener lista de clientes
 export async function obtenerClientesAccion() {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   const { data } = await supabase.from('cliente').select('id, nombre, documento_identidad')
   return data || []
@@ -30,6 +35,7 @@ export async function obtenerClientesAccion() {
 
 // Obtener establecimientos por cliente
 export async function obtenerEstablecimientosPorClienteAccion(clienteId: number) {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   const cId = Number(clienteId)
   if (!cId || isNaN(cId)) return []
@@ -48,6 +54,7 @@ export async function obtenerEstablecimientosPorClienteAccion(clienteId: number)
 
 // Obtener productos activos con imagen
 export async function obtenerProductosConImagen() {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   const { data } = await supabase
     .from('producto')
@@ -64,6 +71,7 @@ export async function obtenerProductosConImagen() {
 
 // Obtener servicios técnicos
 export async function obtenerServiciosTecnicosAccion() {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   const { data } = await supabase.from('servicio').select('*')
   return data || []
@@ -71,6 +79,7 @@ export async function obtenerServiciosTecnicosAccion() {
 
 // Obtener lista completa de cotizaciones con nombre de cliente
 export async function obtenerCotizacionesAccion() {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   const { data, error } = await supabase
     .from('cotizacion')
@@ -89,6 +98,7 @@ export async function obtenerCotizacionesAccion() {
 
 // Obtener cotización individual por ID con su detalle completo (productos y servicios)
 export async function obtenerCotizacionPorIdAccion(id: number) {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   
   // 1. Obtener cabecera de cotización
@@ -262,6 +272,7 @@ export async function cambiarEstadoCotizacionAccion(id: number, nuevoEstado: str
 
 // Eliminar cotización
 export async function eliminarCotizacionAccion(id: number) {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   // Borrarla perdería el registro del dinero recibido
   const { data: cot } = await supabase.from('cotizacion').select('anticipo_monto').eq('id', id).maybeSingle()
@@ -295,6 +306,7 @@ export async function eliminarCotizacionAccion(id: number) {
 
 // Generar el siguiente correlativo único dinámico para cotización (ej. COT-2026-0006)
 export async function generarSiguienteNumeroCotizacionAccion(offset: number = 0): Promise<string> {
+  await exigirModulo()
   const supabase = getSupabaseServiceClient()
   const anioActual = new Date().getFullYear()
   const prefijo = `COT-${anioActual}-`
@@ -334,6 +346,7 @@ export async function crearCotizacionCompletaAccion(formData: {
 }) {
   const supabase = getSupabaseServiceClient()
   try {
+    await exigirModulo()
     const fechaEmision = new Date().toISOString().split('T')[0]
     const fechaVencimiento = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
@@ -433,6 +446,7 @@ export async function actualizarCotizacionCompletaAccion(cotizacionId: number, f
 }) {
   const supabase = getSupabaseServiceClient()
   try {
+    await exigirModulo()
     // El estado no se edita aquí: aprobar exige registrar el anticipo
     const { data: actual } = await supabase.from('cotizacion').select('anticipo_monto').eq('id', cotizacionId).maybeSingle()
     if (formData.total < Number(actual?.anticipo_monto ?? 0)) {

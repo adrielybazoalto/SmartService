@@ -13,6 +13,7 @@
     "test:bd:anticipo": "node pruebas/bd/cu08-anticipo.prueba.mjs",
     "test:anticipo:tarjeta": "node pruebas/ordenes/cu08-anticipo-tarjeta.prueba.mjs",
     "test:bd:rbac": "node pruebas/bd/rbac-matriz.prueba.mjs",
+    "test:permisos": "node pruebas/ordenes/fase4-permisos.prueba.mjs",
     "test:ordenes": "node pruebas/ordenes/cu11-cu12-fechas.prueba.mjs"
   },
   "dependencies": {

@@ -11,6 +11,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
+import { tienePermisoModulo } from '@/lib/permisos';
 import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
 import {
@@ -49,6 +50,7 @@ async function contexto(): Promise<{ db: Db; auditoria: Auditoria }> {
   if (!u || !Number.isInteger(usuarioId) || usuarioId <= 0) {
     throw new ProveedorError('Sesión expirada. Vuelva a iniciar sesión.');
   }
+  if (!(await tienePermisoModulo(RUTA))) throw new ProveedorError('No autorizado: tu rol no tiene el permiso de este módulo.');
   return {
     db: getSupabaseServiceClient() as unknown as Db,
     auditoria: { usuarioId, ip: await obtenerIpOrigen() },

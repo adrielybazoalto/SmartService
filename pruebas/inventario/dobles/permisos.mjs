@@ -5,3 +5,6 @@ export async function getPermisosDeRol(rolId) {
 export async function tienePermisoModulo(ruta) {
   return (globalThis.__cu16?.rutasPermitidas ?? []).includes(ruta)
 }
+export async function tieneAccionModulo(clave, accion) {
+  return (globalThis.__cu16?.accionesPermitidas ?? []).includes(`${clave}:${accion}`)
+}

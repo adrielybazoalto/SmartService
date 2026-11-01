@@ -513,7 +513,10 @@ async function nuevaBD() {
     CREATE ROLE service_role NOLOGIN BYPASSRLS; CREATE ROLE dueno NOLOGIN;
     GRANT CREATE ON DATABASE postgres TO dueno; ALTER SCHEMA public OWNER TO dueno; SET ROLE dueno;`)
   await pg.exec(leer('schema.sql'))
-  await pg.exec(`ALTER TABLE rol_permiso ADD COLUMN descripcion VARCHAR(255);`)
+  // Tablas retiradas de schema.sql: las migraciones CU15/CU16 aún las exigen.
+  await pg.exec(`
+    CREATE TABLE permiso (id SERIAL PRIMARY KEY, nombre VARCHAR(100) UNIQUE, ruta VARCHAR(255), descripcion VARCHAR(255));
+    CREATE TABLE rol_permiso (id SERIAL PRIMARY KEY, rol_id INTEGER NOT NULL, permiso_id INTEGER NOT NULL, descripcion VARCHAR(255));`)
   await pg.exec(leer('seed.sql'))
   await pg.exec(`
     INSERT INTO categoria_producto (id, nombre) VALUES (1, 'Cámaras'), (2, 'Cableado');

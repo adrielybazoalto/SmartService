@@ -119,7 +119,7 @@ await prueba('ahoraBolivia es UTC-4 con formato YYYY-MM-DD HH:mm:ss', () => {
   casi(a, ahoraEsperado())
 })
 await prueba('Marcar inicio guarda hora de Bolivia', async () => {
-  const { db, escrito } = dbFalsa({ codigo_orden: 'OT-1', fecha_inicio_real: null })
+  const { db, escrito } = dbFalsa({ codigo_orden: 'OT-1', estado: 'PROGRAMADA', fecha_inicio_real: null })
   await ControlOrdenesTrabajo.registrarMarcaTiempoInicio(db, 1)
   casi(escrito.fecha_inicio_real, ahoraEsperado())
   igual(escrito.estado, 'EN_PROGRESO')
@@ -130,6 +130,32 @@ await prueba('Marcar fin guarda hora de Bolivia y calcula las horas', async () =
   await ControlOrdenesTrabajo.registrarMarcaTiempoFin(db, 1)
   casi(escrito.fecha_fin_real, ahoraEsperado())
   igual(escrito.observaciones_tecnico, '[HORAS_TECNICAS: 2.00h]')
+})
+
+await prueba('Marcar inicio: solo en PROGRAMADA', async () => {
+  const { db, escrito } = dbFalsa({ codigo_orden: 'OT-1', estado: 'EN_PROGRESO', fecha_inicio_real: null })
+  await falla(() => ControlOrdenesTrabajo.registrarMarcaTiempoInicio(db, 1), /estado Programada/)
+  igual(escrito, {})
+})
+
+const reporte = (db) => ControlOrdenesTrabajo.procesarReporteCampo(db, { ordenId: 1, diagnostico: 'ok', materiales: [] }, 0, '10.0.0.1')
+await prueba('Reporte de campo: solo en EN_PROGRESO', async () => {
+  const { db } = dbFalsa({ estado: 'PROGRAMADA' })
+  let llamadas = 0
+  db.rpc = async () => { llamadas++; return { data: null, error: null } }
+  await falla(() => reporte(db), /Debe iniciar la labor antes de reportar/)
+  igual(llamadas, 0)
+})
+await prueba('Reporte de campo: usa la función SQL', async () => {
+  const { db } = dbFalsa({ estado: 'EN_PROGRESO' })
+  db.rpc = async (nombre) => ({ data: { orden: { nombre }, consumos: [] }, error: null })
+  igual((await reporte(db)).orden.nombre, 'fn_procesar_reporte_campo')
+})
+await prueba('Reporte de campo: sin fallback, si la función falla se muestra el error', async () => {
+  const { db, escrito } = dbFalsa({ estado: 'EN_PROGRESO' })
+  db.rpc = async () => ({ data: null, error: { message: 'function does not exist' } })
+  await falla(() => reporte(db), /function does not exist/)
+  igual(escrito, {})
 })
 
 // ---------- Mostrar ----------
