@@ -1,5 +1,5 @@
 import 'server-only'
-import nodemailer, { type Transporter, type TransportOptions } from 'nodemailer'
+import nodemailer, { type Transporter } from 'nodemailer'
 
 export interface EnviarCorreoRecuperacionParams {
   para: string
@@ -7,59 +7,36 @@ export interface EnviarCorreoRecuperacionParams {
 }
 
 /**
- * Obtiene o inicializa el transporte de Nodemailer.
- * Si están definidas las variables de entorno SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS),
- * utiliza el servicio SMTP real configurado.
- * En caso de no existir credenciales configuradas en desarrollo, crea una cuenta de prueba Ethereal.
+ * Obtiene el transporte de Nodemailer leyendo las credenciales SMTP desde el entorno
+ * (.env: HOST, PORT, USER, PASS o SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS).
  */
-export async function getEmailTransporter(): Promise<Transporter> {
-  const host = process.env.SMTP_HOST
-  const port = parseInt(process.env.SMTP_PORT || '587', 10)
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
+export function getEmailTransporter(): Transporter {
+  const host = process.env.HOST || process.env.SMTP_HOST || 'smtp.gmail.com'
+  const port = parseInt(process.env.PORT || process.env.SMTP_PORT || '587', 10)
+  const secure = process.env.SECURE === 'true' || process.env.SMTP_SECURE === 'true' || port === 465
+  const user = process.env.USER || process.env.SMTP_USER
+  const pass = process.env.PASS || process.env.SMTP_PASS
 
-  if (host && user && pass) {
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user,
-        pass,
-      },
-    })
-  }
-
-  // Si no hay configuración SMTP explícita, intentamos con cuenta de prueba de Nodemailer (Ethereal)
-  try {
-    const testAccount = await nodemailer.createTestAccount()
-    return nodemailer.createTransport({
-      host: testAccount.smtp.host,
-      port: testAccount.smtp.port,
-      secure: testAccount.smtp.secure,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    })
-  } catch (error) {
-    console.warn('[EMAIL] No se pudo conectar con el servicio de prueba SMTP, usando transporte básico:', error)
-    return nodemailer.createTransport({
-      streamTransport: true,
-      newline: 'windows',
-    } as TransportOptions)
-  }
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: user && pass ? {
+      user,
+      pass,
+    } : undefined,
+  })
 }
 
 /**
- * Envía el correo electrónico con el enlace de recuperación de contraseña usando Nodemailer.
+ * Envía el correo electrónico real con el enlace de recuperación de contraseña usando Nodemailer.
  */
 export async function enviarCorreoRecuperacion({ para, enlace }: EnviarCorreoRecuperacionParams): Promise<void> {
-  const transporter = await getEmailTransporter()
-  const remitente = process.env.SMTP_FROM || process.env.SMTP_USER || 'SmartService <no-reply@smartservice.com>'
+  const transporter = getEmailTransporter()
+  const user = process.env.USER || process.env.SMTP_USER
+  const remitente = process.env.FROM || process.env.SMTP_FROM || user || 'SmartService <no-reply@smartservice.com>'
 
-  const info = await transporter.sendMail({
+  await transporter.sendMail({
     from: remitente,
     to: para,
     subject: 'Recuperación de contraseña — SmartService',
@@ -101,11 +78,4 @@ El equipo de SmartService`,
       </div>
     `,
   })
-
-  const previewUrl = nodemailer.getTestMessageUrl(info)
-  if (previewUrl) {
-    console.log(`[EMAIL] Correo enviado (Ethereal test preview): ${previewUrl}`)
-  } else {
-    console.log(`[EMAIL] Correo de recuperación enviado con éxito a: ${para} (MessageId: ${info.messageId})`)
-  }
 }
