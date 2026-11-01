@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { headers } from 'next/headers'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { ControlRecuperarContrasena } from '@/backend/recuperar'
 
@@ -28,6 +29,7 @@ function errorVisible(e: unknown, fallback: string): string {
  * CU02 — Formulario 1 (mostrarFormularioEmail).
  * Solicita el enlace de recuperación. Si el correo no existe, el servicio
  * lanza 'No existe una cuenta asociada a este correo' (se muestra al usuario).
+ * Envía el enlace directamente al correo electrónico del usuario mediante Nodemailer.
  */
 export async function solicitarRecuperacionAction(
   _prevState: SolicitarRecuperacionState,
@@ -35,11 +37,21 @@ export async function solicitarRecuperacionAction(
 ): Promise<SolicitarRecuperacionState> {
   try {
     const db = getSupabaseServiceClient()
-    const resultado = await ControlRecuperarContrasena.solicitarRecuperacion(db, {
-      correo: String(formData.get('correo') ?? ''),
-    })
+    const headerList = await headers()
+    const host = headerList.get('host') || 'localhost:3000'
+    const proto = headerList.get('x-forwarded-proto') || (host.startsWith('localhost') ? 'http' : 'https')
+    const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`
 
-    return { ok: true, correo: resultado.correo, enlace: resultado.enlace }
+    const resultado = await ControlRecuperarContrasena.solicitarRecuperacion(
+      db,
+      {
+        correo: String(formData.get('correo') ?? ''),
+      },
+      baseUrl,
+    )
+
+    // Por seguridad, ya no se expone el enlace directamente al cliente en el frontend
+    return { ok: true, correo: resultado.correo }
   } catch (e) {
     return {
       ok: false,

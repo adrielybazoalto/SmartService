@@ -77,29 +77,16 @@ function FormularioEmail({ errorInicial }: { errorInicial?: string }) {
   )
 
   // Resultado exitoso (mostrarResultado)
-  if (state.ok && state.enlace) {
+  if (state.ok) {
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           Revisa tu correo: enviamos un enlace para restablecer tu contraseña a{' '}
           <span className="font-medium text-emerald-900">{state.correo}</span>.
         </div>
-
-        {/* Simulador: no hay SMTP configurado, el enlace se muestra aquí */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
-          <p className="font-semibold text-slate-700">
-            Simulador de correo (sin SMTP)
-          </p>
-          <a
-            href={state.enlace}
-            className="mt-1 block break-all text-lime-700 transition-colors hover:text-lime-800"
-          >
-            {state.enlace}
-          </a>
-          <p className="mt-2">
-            El enlace caduca en 15 minutos y solo puede usarse una vez.
-          </p>
-        </div>
+        <p className="text-center text-xs text-slate-500">
+          El enlace caduca en 15 minutos y solo puede usarse una vez. Si no lo encuentras en tu bandeja de entrada, revisa tu carpeta de correo no deseado o spam.
+        </p>
       </div>
     )
   }

@@ -3,6 +3,7 @@ import type { Db } from '@/lib/supabase/types'
 import { hashContrasena } from '@/lib/password'
 import { registrarBitacora } from '@/backend/bitacora'
 import { GestorSesiones } from '@/lib/sesiones'
+import { enviarCorreoRecuperacion } from '@/lib/email'
 import {
   nuevaContrasenaSchema,
   solicitarRecuperacionSchema,
@@ -22,11 +23,6 @@ function crearTokenSeguro(): string {
   return randomBytes(32).toString('hex')
 }
 
-/** Simula el envío del correo (no hay SMTP): registra el enlace en el log. */
-function enviarCorreoRecuperacion(correo: string, enlace: string): void {
-  console.log(`[SIMULADOR-CORREO] Enlace de recuperación para ${correo}: ${enlace}`)
-}
-
 /**
  * ControlRecuperarContrasena (CU02).
  * Middleware entre la IURecuperarContrasena y los datos: valida, genera el
@@ -38,11 +34,12 @@ export class ControlRecuperarContrasena {
    * 1) Solicita el enlace: si el correo no está registrado lanza la excepción
    * 'No existe una cuenta asociada a este correo'. Si existe, genera un token
    * seguro con expiración limitada, lo guarda en TOKEN_RECUPERACION (solo su
-   * hash) y simula el envío del correo.
+   * hash) y envía el correo electrónico con el enlace mediante Nodemailer.
    */
   static async solicitarRecuperacion(
     db: Db,
     input: SolicitarRecuperacionInput,
+    baseUrl?: string,
   ): Promise<EnlaceRecuperacion> {
     const { correo: correoRaw } = solicitarRecuperacionSchema.parse(input)
     const correo = correoRaw.trim().toLowerCase()
@@ -73,9 +70,13 @@ export class ControlRecuperarContrasena {
       descripcion: `Solicitud de recuperación de contraseña para ${correo}`,
     })
 
-    const enlace = `/recuperar?token=${token}`
-    enviarCorreoRecuperacion(correo, enlace)
-    return { correo, enlace }
+    const enlaceRelativo = `/recuperar?token=${token}`
+    const enlaceCompleto = baseUrl
+      ? `${baseUrl.replace(/\/$/, '')}${enlaceRelativo}`
+      : enlaceRelativo
+
+    await enviarCorreoRecuperacion({ para: correo, enlace: enlaceCompleto })
+    return { correo, enlace: enlaceCompleto }
   }
 
   /**
