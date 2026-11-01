@@ -7,6 +7,7 @@
 // =====================================================================
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { horasEntre } from "@/backend/asignaciones/disponibilidad";
 import { obtenerUsuarioSesion } from "./integracion";
 import { verificarOrdenLiquidable } from "./reglas";
 import {
@@ -33,9 +34,7 @@ function primero<T>(valor: T | T[] | null | undefined): T | null {
 
 export /** Horas efectivas = fin real - inicio real (mismo cálculo que el SQL). */
 function calcularHoras(inicio: string | null, fin: string | null): number {
-  if (!inicio || !fin) return 0;
-  const ms = new Date(fin).getTime() - new Date(inicio).getTime();
-  return ms > 0 ? Math.round((ms / 3_600_000) * 100) / 100 : 0;
+  return Math.max(0, horasEntre(inicio, fin) ?? 0);
 }
 
 type OrdenConNota = OrdenPendienteLiquidar & { tieneNota: boolean };

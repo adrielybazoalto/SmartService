@@ -3,10 +3,14 @@ import type { Db } from '@/lib/supabase/types'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { obtenerIpOrigen } from '@/lib/ip'
 import { registrarEvento } from '@/backend/bitacora'
-import { aMs } from '@/backend/asignaciones/disponibilidad'
-import { ahoraBolivia, ventanaBolivia } from '@/lib/fechas'
+import { horasEntre } from '@/backend/asignaciones/disponibilidad'
+import { motivosCuadrillaEnVentana } from '@/backend/asignaciones/service'
+import { ahoraBolivia, formatearFechaHora, ventanaBolivia } from '@/lib/fechas'
+import { ESTADO_CANCELADA, ESTADO_EN_PROGRESO, ESTADO_FINALIZADA, ESTADO_PROGRAMADA } from './estados'
 import { procesarReporteCampoSchema, type ProcesarReporteCampoInput } from './schema'
 import type { OrdenTrabajo } from './types'
+
+const MSG_FALTA_MIGRACION = 'Falta aplicar la migración de órdenes de trabajo en la base de datos'
 
 export interface VentanaHorariaInput {
   fecha_programada: string
@@ -36,89 +40,87 @@ export class ControlOrdenesTrabajo {
     }
     const { inicio, fin } = ventanaBolivia(ventana.fecha_programada, ventana.hora_inicio, ventana.hora_fin)
 
-    // Obtener la cotización
-    const { data: cotizacion, error: errCot } = await db
-      .from('cotizacion')
+    return this.crearOrdenBD(db, { cotizacionId, tipoTrabajo: null, inicio, fin }, usuarioId, ip)
+  }
+
+  /** Orden correctiva, sin cotización (subflujo del CU12). */
+  static async crearOrdenCorrectiva(
+    db: Db,
+    datos: VentanaHorariaInput & { tipo_trabajo: string },
+    usuarioId: number,
+    ip?: string | null,
+  ): Promise<OrdenTrabajo> {
+    if (!datos.tipo_trabajo?.trim()) throw new Error('El tipo de trabajo es obligatorio')
+    const { inicio, fin } = ventanaBolivia(datos.fecha_programada, datos.hora_inicio, datos.hora_fin)
+    return this.crearOrdenBD(db, { cotizacionId: null, tipoTrabajo: datos.tipo_trabajo.trim(), inicio, fin }, usuarioId, ip)
+  }
+
+  /** El correlativo y la bitácora se resuelven en una transacción (fn_crear_orden_trabajo). */
+  private static async crearOrdenBD(
+    db: Db,
+    orden: { cotizacionId: number | null; tipoTrabajo: string | null; inicio: string; fin: string },
+    usuarioId: number | undefined,
+    ip?: string | null,
+  ): Promise<OrdenTrabajo> {
+    const { data, error } = await (db as unknown as SupabaseClient).rpc('fn_crear_orden_trabajo', {
+      p_usuario_id: usuarioId,
+      p_cotizacion_id: orden.cotizacionId,
+      p_tipo_trabajo: orden.tipoTrabajo,
+      p_inicio: orden.inicio,
+      p_fin: orden.fin,
+      p_ip: ip && ip.trim() ? ip.trim() : await obtenerIpOrigen(),
+    })
+    if (error) throw new Error(error.code === 'PGRST202' ? MSG_FALTA_MIGRACION : error.message)
+    return data as OrdenTrabajo
+  }
+
+  /**
+   * Cambia la ventana de una orden PROGRAMADA. Si ya tiene cuadrilla, vuelve a
+   * validar la disponibilidad de cada técnico en la ventana nueva.
+   */
+  static async cambiarVentanaOrden(
+    db: Db,
+    ordenId: number,
+    ventana: VentanaHorariaInput,
+    usuarioId: number,
+    ip?: string | null,
+  ): Promise<OrdenTrabajo> {
+    const { inicio, fin } = ventanaBolivia(ventana.fecha_programada, ventana.hora_inicio, ventana.hora_fin)
+
+    const { data: orden, error: errOrd } = await db
+      .from('orden_trabajo')
       .select('*')
-      .eq('id', cotizacionId)
+      .eq('id', ordenId)
       .single()
-
-    if (errCot || !cotizacion) {
-      throw new Error(`No se encontró la cotización: ${errCot?.message || 'desconocido'}`)
+    if (errOrd || !orden) throw new Error('No se encontró la orden de trabajo')
+    if (orden.estado !== ESTADO_PROGRAMADA) {
+      throw new Error('Solo se puede cambiar la ventana de una orden en estado Programada')
     }
 
-    if (cotizacion.estado !== 'APROBADA') {
-      throw new Error('Solo se pueden convertir cotizaciones en estado APROBADA')
-    }
+    const conflictos = await motivosCuadrillaEnVentana(db, orden, inicio, fin)
+    if (conflictos.length > 0) throw new Error(conflictos.join('\n'))
 
-    // Verificar si ya existe una OT para esta cotización
-    const { data: otExistente } = await db
+    const { data: actualizada, error } = await db
       .from('orden_trabajo')
-      .select('id, codigo_orden')
-      .eq('cotizacion_id', cotizacionId)
-      .maybeSingle()
-
-    if (otExistente) {
-      throw new Error(`Ya existe una Orden de Trabajo para esta cotización: ${otExistente.codigo_orden}`)
-    }
-
-    // Generar código correlativo único OT-YYYY-XXX
-    const anio = ahoraBolivia().slice(0, 4)
-    const prefijo = `OT-${anio}-`
-
-    const { data: otsAnio } = await db
-      .from('orden_trabajo')
-      .select('codigo_orden')
-      .like('codigo_orden', `${prefijo}%`)
-
-    let maxSec = 0
-    if (otsAnio && otsAnio.length > 0) {
-      for (const ot of otsAnio) {
-        if (ot.codigo_orden) {
-          const match = ot.codigo_orden.match(/OT-\d{4}-(\d+)/i)
-          if (match && match[1]) {
-            const num = parseInt(match[1], 10)
-            if (!isNaN(num) && num > maxSec) maxSec = num
-          }
-        }
-      }
-    }
-
-    const codigoOrden = `${prefijo}${String(maxSec + 1).padStart(3, '0')}`
-
-    // Crear orden de trabajo con ventana horaria garantizada
-    const { data: orden, error: errOt } = await db
-      .from('orden_trabajo')
-      .insert({
-        cotizacion_id: cotizacionId,
-        codigo_orden: codigoOrden,
-        tipo_trabajo: 'SERVICIO',
-        estado: 'PROGRAMADA',
-        fecha_inicio_programada: inicio,
-        fecha_fin_programada: fin,
-      })
+      .update({ fecha_inicio_programada: inicio, fecha_fin_programada: fin })
+      .eq('id', ordenId)
+      .eq('estado', ESTADO_PROGRAMADA)
       .select()
-      .single()
+      .maybeSingle()
+    if (error) throw new Error(`No se pudo actualizar la ventana: ${error.message}`)
+    if (!actualizada) throw new Error('Solo se puede cambiar la ventana de una orden en estado Programada')
 
-    if (errOt || !orden) {
-      throw new Error(`No se pudo crear la orden de trabajo: ${errOt?.message}`)
+    try {
+      await registrarEvento(db, {
+        usuario_id: usuarioId,
+        accion: 'MODIFICAR_VENTANA_ORDEN',
+        descripcion: `Se cambió la ventana de la Orden de Trabajo ${orden.codigo_orden}: ${formatearFechaHora(orden.fecha_inicio_programada)} a ${formatearFechaHora(orden.fecha_fin_programada)} → ${formatearFechaHora(inicio)} a ${formatearFechaHora(fin)}`,
+      }, ip && ip.trim() ? ip.trim() : await obtenerIpOrigen())
+    } catch (e) {
+      console.warn('[CU12] Error al auditar cambio de ventana:', e)
     }
 
-    // Registrar en bitácora
-    if (usuarioId) {
-      try {
-        const ipOrigen = ip && ip.trim() ? ip.trim() : await obtenerIpOrigen()
-        await registrarEvento(db, {
-          usuario_id: usuarioId,
-          accion: 'CREAR_ORDEN_TRABAJO',
-          descripcion: `Se creó la Orden de Trabajo ${codigoOrden} a partir de la cotización #${cotizacionId} (Ventana: ${inicio} a ${fin})`,
-        }, ipOrigen)
-      } catch (e) {
-        console.warn('[CU12] Error al auditar creación de OT:', e)
-      }
-    }
-
-    return orden
+    return actualizada
   }
 
   /**
@@ -163,9 +165,9 @@ export class ControlOrdenesTrabajo {
   ): Promise<OrdenTrabajo> {
     const { data: orden, error } = await db
       .from('orden_trabajo')
-      .update({ estado: 'CANCELADA' })
+      .update({ estado: ESTADO_CANCELADA })
       .eq('id', ordenId)
-      .eq('estado', 'PROGRAMADA')
+      .eq('estado', ESTADO_PROGRAMADA)
       .select()
       .maybeSingle()
 
@@ -208,7 +210,7 @@ export class ControlOrdenesTrabajo {
       throw new Error(`No se encontró la orden de trabajo: ${errOrd?.message}`)
     }
 
-    if (orden.estado !== 'PROGRAMADA') {
+    if (orden.estado !== ESTADO_PROGRAMADA) {
       throw new Error('Solo se puede iniciar una orden en estado Programada')
     }
 
@@ -220,10 +222,10 @@ export class ControlOrdenesTrabajo {
       .from('orden_trabajo')
       .update({
         fecha_inicio_real: ahoraBolivia(),
-        estado: 'EN_PROGRESO',
+        estado: ESTADO_EN_PROGRESO,
       })
       .eq('id', ordenId)
-      .eq('estado', 'PROGRAMADA')
+      .eq('estado', ESTADO_PROGRAMADA)
       .select()
       .single()
 
@@ -279,21 +281,11 @@ export class ControlOrdenesTrabajo {
     }
 
     const fechaFin = ahoraBolivia()
-    const diffMs = aMs(fechaFin) - aMs(orden.fecha_inicio_real)
-    const horasTecnicas = Math.max(0, diffMs / (1000 * 60 * 60))
-
-    const updateData: any = {
-      fecha_fin_real: fechaFin,
-      estado: orden.estado === 'EN_PROGRESO' ? 'EN_PROGRESO' : orden.estado,
-    }
-
-    updateData.observaciones_tecnico = orden.observaciones_tecnico
-      ? `${orden.observaciones_tecnico}\n[HORAS_TECNICAS: ${horasTecnicas.toFixed(2)}h]`
-      : `[HORAS_TECNICAS: ${horasTecnicas.toFixed(2)}h]`
+    const horasTecnicas = Math.max(0, horasEntre(orden.fecha_inicio_real, fechaFin) ?? 0)
 
     const { data: updated, error: errUpd } = await db
       .from('orden_trabajo')
-      .update(updateData)
+      .update({ fecha_fin_real: fechaFin })
       .eq('id', ordenId)
       .select()
       .single()
@@ -346,11 +338,11 @@ export class ControlOrdenesTrabajo {
       throw new Error(`No se encontró la orden de trabajo: ${errOrd?.message}`)
     }
 
-    if (orden.estado === 'FINALIZADA') {
+    if (orden.estado === ESTADO_FINALIZADA) {
       throw new Error('La orden ya se encuentra finalizada')
     }
 
-    if (orden.estado !== 'EN_PROGRESO') {
+    if (orden.estado !== ESTADO_EN_PROGRESO) {
       throw new Error('Debe iniciar la labor antes de reportar')
     }
 

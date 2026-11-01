@@ -166,6 +166,41 @@ const consumos = async (db, orden) => (await q1(db, 'SELECT count(*)::int n FROM
 
   await db.close();
 
+  // ---------- Crear orden (Fase 7) ----------
+  const dbO = await nuevaBD();
+  for (let i = 0; i < 2; i++) await dbO.exec(migracion('migracion_cu12_crear_orden.sql'));
+  await dbO.exec(`SELECT setval(pg_get_serial_sequence('orden_trabajo', 'id'), 100)`);
+  await dbO.exec(`
+    INSERT INTO cliente (id, nombre, tipo_cliente) VALUES (1, 'Cliente', 'PARTICULAR');
+    INSERT INTO cotizacion (id, cliente_id, usuario_id, numero_cotizacion, estado, total) VALUES
+      (1, 1, 1, 'COT-A', 'APROBADA', 100), (2, 1, 1, 'COT-B', 'PENDIENTE', 100), (3, 1, 1, 'COT-C', 'APROBADA', 100);`);
+  const CREAR = 'SELECT public.fn_crear_orden_trabajo($1, $2, $3, $4, $5, $6) AS r';
+  const crearOrden = async (cot, tipo, ini = '2026-11-03 09:00:00', fin = '2026-11-03 11:00:00') =>
+    (await comoServidor(dbO, CREAR, [2, cot, tipo, ini, fin, '10.0.0.1'])).rows[0].r;
+  const anio = (await q1(dbO, `SELECT to_char(now() AT TIME ZONE 'America/La_Paz', 'YYYY') a`)).a;
+  const o1 = await crearOrden(1, null);
+  resultado('Convertir: crea la orden PROGRAMADA con correlativo', o1.codigo_orden === `OT-${anio}-001` && o1.estado === 'PROGRAMADA' && o1.tipo_trabajo === 'SERVICIO', JSON.stringify(o1));
+  resultado('La ventana se guarda tal cual, en hora de Bolivia', String(o1.fecha_inicio_programada).startsWith('2026-11-03T09:00:00'), String(o1.fecha_inicio_programada));
+  const o2 = await crearOrden(null, 'Correctivo');
+  resultado('Correctiva: sin cotización y con el siguiente correlativo', o2.codigo_orden === `OT-${anio}-002` && o2.cotizacion_id === null, JSON.stringify(o2));
+  const varias = [await crearOrden(null, 'A'), await crearOrden(3, null)];
+  resultado('Correlativos seguidos sin repetir', new Set(varias.map((o) => o.codigo_orden)).size === 2);
+  const bitO = await q1(dbO, `SELECT count(*)::int n FROM bitacora WHERE accion = 'CREAR_ORDEN_TRABAJO'`);
+  resultado('Bitácora CREAR_ORDEN_TRABAJO', bitO.n === 4, JSON.stringify(bitO));
+  const espera = async (nombre, fn, patron) => {
+    try { await fn(); resultado(nombre, false, 'NO falló'); }
+    catch (e) { resultado(nombre, patron.test(e.message), e.message); }
+  };
+  await espera('Convertir dos veces la misma cotización', () => crearOrden(1, null), /Ya existe una Orden de Trabajo/);
+  await espera('Cotización no aprobada', () => crearOrden(2, null), /estado APROBADA/);
+  await espera('Cotización inexistente', () => crearOrden(999, null), /No se encontró la cotización/);
+  await espera('Sin ventana', () => crearOrden(null, 'X', null, null), /ventana horaria es obligatoria/);
+  await espera('Fin antes del inicio', () => crearOrden(null, 'X', '2026-11-03 11:00:00', '2026-11-03 09:00:00'), /posterior a la hora de inicio/);
+  await espera('Correctiva sin tipo', () => crearOrden(null, '  '), /tipo de trabajo es obligatorio/);
+  const fnO = await q1(dbO, `SELECT has_function_privilege('anon', oid, 'EXECUTE') a, has_function_privilege('service_role', oid, 'EXECUTE') s FROM pg_proc WHERE proname = 'fn_crear_orden_trabajo'`);
+  resultado('Función cerrada: solo service_role', !fnO.a && fnO.s, JSON.stringify(fnO));
+  await dbO.close();
+
   // ---------- Corrección de datos ----------
   const dbH = await nuevaBD();
   await dbH.exec(`

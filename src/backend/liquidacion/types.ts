@@ -4,10 +4,12 @@
 //  (mismos nombres y atributos del diagrama de análisis y de Supabase)
 // =====================================================================
 
+import { ESTADO_FINALIZADA } from "@/backend/ordenes/estados";
+
 /**
  * Estado con el que el CU12 deja una orden terminada.
  */
-export const ESTADOS_ORDEN_TERMINADA = ["FINALIZADA"];
+export const ESTADOS_ORDEN_TERMINADA: string[] = [ESTADO_FINALIZADA];
 
 /** Tabla orden_trabajo (solo los atributos que usa el CU13). */
 export interface OrdenTrabajo {

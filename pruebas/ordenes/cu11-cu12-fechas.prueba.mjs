@@ -61,6 +61,10 @@ async function falla(fn, patron) {
 function dbFalsa(orden = {}) {
   const escrito = {}
   const db = {
+    rpc: async (_nombre, args) => {
+      escrito.rpc = args
+      return { data: { id: 99 }, error: null }
+    },
     from(tabla) {
       let fila = null
       const q = {
@@ -88,8 +92,9 @@ await prueba(`La zona del proceso es ${process.env.PRUEBA_TZ}`, () => {
 await prueba('Convertir con 15:10–15:15 guarda 15:10:00 y 15:15:00', async () => {
   const { db, escrito } = dbFalsa()
   await convertir(db, { fecha_programada: '2026-11-02', hora_inicio: '15:10', hora_fin: '15:15' })
-  igual(escrito.fecha_inicio_programada, '2026-11-02 15:10:00')
-  igual(escrito.fecha_fin_programada, '2026-11-02 15:15:00')
+  igual(escrito.rpc.p_inicio, '2026-11-02 15:10:00')
+  igual(escrito.rpc.p_fin, '2026-11-02 15:15:00')
+  igual(escrito.rpc.p_cotizacion_id, 1)
 })
 await prueba('Convertir sin ventana se rechaza (sin "mañana 08:00–12:00")', async () => {
   const { db, escrito } = dbFalsa()
@@ -129,7 +134,7 @@ await prueba('Marcar fin guarda hora de Bolivia y calcula las horas', async () =
   const { db, escrito } = dbFalsa({ codigo_orden: 'OT-1', estado: 'EN_PROGRESO', fecha_inicio_real: inicio, fecha_fin_real: null })
   await ControlOrdenesTrabajo.registrarMarcaTiempoFin(db, 1)
   casi(escrito.fecha_fin_real, ahoraEsperado())
-  igual(escrito.observaciones_tecnico, '[HORAS_TECNICAS: 2.00h]')
+  igual(escrito.observaciones_tecnico, undefined)
 })
 
 await prueba('Marcar inicio: solo en PROGRAMADA', async () => {
@@ -155,6 +160,21 @@ await prueba('Reporte de campo: sin fallback, si la función falla se muestra el
   const { db, escrito } = dbFalsa({ estado: 'EN_PROGRESO' })
   db.rpc = async () => ({ data: null, error: { message: 'function does not exist' } })
   await falla(() => reporte(db), /function does not exist/)
+  igual(escrito, {})
+})
+
+const VENTANA = { fecha_programada: '2026-11-02', hora_inicio: '10:00', hora_fin: '12:00' }
+await prueba('Orden correctiva: sin cotización y con tipo de trabajo', async () => {
+  const { db, escrito } = dbFalsa()
+  await ControlOrdenesTrabajo.crearOrdenCorrectiva(db, { ...VENTANA, tipo_trabajo: ' Correctivo ' }, 2, '10.0.0.1')
+  igual([escrito.rpc.p_cotizacion_id, escrito.rpc.p_tipo_trabajo, escrito.rpc.p_inicio], [null, 'Correctivo', '2026-11-02 10:00:00'])
+})
+await prueba('Orden correctiva: exige el tipo de trabajo', async () => {
+  await falla(() => ControlOrdenesTrabajo.crearOrdenCorrectiva(dbFalsa().db, { ...VENTANA, tipo_trabajo: '  ' }, 2), /tipo de trabajo es obligatorio/)
+})
+await prueba('Cambiar ventana: solo en PROGRAMADA', async () => {
+  const { db, escrito } = dbFalsa({ estado: 'EN_PROGRESO' })
+  await falla(() => ControlOrdenesTrabajo.cambiarVentanaOrden(db, 1, VENTANA, 2), /estado Programada/)
   igual(escrito, {})
 })
 

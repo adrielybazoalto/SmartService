@@ -9,9 +9,13 @@ import {
   listarProductosParaConsumoAccion,
   actualizarVentanaOrdenAccion,
   cancelarOrdenAccion,
+  crearOrdenCorrectivaAccion,
 } from '@/app/actions/ordenes-trabajo'
 import { textoAnticipo } from '@/app/cotizaciones/anticipo'
+import { horasEntre } from '@/backend/asignaciones/disponibilidad'
+import { ESTADO_ORDEN } from '@/backend/ordenes/estados'
 import { formatearFechaHora } from '@/lib/fechas'
+import { ModalVentana, type DatosVentana } from './modal-ventana'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -53,7 +57,7 @@ interface Props {
   esTecnico: boolean
   usuarioId: number
   /** Calculados en el servidor con los permisos de ROL_FUNCION. */
-  permisos: { gestionar: boolean; liquidar: boolean }
+  permisos: { gestionar: boolean; liquidar: boolean; crearOrden: boolean }
 }
 
 export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, permisos }: Props) {
@@ -69,6 +73,10 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
   const [cantidadMaterial, setCantidadMaterial] = useState('')
   const [obsMaterial, setObsMaterial] = useState('')
   const [detalle, setDetalle] = useState<DetalleOrden | null>(null)
+  const [filtroEstado, setFiltroEstado] = useState('')
+  const [creandoCorrectiva, setCreandoCorrectiva] = useState(false)
+  const [ordenVentana, setOrdenVentana] = useState<{ id: number; codigo_orden: string } | null>(null)
+  const ordenesVisibles = filtroEstado ? ordenes.filter((o) => o.estado === filtroEstado) : ordenes
 
   async function iniciarOrden(id: number) {
     setCargando(true)
@@ -182,6 +190,20 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
     else setMensaje({ tipo: 'error', texto: res.error })
   }
 
+  /** Devuelve el error para mostrarlo dentro del modal, o null si salió bien. */
+  async function confirmarVentana(d: DatosVentana): Promise<string | null> {
+    const ventana = { fecha_programada: d.fecha, hora_inicio: d.horaInicio, hora_fin: d.horaFin }
+    const res = ordenVentana
+      ? await actualizarVentanaOrdenAccion(ordenVentana.id, ventana)
+      : await crearOrdenCorrectivaAccion({ ...ventana, tipo_trabajo: d.tipoTrabajo })
+    if (!res.ok) return res.error
+    setMensaje({ tipo: 'ok', texto: res.mensaje })
+    setOrdenVentana(null)
+    setCreandoCorrectiva(false)
+    router.refresh()
+    return null
+  }
+
   async function cancelarOrden(orden: { id: number; codigo_orden: string }) {
     if (!confirm(`¿Cancelar la orden ${orden.codigo_orden}? Esta acción no se puede deshacer.`)) return
     setCargando(true)
@@ -231,10 +253,33 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
 
       {/* Lista de Órdenes */}
       <section className="tarjeta overflow-hidden">
-        <div className="p-5 sm:p-6 border-b border-slate-200">
+        <div className="p-5 sm:p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-slate-900">
             {esTecnico ? 'Mis Órdenes Asignadas' : 'Órdenes de Trabajo'}
           </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Filtrar por estado"
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              className="px-3 py-2 text-sm border border-slate-300 rounded-lg"
+            >
+              <option value="">Todos los estados</option>
+              {ESTADO_ORDEN.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+            {permisos.crearOrden && (
+              <button
+                onClick={() => setCreandoCorrectiva(true)}
+                className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+              >
+                Nueva orden correctiva
+              </button>
+            )}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -246,18 +291,19 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Ventana Programada</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Inicio Real</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Fin Real</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Horas</th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {ordenes.length === 0 && (
+              {ordenesVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-sm text-slate-500">
                     No hay órdenes de trabajo
                   </td>
                 </tr>
               )}
-              {ordenes.map((orden) => (
+              {ordenesVisibles.map((orden) => (
                 <tr key={orden.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{orden.codigo_orden}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{orden.tipo_trabajo}</td>
@@ -274,6 +320,9 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                     {formatearFechaHora(orden.fecha_fin_real)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
+                    {horasEntre(orden.fecha_inicio_real, orden.fecha_fin_real) ?? '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                     {esTecnico && orden.estado === 'PROGRAMADA' && (
@@ -308,6 +357,9 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                         <Link href={`/asignar-tecnicos/${orden.id}`} className="text-blue-600 hover:text-blue-900">
                           {orden.orden_trabajo_tecnico?.length ? 'Modificar cuadrilla' : 'Asignar cuadrilla'}
                         </Link>
+                        <button onClick={() => setOrdenVentana(orden)} className="text-blue-600 hover:text-blue-900">
+                          {orden.fecha_inicio_programada ? 'Cambiar ventana' : 'Definir ventana'}
+                        </button>
                         <button
                           onClick={() => cancelarOrden(orden)}
                           disabled={cargando}
@@ -336,6 +388,18 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
           </table>
         </div>
       </section>
+
+      {(creandoCorrectiva || ordenVentana) && (
+        <ModalVentana
+          titulo={ordenVentana ? `Ventana - ${ordenVentana.codigo_orden}` : 'Nueva orden correctiva'}
+          conTipo={creandoCorrectiva}
+          onConfirmar={confirmarVentana}
+          onCerrar={() => {
+            setOrdenVentana(null)
+            setCreandoCorrectiva(false)
+          }}
+        />
+      )}
 
       {/* Modal Detalle */}
       {detalle && (

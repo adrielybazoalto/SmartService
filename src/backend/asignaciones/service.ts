@@ -115,6 +115,32 @@ async function evaluarTecnicos(
   return resultado
 }
 
+/** Motivos por los que la cuadrilla actual no puede tomar la ventana indicada. [] = disponible. */
+export async function motivosCuadrillaEnVentana(
+  db: Db,
+  orden: OrdenAsignable,
+  inicio: string,
+  fin: string,
+): Promise<string[]> {
+  const { data, error } = await db
+    .from('orden_trabajo_tecnico')
+    .select('usuario_id, usuario:usuario_id(nombre, telefono)')
+    .eq('orden_trabajo_id', orden.id)
+  if (error) throw fallo(error, 'cargar la cuadrilla')
+
+  const tecnicos = (data ?? []).map((c) => ({
+    id: c.usuario_id,
+    nombre: c.usuario?.nombre ?? `Técnico ${c.usuario_id}`,
+    telefono: c.usuario?.telefono ?? null,
+  }))
+  if (tecnicos.length === 0) return []
+
+  const motivos = await evaluarTecnicos(db, { ...orden, fecha_inicio_programada: inicio, fecha_fin_programada: fin }, tecnicos)
+  return tecnicos
+    .filter((t) => (motivos[t.id] ?? []).length > 0)
+    .map((t) => `El técnico ${t.nombre} no está disponible en la nueva ventana: ${motivos[t.id].join('; ')}`)
+}
+
 /**
  * Primero las órdenes sin cuadrilla, de la más reciente a la más antigua; después las
  * que ya la tienen, en el orden recibido (por fecha programada).

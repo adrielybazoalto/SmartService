@@ -19,9 +19,10 @@ export default async function OrdenesTrabajoPage() {
   }
 
   const ordenes = resultado.ok ? resultado.data : []
-  const [gestionar, liquidar] = await Promise.all([
+  const [gestionar, liquidar, crearOrden] = await Promise.all([
     tieneAccionModulo('ASIGNAR_TECNICOS', 'ACTUALIZAR'),
     tieneAccionModulo('NOTAS_SERVICIO', 'LEER'),
+    tieneAccionModulo('ORDENES_TRABAJO', 'CREAR'),
   ])
 
   return (
@@ -42,7 +43,7 @@ export default async function OrdenesTrabajoPage() {
         ordenes={ordenes}
         esTecnico={esTecnico}
         usuarioId={user?.id || 0}
-        permisos={{ gestionar, liquidar }}
+        permisos={{ gestionar, liquidar, crearOrden }}
       />
     </main>
   )

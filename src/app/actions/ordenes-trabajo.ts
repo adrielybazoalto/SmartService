@@ -7,7 +7,6 @@ import { obtenerIpOrigen } from '@/lib/ip'
 import { ControlOrdenesTrabajo, type VentanaHorariaInput } from '@/backend/ordenes/control-ordenes-trabajo'
 import { horasEntre } from '@/backend/asignaciones/disponibilidad'
 import type { OrdenTrabajo } from '@/backend/ordenes/types'
-import { ventanaBolivia } from '@/lib/fechas'
 import { exigirPermiso, type AccionPermiso } from '@/lib/permisos'
 import type { Db } from '@/lib/supabase/types'
 
@@ -137,29 +136,34 @@ export async function convertirCotizacionAOrdenAccion(
  */
 export async function actualizarVentanaOrdenAccion(
   ordenId: number,
-  fechaProgramada: string,
-  horaInicio: string,
-  horaFin: string,
-): Promise<RespuestaAccion<any>> {
+  ventana: VentanaHorariaInput,
+): Promise<RespuestaAccion<OrdenTrabajo>> {
   try {
-    const { db } = await contexto()
+    const { db, usuarioId, ip } = await contexto()
     await exigirPermiso('ASIGNAR_TECNICOS', 'ACTUALIZAR')
-    const { inicio, fin } = ventanaBolivia(fechaProgramada, horaInicio, horaFin)
-    const { data, error } = await db
-      .from('orden_trabajo')
-      .update({
-        fecha_inicio_programada: inicio,
-        fecha_fin_programada: fin,
-      })
-      .eq('id', ordenId)
-      .select()
-      .single()
-    if (error) throw new Error(error.message)
+    const orden = await ControlOrdenesTrabajo.cambiarVentanaOrden(db, ordenId, ventana, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')
     revalidatePath('/asignar-tecnicos')
-    return exito(data, 'Ventana horaria programada actualizada')
+    return exito(orden, 'Ventana horaria programada actualizada')
   } catch (e) {
     return falla(e, 'Error al actualizar ventana horaria')
+  }
+}
+
+/**
+ * Orden correctiva, sin cotización (subflujo del CU12)
+ */
+export async function crearOrdenCorrectivaAccion(
+  datos: VentanaHorariaInput & { tipo_trabajo: string },
+): Promise<RespuestaAccion<OrdenTrabajo>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('CREAR')
+    const orden = await ControlOrdenesTrabajo.crearOrdenCorrectiva(db, datos, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, `Orden correctiva ${orden.codigo_orden} creada`)
+  } catch (e) {
+    return falla(e, 'Error al crear la orden correctiva')
   }
 }
 
