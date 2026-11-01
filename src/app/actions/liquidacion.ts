@@ -12,6 +12,7 @@ import { crearLiquidacionController } from '@/backend/liquidacion/fabrica'
 import { obtenerIpCliente, obtenerUrlBase } from '@/backend/liquidacion/integracion'
 import { validarEmitirNotaInput } from '@/backend/liquidacion/schema'
 import type { DetalleLiquidacion, NotaServicio, ResultadoAccion } from '@/backend/liquidacion/types'
+import { exigirPermiso } from '@/lib/permisos'
 
 /** Recalcula la liquidación (al elegir el servicio en una orden correctiva). */
 export async function calcularLiquidacionAction(
@@ -19,6 +20,7 @@ export async function calcularLiquidacionAction(
   servicioId?: number | null,
 ): Promise<ResultadoAccion<DetalleLiquidacion>> {
   try {
+    await exigirPermiso('NOTAS_SERVICIO')
     const controller = crearLiquidacionController()
     return { ok: true, data: await controller.obtenerDetalleLiquidacion(ordenTrabajoId, servicioId) }
   } catch (error) {

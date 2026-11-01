@@ -5,7 +5,7 @@
 //  No consulta la base directamente.
 // =====================================================================
 
-import { verificarPermisoEmitirNota } from "./autorizacion";
+import { verificarPermisoNota } from "./autorizacion";
 import { ErrorNegocio, MENSAJES } from "./errores";
 import type { LiquidacionRepositorio } from "./repositorio";
 import {
@@ -109,7 +109,7 @@ export class LiquidacionController {
     referencia: string | null,
     ip: string | null,
   ): Promise<NotaServicio> {
-    const usuario = verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    const usuario = await verificarPermisoNota(await this.repositorio.obtenerUsuarioActual(), "PROCESAR");
     const pago = validarPagoManual(metodo, referencia);
     verificarNotaCobrable(await this.repositorio.obtenerNotaPorId(notaId));
     return this.repositorio.registrarPagoManual({ notaId, ...pago, usuarioId: usuario.id, ip });
@@ -121,7 +121,7 @@ export class LiquidacionController {
    * Devuelve el enlace de la página de pago de Stripe.
    */
   async iniciarCobroSaldo(notaId: number, urlBase: string): Promise<{ url: string }> {
-    verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    await verificarPermisoNota(await this.repositorio.obtenerUsuarioActual(), "PROCESAR");
     if (!this.pasarela) throw new ErrorNegocio("La pasarela de pago no está configurada.");
 
     const nota = await this.repositorio.obtenerNotaPorId(notaId);
@@ -143,7 +143,7 @@ export class LiquidacionController {
    * a PAGADA (NotaServicio.registrarPago + Bitacora.registrarEvento).
    */
   async confirmarPagoSaldo(sessionId: string, ip: string | null): Promise<NotaServicio> {
-    const usuario = verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    const usuario = await verificarPermisoNota(await this.repositorio.obtenerUsuarioActual(), "PROCESAR");
     if (!this.pasarela) throw new ErrorNegocio("La pasarela de pago no está configurada.");
 
     const pago = await this.pasarela.verificarPago(sessionId);
@@ -170,7 +170,7 @@ export class LiquidacionController {
 
   /** Pasos 6 y 7: emitir la nota de servicio y registrar en bitácora */
   async emitirNotaServicio(input: EmitirNotaInput, ip: string | null): Promise<NotaServicio> {
-    const usuario = verificarPermisoEmitirNota(await this.repositorio.obtenerUsuarioActual());
+    const usuario = await verificarPermisoNota(await this.repositorio.obtenerUsuarioActual(), "CREAR");
 
     const orden = await this.verificarEstadoOrden(input.ordenTrabajoId);
     if (requiereElegirServicio(orden) && !input.servicioId) {

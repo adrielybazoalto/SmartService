@@ -1,10 +1,11 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
-import { ACCION_ACCESO, moduloPorRuta, tienePermisoModulo } from "@/lib/permisos";
-import { quitaModuloProtegido } from "@/lib/navigation";
+import { exigirPermiso, moduloPorRuta, tieneAccionModulo } from "@/lib/permisos";
+import { crearRol } from "@/backend/usuarios/service";
 import { registrarEvento } from "@/backend/bitacora";
 import { obtenerIpOrigen } from "@/lib/ip";
 
@@ -23,6 +24,13 @@ export interface ModuloPermiso {
   ruta: string;
   descripcion: string;
   etiqueta: string;
+  /** Nombre de MODULO: agrupa las filas de la matriz. */
+  grupo: string;
+}
+
+export interface AccionEntity {
+  id: number;
+  nombre: string;
 }
 
 export interface RespuestaAccionRoles {
@@ -47,21 +55,19 @@ function rolAEntidad(rol: { id: number; nombre: string; descripcion: string | nu
 }
 
 /**
- * Lee desde la base de datos: roles (ROL), catálogo de módulos (FUNCION con
- * clave y ruta) y la asignación actual de cada rol (ROL_FUNCION con LEER). El Navbar y el Dashboard leen
- * la misma consulta, así que lo que se ve aquí es lo que verán los usuarios.
+ * Lee desde la base de datos: roles (ROL), módulos (FUNCION con clave y ruta,
+ * agrupados por MODULO), acciones (ACCION) y la matriz de cada rol (ROL_FUNCION,
+ * como 'funcionId:accionId'). El Navbar y el Dashboard leen la misma matriz, así
+ * que lo que se ve aquí es lo que verán los usuarios.
  */
 export async function fetchRolesYPermisos(): Promise<{
   roles: RolEntity[];
   modulos: ModuloPermiso[];
+  acciones: AccionEntity[];
   asignacion: { [rolId: number]: string[] };
   esSesionAdministrador: boolean;
 }> {
-  // Única condición de acceso: permiso ROLES (LEER) en rol_funcion (BD).
-  if (!(await tienePermisoModulo("/roles"))) {
-    throw new Error("No autorizado: tu rol no tiene el permiso del módulo Roles.");
-  }
-  const usuario = await requireUser();
+  const usuario = await exigirPermiso("ROLES");
   const esSesionAdministrador = usuario.rol?.nombre === "ADMINISTRADOR";
 
   const db = getSupabaseServiceClient();
@@ -71,56 +77,55 @@ export async function fetchRolesYPermisos(): Promise<{
 
   const { data: funciones, error: em } = await db
     .from("funcion")
-    .select("id, clave, ruta, descripcion")
+    .select("id, clave, ruta, descripcion, modulo:modulo_id(nombre)")
     .not("clave", "is", null)
+    .order("modulo_id")
     .order("id");
   if (em) throw new Error(`No se pudieron cargar los módulos: ${em.message}`);
-  const modulos = (funciones ?? [])
-    .filter((f): f is typeof f & { clave: string; ruta: string } => Boolean(f.clave && f.ruta))
-    .map((f) => ({ id: f.id, nombre: f.clave, ruta: f.ruta, descripcion: f.descripcion }));
+
+  const { data: acciones, error: ea } = await db.from("accion").select("id, nombre").order("id");
+  if (ea) throw new Error(`No se pudieron cargar las acciones: ${ea.message}`);
 
   const { data: rf, error: era } = await db
     .from("rol_funcion")
-    .select("rol_id, funcion:funcion_id(clave), accion:accion_id(nombre)");
+    .select("rol_id, funcion_id, accion_id, funcion:funcion_id(clave)");
   if (era) throw new Error(`No se pudieron cargar las asignaciones: ${era.message}`);
 
   const asignacion: { [rolId: number]: string[] } = {};
   for (const fila of rf ?? []) {
-    const clave = fila.funcion?.clave;
-    if (!clave || fila.accion?.nombre !== ACCION_ACCESO) continue;
-    const lista = (asignacion[fila.rol_id] ??= []);
-    if (!lista.includes(clave)) lista.push(clave);
+    if (!fila.funcion?.clave) continue;
+    (asignacion[fila.rol_id] ??= []).push(`${fila.funcion_id}:${fila.accion_id}`);
   }
 
   return {
     roles: (roles ?? []).map(rolAEntidad),
-    modulos: (modulos ?? []).map((m) => ({
-      id: m.id,
-      nombre: m.nombre,
-      ruta: m.ruta,
-      descripcion: m.descripcion ?? "",
-      etiqueta: moduloPorRuta(m.ruta)?.etiqueta ?? m.nombre,
-    })),
+    modulos: (funciones ?? [])
+      .filter((f): f is typeof f & { clave: string; ruta: string } => Boolean(f.clave && f.ruta))
+      .map((f) => ({
+        id: f.id,
+        nombre: f.clave,
+        ruta: f.ruta,
+        descripcion: f.descripcion ?? "",
+        etiqueta: moduloPorRuta(f.ruta)?.etiqueta ?? f.clave,
+        grupo: f.modulo?.nombre ?? "Otros",
+      })),
+    acciones: acciones ?? [],
     asignacion,
     esSesionAdministrador,
   };
 }
 
 /**
- * Guarda la asignación COMPLETA de módulos de un rol en ROL_FUNCION (BD) y
- * revalida el sitio para que el Navbar y el Dashboard reflejen los cambios de
- * inmediato en la siguiente carga o navegación.
+ * Guarda la matriz COMPLETA de un rol en una sola transacción
+ * (fn_guardar_permisos_rol) y revalida el sitio para que el Navbar y el Dashboard
+ * reflejen los cambios en la siguiente carga o navegación.
  */
 export async function guardarPermisosRol(
   rolId: number,
-  nombresPermisos: string[],
+  permisos: { funcion_id: number; accion_id: number }[],
 ): Promise<RespuestaAccionRoles> {
-  // Única condición de acceso: permiso ROLES (LEER) en rol_funcion (BD).
-  if (!(await tienePermisoModulo("/roles"))) {
-    return {
-      ok: false,
-      mensaje: "No autorizado: tu rol no tiene el permiso del módulo Roles.",
-    };
+  if (!(await tieneAccionModulo("ROLES", "ACTUALIZAR"))) {
+    return { ok: false, mensaje: "No autorizado: tu rol no tiene el permiso del módulo Roles." };
   }
   const usuario = await requireUser();
 
@@ -142,59 +147,15 @@ export async function guardarPermisosRol(
     };
   }
 
-  const unicos = [...new Set(nombresPermisos)];
-  if (quitaModuloProtegido(rol.nombre, unicos)) {
-    return { ok: false, mensaje: "El rol Administrador Principal no puede perder permisos del sistema" };
-  }
-
-  // Catálogo de módulos = FUNCION con clave; acceso = acción LEER.
-  const { data: funciones, error: ef } = await db
-    .from("funcion")
-    .select("id, clave")
-    .not("clave", "is", null);
-  if (ef) return { ok: false, mensaje: `No se pudieron validar los permisos: ${ef.message}` };
-  const idPorClave = new Map((funciones ?? []).map((f) => [f.clave as string, f.id] as [string, number]));
-  if (unicos.some((c) => !idPorClave.has(c))) {
-    return { ok: false, mensaje: "Uno o más permisos seleccionados no existen en el sistema." };
-  }
-  const { data: leer, error: ea } = await db.from("accion").select("id").eq("nombre", ACCION_ACCESO).maybeSingle();
-  if (ea || !leer) return { ok: false, mensaje: "No existe la acción LEER en la tabla ACCION." };
-
-  const seleccionadas = unicos.map((c) => idPorClave.get(c) as number);
-  const quitadas = [...idPorClave.values()].filter((id) => !seleccionadas.includes(id));
-  const permisosIds = seleccionadas;
-
-  // 1) Módulos desmarcados: se quitan TODAS sus acciones para el rol.
-  if (quitadas.length > 0) {
-    const { error: borrado } = await db
-      .from("rol_funcion")
-      .delete()
-      .eq("rol_id", rolId)
-      .in("funcion_id", quitadas);
-    if (borrado) return { ok: false, mensaje: `No se pudo actualizar: ${borrado.message}` };
-  }
-
-  // 2) Módulos marcados: se asegura LEER (las demás acciones, p. ej. CREAR en
-  //    Compras o Inventario, se conservan).
-  if (seleccionadas.length > 0) {
-    const { error: insercion } = await db.from("rol_funcion").upsert(
-      seleccionadas.map((funcionId) => ({
-        rol_id: rolId,
-        funcion_id: funcionId,
-        accion_id: leer.id,
-        descripcion: "Asignado desde /roles (Consola RBAC)",
-      })),
-      { onConflict: "rol_id,funcion_id,accion_id", ignoreDuplicates: true },
-    );
-    if (insercion) return { ok: false, mensaje: `No se pudo guardar: ${insercion.message}` };
-  }
-
-  const ip = await obtenerIpOrigen();
-  await registrarEvento(db, {
-    usuario_id: usuario.id,
-    accion: "CONFIGURAR_ROLES_PERMISOS",
-    descripcion: `Se guardaron ${permisosIds.length} permiso(s) de módulos para el rol ${rol.nombre}`,
-  }, ip);
+  // database.types.ts aún no declara las funciones SQL (se regenera en la Fase 10)
+  const cliente = db as unknown as SupabaseClient;
+  const { error } = await cliente.rpc("fn_guardar_permisos_rol", {
+    p_usuario_id: usuario.id,
+    p_rol_id: rolId,
+    p_permisos: permisos,
+    p_ip: await obtenerIpOrigen(),
+  });
+  if (error) return { ok: false, mensaje: error.message };
 
   // Reflejo inmediato: invalida el caché del layout raíz (Navbar) y del panel.
   revalidatePath("/", "layout");
@@ -205,4 +166,33 @@ export async function guardarPermisosRol(
     ok: true,
     mensaje: `Permisos del rol ${rol.nombre} guardados en la base de datos y aplicados al instante.`,
   };
+}
+
+/** Flujo "Nuevo Rol" del CU04: nace sin permisos y se configura en la matriz. */
+export async function crearRolAccion(nombre: string, descripcion: string): Promise<RespuestaAccionRoles> {
+  if (!(await tieneAccionModulo("ROLES", "CREAR"))) {
+    return { ok: false, mensaje: "No autorizado: tu rol no tiene el permiso del módulo Roles." };
+  }
+  const usuario = await requireUser();
+  const nombreRol = nombre.trim().toUpperCase();
+  if (!nombreRol) return { ok: false, mensaje: "El nombre del rol es obligatorio." };
+
+  const db = getSupabaseServiceClient();
+  const { data: existente } = await db.from("rol").select("id").eq("nombre", nombreRol).maybeSingle();
+  if (existente) return { ok: false, mensaje: `Ya existe un rol con el nombre ${nombreRol}.` };
+
+  try {
+    await crearRol(db, { nombre: nombreRol, descripcion: descripcion.trim() || null });
+  } catch (e) {
+    return { ok: false, mensaje: e instanceof Error ? e.message : "No se pudo crear el rol." };
+  }
+
+  await registrarEvento(db, {
+    usuario_id: usuario.id,
+    accion: "CREAR_ROL",
+    descripcion: `Se creó el rol ${nombreRol}`,
+  }, await obtenerIpOrigen());
+
+  revalidatePath("/roles");
+  return { ok: true, mensaje: `Rol ${nombreRol} creado. Ahora asígnale sus permisos.` };
 }

@@ -5,18 +5,16 @@ import { registrarBitacora } from '@/backend/bitacora'
 import {
   actualizarPerfilSchema,
   actualizarUsuarioSchema,
-  asignarPermisoSchema,
   cambiarContrasenaSchema,
   crearRolSchema,
   crearUsuarioSchema,
   type ActualizarPerfilInput,
   type ActualizarUsuarioInput,
-  type AsignarPermisoInput,
   type CambiarContrasenaInput,
   type CrearRolInput,
   type CrearUsuarioInput,
 } from './schema'
-import type { NuevoRol, NuevoRolFuncion, PerfilUsuario, Rol, Usuario } from './types'
+import type { NuevoRol, PerfilUsuario, Rol, Usuario } from './types'
 
 // ---------------------------------------------------------------------------
 // ROLES
@@ -45,25 +43,6 @@ export async function actualizarRol(db: Db, id: number, input: Partial<CrearRolI
 export async function eliminarRol(db: Db, id: number): Promise<void> {
   const { error } = await db.from('rol').delete().eq('id', id)
   if (error) throw new Error(`No se pudo eliminar el rol: ${error.message}`)
-}
-
-// ---------------------------------------------------------------------------
-// PERMISOS (ROL_FUNCION)
-// ---------------------------------------------------------------------------
-
-export async function asignarPermiso(db: Db, input: AsignarPermisoInput): Promise<void> {
-  const parsed = asignarPermisoSchema.parse(input)
-  const { error } = await db.from('rol_funcion').insert(parsed as NuevoRolFuncion)
-  if (error) throw new Error(`No se pudo asignar el permiso: ${error.message}`)
-}
-
-export async function listarPermisosDelRol(db: Db, rolId: number) {
-  const { data, error } = await db
-    .from('rol_funcion')
-    .select('*, funcion(*), accion(*)')
-    .eq('rol_id', rolId)
-  if (error) throw new Error(`No se pudieron cargar los permisos: ${error.message}`)
-  return data
 }
 
 // ---------------------------------------------------------------------------

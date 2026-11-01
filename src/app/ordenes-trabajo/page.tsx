@@ -1,6 +1,6 @@
 import { obtenerOrdenesTrabajoAccion, obtenerOrdenesTecnicoAccion } from '@/app/actions/ordenes-trabajo'
 import { getCurrentUser } from '@/lib/auth'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { tieneAccionModulo } from '@/lib/permisos'
 import { IU_GestionarOrdenesTrabajo } from './iu-gestionar-ordenes-trabajo'
 
 export const metadata = {
@@ -20,8 +20,8 @@ export default async function OrdenesTrabajoPage() {
 
   const ordenes = resultado.ok ? resultado.data : []
   const [gestionar, liquidar] = await Promise.all([
-    tienePermisoModulo('/asignar-tecnicos'),
-    tienePermisoModulo('/liquidacion'),
+    tieneAccionModulo('ASIGNAR_TECNICOS', 'ACTUALIZAR'),
+    tieneAccionModulo('NOTAS_SERVICIO', 'LEER'),
   ])
 
   return (

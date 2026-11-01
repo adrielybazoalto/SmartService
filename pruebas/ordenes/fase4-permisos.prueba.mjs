@@ -40,8 +40,10 @@ const dbProhibida = new Proxy({}, {
     throw new Error('la acción llegó a la base sin permiso')
   },
 })
+/** Acciones reales del Técnico: las operaciones de abajo que no le tocan deben rechazarse. */
+const TECNICO = ['COTIZACIONES:LEER', 'ORDENES_TRABAJO:LEER', 'ORDENES_TRABAJO:ACTUALIZAR', 'ORDENES_TRABAJO:PROCESAR', 'PERFIL:LEER']
 const sinPermiso = () => {
-  globalThis.__cu16 = { db: dbProhibida, rutasPermitidas: [], usuario: { id: 3, rol: { nombre: 'TECNICO' } } }
+  globalThis.__cu16 = { db: dbProhibida, accionesPermitidas: TECNICO, usuario: { id: 3, rol: { nombre: 'TECNICO' } } }
 }
 
 /** La acción debe rechazarse, lanzando o devolviendo el error, sin tocar la base. */
@@ -70,12 +72,9 @@ await rechaza('Jornadas: obtenerBloqueosTecnico', () => J.obtenerBloqueosTecnico
 await rechaza('Jornadas: guardarJornada', () => J.guardarJornada(1, 'Lunes a Viernes', '08:00', '18:00'))
 await rechaza('Jornadas: registrarBloqueo', () => J.registrarBloqueo(1, 'a', 'b', 'c', 'd'))
 await rechaza('Jornadas: eliminarBloqueoAction', () => J.eliminarBloqueoAction(1))
-await rechaza('Órdenes: obtenerOrdenesTrabajoAccion', () => O.obtenerOrdenesTrabajoAccion())
-await rechaza('Órdenes: registrarInicioOrdenAccion', () => O.registrarInicioOrdenAccion(1))
-await rechaza('Órdenes: procesarReporteCampoAccion', () => O.procesarReporteCampoAccion({ ordenId: 1, diagnostico: 'x' }))
-await rechaza('Cotizaciones: obtenerCotizacionesAccion', () => C.obtenerCotizacionesAccion())
-await rechaza('Cotizaciones: obtenerCotizacionPorIdAccion', () => C.obtenerCotizacionPorIdAccion(1))
-await rechaza('Cotizaciones: obtenerClientesAccion', () => C.obtenerClientesAccion())
+await rechaza('Órdenes: el Técnico no convierte cotizaciones', () => O.convertirCotizacionAOrdenAccion(1, {}))
+await rechaza('Órdenes: el Técnico no cambia la ventana', () => O.actualizarVentanaOrdenAccion(1, '2026-11-02', '08:00', '09:00'))
+await rechaza('Órdenes: el Técnico no cancela', () => O.cancelarOrdenAccion(1))
 await rechaza('Cotizaciones: eliminarCotizacionAccion', () => C.eliminarCotizacionAccion(1))
 await rechaza('Cotizaciones: generarSiguienteNumeroCotizacionAccion', () => C.generarSiguienteNumeroCotizacionAccion())
 await rechaza('Cotizaciones: crearCotizacionCompletaAccion', () => C.crearCotizacionCompletaAccion({ productos: [], servicios: [] }))

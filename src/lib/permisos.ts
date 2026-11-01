@@ -1,7 +1,7 @@
 import 'server-only'
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, type UsuarioConRol } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { moduloPorRuta } from '@/lib/navigation'
 
@@ -28,6 +28,27 @@ export type { ModuloRegistrado } from '@/lib/navigation'
 
 /** Acción de ACCION que da acceso (entrar) a un módulo. */
 export const ACCION_ACCESO = 'LEER'
+
+export type AccionPermiso = 'CREAR' | 'LEER' | 'ACTUALIZAR' | 'ELIMINAR' | 'PROCESAR'
+
+const MSG_SIN_PERMISO = 'No autorizado: tu rol no tiene el permiso de este módulo.'
+
+/** Acciones del rol como 'CLAVE:ACCION'. Fail-closed: si no se pueden leer, ninguna. */
+const getAccionesDeRol = cache(async (rolId: number): Promise<string[]> => {
+  const db = getSupabaseServiceClient()
+  const { data, error } = await db
+    .from('rol_funcion')
+    .select('funcion:funcion_id(clave), accion:accion_id(nombre)')
+    .eq('rol_id', rolId)
+
+  if (error) {
+    console.warn(`[RBAC] No se pudieron leer permisos del rol ${rolId}: ${error.message}`)
+    return []
+  }
+  return (data ?? [])
+    .filter((fila) => fila.funcion?.clave && fila.accion?.nombre)
+    .map((fila) => `${fila.funcion?.clave}:${fila.accion?.nombre}`)
+})
 
 /**
  * Módulos (claves de FUNCION) a los que el rol puede entrar: filas de
@@ -73,21 +94,21 @@ export async function tienePermisoModulo(ruta: string): Promise<boolean> {
  * ¿El rol del usuario autenticado tiene esta acción sobre el módulo (FUNCION.clave)?
  * Para operaciones que LEER no distingue. Fail-closed ante cualquier error.
  */
-export async function tieneAccionModulo(clave: string, accion: string): Promise<boolean> {
+export async function tieneAccionModulo(clave: string, accion: AccionPermiso): Promise<boolean> {
   const usuario = await getCurrentUser()
   if (!usuario) return false
+  return (await getAccionesDeRol(usuario.rol_id)).includes(`${clave}:${accion}`)
+}
 
-  const db = getSupabaseServiceClient()
-  const { data, error } = await db
-    .from('rol_funcion')
-    .select('funcion:funcion_id(clave), accion:accion_id(nombre)')
-    .eq('rol_id', usuario.rol_id)
-
-  if (error) {
-    console.warn(`[RBAC] No se pudieron leer permisos del rol ${usuario.rol_id}: ${error.message}`)
-    return false
-  }
-  return (data ?? []).some((fila) => fila.funcion?.clave === clave && fila.accion?.nombre === accion)
+/**
+ * Permiso de una operación: exige la acción sobre el módulo y devuelve el usuario
+ * de la sesión. Es el control de las Server Actions; lanza si no hay permiso.
+ */
+export async function exigirPermiso(clave: string, accion: AccionPermiso = ACCION_ACCESO): Promise<UsuarioConRol> {
+  const usuario = await getCurrentUser()
+  if (!usuario) throw new Error('No autorizado: inicia sesión para continuar.')
+  if (!(await tieneAccionModulo(clave, accion))) throw new Error(MSG_SIN_PERMISO)
+  return usuario
 }
 
 /**

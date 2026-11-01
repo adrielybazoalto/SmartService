@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { exigirPermiso, type AccionPermiso } from '@/lib/permisos'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { registrarEvento } from '@/backend/bitacora'
 import { obtenerIpOrigen } from '@/lib/ip'
@@ -18,10 +18,8 @@ import {
 
 const RUTA_MODULO = '/personal-tecnico'
 
-async function exigirModulo() {
-  if (!(await tienePermisoModulo(RUTA_MODULO))) {
-    throw new Error('No autorizado: tu rol no tiene el permiso de este módulo.')
-  }
+async function exigirModulo(accion: AccionPermiso = 'LEER') {
+  await exigirPermiso('PERSONAL_TECNICO', accion)
 }
 
 /** Helper para auditar en bitácora sin interrumpir la operación si falla */
@@ -66,7 +64,7 @@ export async function guardarJornada(
   if (!usuarioActual || !usuarioActual.id) {
     throw new Error('Sesión requerida: debe iniciar sesión para configurar jornadas laborales.')
   }
-  await exigirModulo()
+  await exigirModulo('ACTUALIZAR')
   const db = getSupabaseServiceClient()
 
   const resultado = await guardarJornadaService(db, {
@@ -104,7 +102,7 @@ export async function registrarBloqueo(
   if (!usuarioActual || !usuarioActual.id) {
     throw new Error('Sesión requerida: debe iniciar sesión para registrar bloqueos de técnicos.')
   }
-  await exigirModulo()
+  await exigirModulo('CREAR')
   const db = getSupabaseServiceClient()
 
   const resultado = await registrarBloqueoService(db, {
@@ -137,7 +135,7 @@ export async function eliminarBloqueoAction(bloqueoId: number) {
   if (!usuarioActual || !usuarioActual.id) {
     throw new Error('Sesión requerida: debe iniciar sesión para eliminar bloqueos de técnicos.')
   }
-  await exigirModulo()
+  await exigirModulo('ELIMINAR')
   const db = getSupabaseServiceClient()
 
   const resultado = await eliminarBloqueoService(db, bloqueoId)
@@ -151,7 +149,7 @@ export async function eliminarBloqueoAction(bloqueoId: number) {
     db,
     usuarioActual.id,
     'ELIMINAR_BLOQUEO',
-    `Se canceló el bloqueo ID ${bloqueoId} y se habilitó la disponibilidad del técnico`,
+    `Se eliminó el bloqueo ID ${bloqueoId}: ${resultado.detalle}`,
   )
 
   revalidatePath(RUTA_MODULO)

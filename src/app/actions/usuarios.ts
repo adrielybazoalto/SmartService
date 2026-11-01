@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
-import { tienePermisoModulo } from "@/lib/permisos";
+import { tieneAccionModulo, type AccionPermiso } from "@/lib/permisos";
 import { registrarBitacora } from "@/backend/bitacora";
 import { obtenerIpOrigen } from "@/lib/ip";
 import {
@@ -45,8 +45,8 @@ type Db = ReturnType<typeof getSupabaseServiceClient>;
  * Cualquier otra condición de rol se evalúa después, sobre los datos reales
  * (nunca por nombre de rol en la matriz).
  */
-async function exigirAccesoUsuarios() {
-  if (!(await tienePermisoModulo("/usuarios"))) {
+async function exigirAccesoUsuarios(accion: AccionPermiso = "LEER") {
+  if (!(await tieneAccionModulo("USUARIOS", accion))) {
     throw new Error("No autorizado: tu rol no tiene el permiso del módulo Usuarios.");
   }
   return requireUser();
@@ -117,7 +117,7 @@ export async function registrarUsuario(
   rol_id: number
 ): Promise<RespuestaAccion> {
   try {
-    const actor = await exigirAccesoUsuarios();
+    const actor = await exigirAccesoUsuarios("CREAR");
 
     const db = getSupabaseServiceClient();
     const nuevo = await crearUsuario(db, {
@@ -152,7 +152,7 @@ export async function actualizarUsuario(
   datos: { nombre: string; correo: string; telefono: string; rol_id: number }
 ): Promise<RespuestaAccion> {
   try {
-    const actor = await exigirAccesoUsuarios();
+    const actor = await exigirAccesoUsuarios("ACTUALIZAR");
 
     // Evita auto-bloqueo: un usuario no puede cambiarse su propio rol.
     if (usuarioId === actor.id && Number(datos.rol_id) !== actor.rol_id) {
@@ -185,7 +185,7 @@ export async function cambiarEstadoCuenta(
   nuevoEstado: boolean
 ): Promise<RespuestaAccion> {
   try {
-    const actor = await exigirAccesoUsuarios();
+    const actor = await exigirAccesoUsuarios("ACTUALIZAR");
     const db = getSupabaseServiceClient();
 
     const { data: objetivo, error: errGet } = await db

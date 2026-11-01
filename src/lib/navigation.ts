@@ -241,6 +241,7 @@ export const MODULOS: ModuloRegistrado[] = PAQUETES.filter(
 
 /** Módulos que el rol ADMINISTRADOR nunca puede perder (CU04). */
 export const MODULOS_PROTEGIDOS_ADMIN = ['ROLES', 'USUARIOS']
+export const ACCIONES_PROTEGIDAS_ADMIN = ['LEER', 'ACTUALIZAR']
 
 /** ¿Esta asignación le quita al Administrador un módulo protegido? */
 export function quitaModuloProtegido(rolNombre: string, claves: string[]): boolean {

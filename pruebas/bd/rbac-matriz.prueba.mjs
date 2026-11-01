@@ -17,6 +17,7 @@ const { MODULOS, moduloPorRuta, quitaModuloProtegido } = await import('@/lib/nav
 const RAIZ = process.env.SMARTSERVICE_RAIZ ?? fileURLToPath(new URL('../../', import.meta.url));
 const leer = (...ruta) => readFileSync(join(RAIZ, 'db', ...ruta), 'utf8');
 const MIGRACION = leer('migrations', 'migracion_rbac_ajuste_matriz.sql');
+const COMPLETA = leer('migrations', 'migracion_rbac_matriz_completa.sql');
 
 let ok = 0, fallos = 0;
 function resultado(nombre, paso, detalle) {
@@ -90,6 +91,51 @@ const TECNICO = ['/cotizaciones', '/ordenes-trabajo', '/perfil'];
   const claves = (await dbSeed.query('SELECT clave FROM funcion WHERE clave IS NOT NULL')).rows.map((f) => f.clave);
   resultado('Todos los módulos del menú existen en FUNCION', MODULOS.every((m) => claves.includes(m.clave)));
   await dbSeed.close();
+
+  // ---------- Matriz completa (Fase 5) ----------
+  const dbM = await nuevaBD();
+  for (let i = 0; i < 2; i++) await dbM.exec(COMPLETA);
+  const acc = async (rol, clave) => (await dbM.query(`
+    SELECT string_agg(a.nombre, ',' ORDER BY a.nombre) l FROM rol_funcion rf
+      JOIN rol r ON r.id = rf.rol_id JOIN funcion f ON f.id = rf.funcion_id JOIN accion a ON a.id = rf.accion_id
+     WHERE r.nombre = $1 AND f.clave = $2`, [rol, clave])).rows[0].l;
+  resultado('Administrador: todas las acciones en Proveedores', (await acc('ADMINISTRADOR', 'PROVEEDORES')) === 'ACTUALIZAR,CREAR,ELIMINAR,LEER,PROCESAR');
+  resultado('Encargado: puede emitir y cobrar notas', (await acc('ENCARGADO', 'NOTAS_SERVICIO')) === 'CREAR,LEER,PROCESAR');
+  resultado('Encargado: asigna cuadrillas', (await acc('ENCARGADO', 'ASIGNAR_TECNICOS')) === 'ACTUALIZAR,LEER');
+  resultado('Encargado: no elimina cotizaciones', !(await acc('ENCARGADO', 'COTIZACIONES')).includes('ELIMINAR'));
+  resultado('Técnico: sin cambios en cotizaciones', (await acc('TECNICO', 'COTIZACIONES')) === 'LEER');
+
+  const ids = async (rol) => (await dbM.query(`SELECT rf.funcion_id, rf.accion_id FROM rol_funcion rf JOIN rol r ON r.id = rf.rol_id
+    JOIN funcion f ON f.id = rf.funcion_id WHERE r.nombre = $1 AND f.clave IS NOT NULL`, [rol])).rows;
+  await dbM.exec('GRANT USAGE ON SCHEMA public TO service_role; GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;');
+  // Corre como service_role, igual que en producción (la función usa una tabla temporal)
+  const guardar = async (rolId, permisos) => {
+    await dbM.exec('SET ROLE service_role');
+    try { return await dbM.query('SELECT public.fn_guardar_permisos_rol(1, $1, $2::jsonb, NULL) AS n', [rolId, JSON.stringify(permisos)]); }
+    finally { await dbM.exec('RESET ROLE'); }
+  };
+  const falla = async (nombre, fn, patron) => {
+    try { await fn(); resultado(nombre, false, 'NO falló'); }
+    catch (e) { resultado(nombre, patron.test(e.message), e.message); }
+  };
+  const filaSinClave = (await dbM.query(`SELECT count(*)::int n FROM rol_funcion rf JOIN funcion f ON f.id = rf.funcion_id WHERE rf.rol_id = 3 AND f.clave IS NULL`)).rows[0].n;
+  const fn = await dbM.query(`SELECT id FROM funcion WHERE clave = 'CLIENTES'`);
+  const crear = (await dbM.query(`SELECT id FROM accion WHERE nombre = 'CREAR'`)).rows[0].id;
+  const leerId = (await dbM.query(`SELECT id FROM accion WHERE nombre = 'LEER'`)).rows[0].id;
+  await guardar(3, [{ funcion_id: fn.rows[0].id, accion_id: crear }]);
+  resultado('Guardar: una acción implica LEER', (await acc('TECNICO', 'CLIENTES')) === 'CREAR,LEER');
+  resultado('Guardar: reemplaza lo anterior', (await acc('TECNICO', 'ORDENES_TRABAJO')) === null);
+  resultado('Guardar: no toca funciones sin clave', (await dbM.query(`SELECT count(*)::int n FROM rol_funcion rf JOIN funcion f ON f.id = rf.funcion_id WHERE rf.rol_id = 3 AND f.clave IS NULL`)).rows[0].n === filaSinClave);
+  const bitR = (await dbM.query(`SELECT count(*)::int n FROM bitacora WHERE accion = 'CONFIGURAR_ROLES_PERMISOS'`)).rows[0].n;
+  resultado('Guardar: registra bitácora', bitR === 1);
+
+  const adminAntes = JSON.stringify(await ids('ADMINISTRADOR'));
+  await falla('Guardar: el Administrador no pierde Roles', () => guardar(1, [{ funcion_id: fn.rows[0].id, accion_id: leerId }]), /Administrador Principal no puede perder permisos/);
+  resultado('Guardar: el rechazo revierte todo', JSON.stringify(await ids('ADMINISTRADOR')) === adminAntes);
+  await falla('Guardar: permiso inexistente', () => guardar(3, [{ funcion_id: 9999, accion_id: leerId }]), /no existen en el sistema/);
+  await falla('Guardar: rol inexistente', () => guardar(999, []), /no es válido/);
+  resultado('Guardar: un fallo no cambia al Técnico', (await acc('TECNICO', 'CLIENTES')) === 'CREAR,LEER');
+  await dbM.close();
 
   // ---------- navigation.ts ----------
   resultado('/personal-tecnico usa PERSONAL_TECNICO', moduloPorRuta('/personal-tecnico')?.clave === 'PERSONAL_TECNICO');

@@ -1,7 +1,7 @@
 'use server'
 
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { tieneAccionModulo } from '@/lib/permisos'
 import { obtenerIpOrigen } from '@/lib/ip'
 import {
   listarBitacora,
@@ -11,7 +11,7 @@ import {
 
 export async function listarBitacoraAction(filtros: FiltrarBitacoraInput = {}) {
   // Única condición de acceso: permiso BITACORA (LEER) en rol_funcion (BD).
-  if (!(await tienePermisoModulo('/bitacora'))) {
+  if (!(await tieneAccionModulo('BITACORA', 'LEER'))) {
     throw new Error('No autorizado: tu rol no tiene el permiso del módulo Bitácora.')
   }
 

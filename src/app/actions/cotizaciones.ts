@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { obtenerIpOrigen } from '@/lib/ip'
 import { getCurrentUser } from '@/lib/auth'
-import { tieneAccionModulo, tienePermisoModulo } from '@/lib/permisos'
+import { exigirPermiso, tieneAccionModulo, type AccionPermiso } from '@/lib/permisos'
 import {
   MSG_FALTA_MIGRACION,
   confirmarAnticipoTarjeta,
@@ -16,8 +16,19 @@ import { PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago'
 const CLAVE_MODULO = 'COTIZACIONES'
 const MSG_SIN_PERMISO = 'No autorizado: tu rol no tiene el permiso de este módulo.'
 
-async function exigirModulo() {
-  if (!(await tienePermisoModulo('/cotizaciones'))) throw new Error(MSG_SIN_PERMISO)
+async function exigirModulo(accion: AccionPermiso = 'LEER') {
+  await exigirPermiso(CLAVE_MODULO, accion)
+}
+
+// Para mostrar en la lista solo los botones que el rol puede usar
+export async function permisosCotizacionesAccion() {
+  const [crear, actualizar, eliminar, crearOrden] = await Promise.all([
+    tieneAccionModulo(CLAVE_MODULO, 'CREAR'),
+    tieneAccionModulo(CLAVE_MODULO, 'ACTUALIZAR'),
+    tieneAccionModulo(CLAVE_MODULO, 'ELIMINAR'),
+    tieneAccionModulo('ORDENES_TRABAJO', 'CREAR'),
+  ])
+  return { crear, actualizar, eliminar, crearOrden, procesar: await puedeProcesarCotizacionesAccion() }
 }
 
 // Cambiar el estado es PROCESAR: LEER también lo tiene el Técnico.
@@ -272,7 +283,7 @@ export async function cambiarEstadoCotizacionAccion(id: number, nuevoEstado: str
 
 // Eliminar cotización
 export async function eliminarCotizacionAccion(id: number) {
-  await exigirModulo()
+  await exigirModulo('ELIMINAR')
   const supabase = getSupabaseServiceClient()
   // Borrarla perdería el registro del dinero recibido
   const { data: cot } = await supabase.from('cotizacion').select('anticipo_monto').eq('id', id).maybeSingle()
@@ -306,7 +317,7 @@ export async function eliminarCotizacionAccion(id: number) {
 
 // Generar el siguiente correlativo único dinámico para cotización (ej. COT-2026-0006)
 export async function generarSiguienteNumeroCotizacionAccion(offset: number = 0): Promise<string> {
-  await exigirModulo()
+  await exigirModulo('CREAR')
   const supabase = getSupabaseServiceClient()
   const anioActual = new Date().getFullYear()
   const prefijo = `COT-${anioActual}-`
@@ -346,7 +357,7 @@ export async function crearCotizacionCompletaAccion(formData: {
 }) {
   const supabase = getSupabaseServiceClient()
   try {
-    await exigirModulo()
+    await exigirModulo('CREAR')
     const fechaEmision = new Date().toISOString().split('T')[0]
     const fechaVencimiento = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
@@ -446,7 +457,7 @@ export async function actualizarCotizacionCompletaAccion(cotizacionId: number, f
 }) {
   const supabase = getSupabaseServiceClient()
   try {
-    await exigirModulo()
+    await exigirModulo('ACTUALIZAR')
     // El estado no se edita aquí: aprobar exige registrar el anticipo
     const { data: actual } = await supabase.from('cotizacion').select('anticipo_monto').eq('id', cotizacionId).maybeSingle()
     if (formData.total < Number(actual?.anticipo_monto ?? 0)) {

@@ -206,10 +206,10 @@ function dbCancelar(estado) {
   }
   return { db, llamadas }
 }
-const sesion = (db, rutasPermitidas) => {
-  globalThis.__cu16 = { db, rutasPermitidas, usuario: { id: 2, rol: { nombre: 'ENCARGADO' } } }
+const sesion = (db, accionesPermitidas) => {
+  globalThis.__cu16 = { db, accionesPermitidas, usuario: { id: 2, rol: { nombre: 'ENCARGADO' } } }
 }
-const GESTION = ['/ordenes-trabajo', '/asignar-tecnicos']
+const GESTION = ['ORDENES_TRABAJO:LEER', 'ASIGNAR_TECNICOS:ACTUALIZAR']
 
 await prueba('Cancelar: pasa a CANCELADA y deja bitácora', async () => {
   const { db, llamadas } = dbCancelar('PROGRAMADA')
@@ -226,7 +226,7 @@ await prueba('Cancelar: se rechaza si la orden ya no está PROGRAMADA', async ()
 })
 await prueba('Cancelar: quien solo tiene el módulo de órdenes (Técnico) no puede', async () => {
   const { db, llamadas } = dbCancelar('PROGRAMADA')
-  sesion(db, ['/ordenes-trabajo'])
+  sesion(db, ['ORDENES_TRABAJO:LEER', 'ORDENES_TRABAJO:ACTUALIZAR', 'ORDENES_TRABAJO:PROCESAR'])
   const r = await A.cancelarOrdenAccion(7)
   igual(r.ok, false)
   if (!/No autorizado/.test(r.error)) throw new Error(r.error)

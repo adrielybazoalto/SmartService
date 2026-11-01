@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { requireUser } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { tieneAccionModulo, type AccionPermiso } from '@/lib/permisos'
 import { obtenerIpOrigen } from '@/lib/ip'
 import { guardarEventoCliente } from '@/backend/bitacora'
 import {
@@ -70,8 +70,8 @@ export interface RespuestaAccionCliente {
 
 // ── Guard de acceso del módulo ──────────────────────────────────────────────
 
-async function exigirAccesoClientes() {
-  if (!(await tienePermisoModulo('/clientes'))) {
+async function exigirAccesoClientes(accion: AccionPermiso = 'LEER') {
+  if (!(await tieneAccionModulo('CLIENTES', accion))) {
     throw new Error('No autorizado: tu rol no tiene el permiso del módulo Clientes.')
   }
   return requireUser()
@@ -129,7 +129,7 @@ export async function validarDocumentoUnico(documento: string): Promise<{ existe
 
 /** Crea el cliente en Supabase (tabla CLIENTE). Devuelve la fila creada. */
 export async function registrarClienteBD(datosCliente: CrearClienteInput): Promise<Cliente> {
-  await exigirAccesoClientes()
+  await exigirAccesoClientes('CREAR')
 
   const db = getSupabaseServiceClient()
   return crearCliente(db, datosCliente)
@@ -139,7 +139,7 @@ export async function registrarClienteBD(datosCliente: CrearClienteInput): Promi
 export async function registrarEstablecimientoBD(
   datosEstablecimiento: CrearEstablecimientoInput,
 ): Promise<Establecimiento> {
-  await exigirAccesoClientes()
+  await exigirAccesoClientes('CREAR')
 
   const db = getSupabaseServiceClient()
   return crearEstablecimiento(db, datosEstablecimiento)
@@ -175,7 +175,7 @@ export async function procesarRegistroCliente(
   datosFormulario: RegistroClienteFormulario,
 ): Promise<RespuestaAccionCliente> {
   try {
-    const actor = await exigirAccesoClientes()
+    const actor = await exigirAccesoClientes('CREAR')
     const formulario = registrarClienteCompletoSchema.parse(datosFormulario)
     const db = getSupabaseServiceClient()
 
@@ -247,7 +247,7 @@ export async function procesarActualizacionCliente(
   datosFormulario: EditarClienteFormulario,
 ): Promise<RespuestaAccionCliente> {
   try {
-    const actor = await exigirAccesoClientes()
+    const actor = await exigirAccesoClientes('ACTUALIZAR')
     const formulario = editarClienteFormularioSchema.parse(datosFormulario)
     const db = getSupabaseServiceClient()
 

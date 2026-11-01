@@ -8,7 +8,7 @@ import {
   confirmarAnticipoTarjetaAction,
   cambiarEstadoCotizacionAccion,
   eliminarCotizacionAccion,
-  puedeProcesarCotizacionesAccion,
+  permisosCotizacionesAccion,
 } from '@/app/actions/cotizaciones'
 import { convertirCotizacionAOrdenAccion } from '@/app/actions/ordenes-trabajo'
 import { textoAnticipo } from './anticipo'
@@ -27,7 +27,7 @@ export default function CotizacionesPage() {
   const router = useRouter()
   const [cotizaciones, setCotizaciones] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
-  const [puedeProcesar, setPuedeProcesar] = useState(false)
+  const [permisos, setPermisos] = useState({ crear: false, actualizar: false, eliminar: false, crearOrden: false, procesar: false })
   const [cotizacionParaAprobar, setCotizacionParaAprobar] = useState<CotizacionParaAprobar | null>(null)
   const [avisoPago, setAvisoPago] = useState<{ ok: boolean; texto: string } | null>(null)
   const retornoAtendido = useRef(false)
@@ -52,7 +52,7 @@ export default function CotizacionesPage() {
 
   useEffect(() => {
     cargarCotizaciones()
-    puedeProcesarCotizacionesAccion().then(setPuedeProcesar)
+    permisosCotizacionesAccion().then(setPermisos)
   }, [])
 
   // Retorno de Stripe (?anticipo=exito&session_id=... o ?anticipo=cancelado): se atiende una sola vez
@@ -155,12 +155,14 @@ export default function CotizacionesPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Gestión de Cotizaciones y Proformas</h1>
+        {permisos.crear && (
         <Link 
           href="/cotizaciones/nuevo" 
           className="bg-[#9fe82e] hover:bg-[#8be01c] text-gray-900 font-semibold px-4 py-2 rounded-xl text-sm shadow-sm transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
         >
           + Nueva Cotización
         </Link>
+        )}
       </div>
 
       {avisoPago && (
@@ -220,7 +222,7 @@ export default function CotizacionesPage() {
                     </td>
                     <td className="py-4 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                        {puedeProcesar && cot.estado === 'PENDIENTE' && (
+                        {permisos.procesar && cot.estado === 'PENDIENTE' && (
                           <>
                             <button
                               onClick={() =>
@@ -243,7 +245,7 @@ export default function CotizacionesPage() {
                             </button>
                           </>
                         )}
-                        {cot.estado === 'APROBADA' && (
+                        {permisos.crearOrden && cot.estado === 'APROBADA' && (
                           <button
                             onClick={() => handleAbrirModalConvertir(cot)}
                             className="text-purple-600 hover:underline text-xs font-medium bg-purple-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
@@ -261,19 +263,23 @@ export default function CotizacionesPage() {
                           📄 Ver PDF
                         </a>
 
-                        <button 
+                        {permisos.actualizar && (
+                          <button 
                           onClick={() => router.push(`/cotizaciones/editar/${cot.id}`)}
                           className="text-amber-600 hover:underline text-xs font-medium bg-amber-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
                         >
                           Editar
                         </button>
+                        )}
 
-                        <button 
+                        {permisos.eliminar && (
+                          <button 
                           onClick={() => handleEliminar(cot.id, cot.numero_cotizacion)}
                           className="text-red-600 hover:underline text-xs font-medium bg-red-50 px-2.5 py-1 rounded-lg shadow-xs cursor-pointer"
                         >
                           Eliminar
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>

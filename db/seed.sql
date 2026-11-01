@@ -168,6 +168,17 @@ FROM FUNCION f JOIN ACCION a ON a.nombre = 'CREAR'
 WHERE f.clave = 'COMPRAS'
 ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
+-- ENCARGADO: operaciones propias (mismas acciones que migracion_rbac_matriz_completa.sql)
+INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
+SELECT 2, f.id, a.id, 'Operación del Encargado'
+FROM (VALUES
+  ('COTIZACIONES', 'ACTUALIZAR'), ('PROVEEDORES', 'CREAR'), ('PROVEEDORES', 'ACTUALIZAR'),
+  ('ASIGNAR_TECNICOS', 'ACTUALIZAR'), ('NOTAS_SERVICIO', 'CREAR'), ('NOTAS_SERVICIO', 'PROCESAR')
+) AS v(clave, accion)
+JOIN FUNCION f ON f.clave = v.clave
+JOIN ACCION a ON a.nombre = v.accion
+ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
+
 -- TECNICO: perfil, cotizaciones (lectura) y órdenes de trabajo
 INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
 SELECT 3, f.id, a.id, 'Acceso al módulo'

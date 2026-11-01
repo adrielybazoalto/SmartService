@@ -8,7 +8,7 @@ import { ControlOrdenesTrabajo, type VentanaHorariaInput } from '@/backend/orden
 import { horasEntre } from '@/backend/asignaciones/disponibilidad'
 import type { OrdenTrabajo } from '@/backend/ordenes/types'
 import { ventanaBolivia } from '@/lib/fechas'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { exigirPermiso, type AccionPermiso } from '@/lib/permisos'
 import type { Db } from '@/lib/supabase/types'
 
 type RespuestaAccion<T> = { ok: true; data: T; mensaje: string } | { ok: false; error: string }
@@ -22,21 +22,15 @@ function falla(e: unknown, porDefecto: string) {
   return { ok: false as const, error: e instanceof Error ? e.message : porDefecto }
 }
 
-async function contexto() {
+async function contexto(accion: AccionPermiso = 'LEER') {
   const u = (await getCurrentUser()) as any
   const id = Number(u?.id ?? u?.uid)
   if (!u || !Number.isInteger(id) || id <= 0) throw new Error('Sesión expirada. Vuelva a iniciar sesión.')
-  await exigirModulo('/ordenes-trabajo')
+  await exigirPermiso('ORDENES_TRABAJO', accion)
   return {
     db: getSupabaseServiceClient() as unknown as Db,
     usuarioId: id,
     ip: await obtenerIpOrigen(),
-  }
-}
-
-async function exigirModulo(ruta: string) {
-  if (!(await tienePermisoModulo(ruta))) {
-    throw new Error('No autorizado: tu rol no tiene el permiso de este módulo.')
   }
 }
 
@@ -97,13 +91,13 @@ export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<Resp
 }
 
 /**
- * Cancelar una orden PROGRAMADA. Además del módulo de órdenes (el técnico también lo
- * tiene) exige el de asignación: cancela quien programa, no quien ejecuta.
+ * Cancelar una orden PROGRAMADA: exige ACTUALIZAR en asignación, porque cancela
+ * quien programa la orden, no quien la ejecuta.
  */
 export async function cancelarOrdenAccion(ordenId: number): Promise<RespuestaAccion<OrdenTrabajo>> {
   try {
     const { db, usuarioId, ip } = await contexto()
-    await exigirModulo('/asignar-tecnicos')
+    await exigirPermiso('ASIGNAR_TECNICOS', 'ACTUALIZAR')
     const orden = await ControlOrdenesTrabajo.cancelarOrden(db, ordenId, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')
     revalidatePath('/asignar-tecnicos')
@@ -121,7 +115,7 @@ export async function convertirCotizacionAOrdenAccion(
   datosVentana: VentanaHorariaInput,
 ): Promise<RespuestaAccion<any>> {
   try {
-    const { db, usuarioId, ip } = await contexto()
+    const { db, usuarioId, ip } = await contexto('CREAR')
     const orden = await ControlOrdenesTrabajo.convertirCotizacionAOrdenBD(
       db,
       cotizacionId,
@@ -149,6 +143,7 @@ export async function actualizarVentanaOrdenAccion(
 ): Promise<RespuestaAccion<any>> {
   try {
     const { db } = await contexto()
+    await exigirPermiso('ASIGNAR_TECNICOS', 'ACTUALIZAR')
     const { inicio, fin } = ventanaBolivia(fechaProgramada, horaInicio, horaFin)
     const { data, error } = await db
       .from('orden_trabajo')
@@ -173,7 +168,7 @@ export async function actualizarVentanaOrdenAccion(
  */
 export async function registrarInicioOrdenAccion(ordenId: number): Promise<RespuestaAccion<any>> {
   try {
-    const { db, usuarioId, ip } = await contexto()
+    const { db, usuarioId, ip } = await contexto('ACTUALIZAR')
     const orden = await ControlOrdenesTrabajo.registrarMarcaTiempoInicio(db, ordenId, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')
     return exito(orden, 'Inicio de labores registrado')
@@ -187,7 +182,7 @@ export async function registrarInicioOrdenAccion(ordenId: number): Promise<Respu
  */
 export async function registrarFinOrdenAccion(ordenId: number): Promise<RespuestaAccion<any>> {
   try {
-    const { db, usuarioId, ip } = await contexto()
+    const { db, usuarioId, ip } = await contexto('ACTUALIZAR')
     const orden = await ControlOrdenesTrabajo.registrarMarcaTiempoFin(db, ordenId, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')
     return exito(orden, 'Fin de labores registrado')
@@ -205,7 +200,7 @@ export async function procesarReporteCampoAccion(input: {
   materiales?: Array<{ producto_id: number; cantidad_utilizada: number; observacion?: string | null }>
 }): Promise<RespuestaAccion<any>> {
   try {
-    const { db, usuarioId, ip } = await contexto()
+    const { db, usuarioId, ip } = await contexto('PROCESAR')
     const resultado = await ControlOrdenesTrabajo.procesarReporteCampo(db, { ...input, materiales: input.materiales || [] }, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')
     revalidatePath('/inventario')

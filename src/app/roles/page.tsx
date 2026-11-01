@@ -3,38 +3,47 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  crearRolAccion,
   fetchRolesYPermisos,
   guardarPermisosRol,
   RolEntity,
   ModuloPermiso,
+  AccionEntity,
 } from "../actions/roles";
 import { IconoModulo } from "@/components/icono-modulo";
-import { MODULOS_PROTEGIDOS_ADMIN } from "@/lib/navigation";
+import { ACCIONES_PROTEGIDAS_ADMIN, MODULOS_PROTEGIDOS_ADMIN } from "@/lib/navigation";
 import { PageHeaderBadge } from "@/components/page-header-badge";
 
+const celda = (moduloId: number, accionId: number) => `${moduloId}:${accionId}`;
+
 /**
- * Consola RBAC (módulo /roles): lee roles, módulos y asignaciones DESDE LA
- * BASE DE DATOS (ROL, FUNCION, ACCION, ROL_FUNCION). Al guardar, persiste en la BD y
- * refresca el sitio (router.refresh + revalidatePath) para que el Dashboard y
- * el Navbar reflejen los cambios de inmediato en cualquier sesión.
+ * Consola RBAC (módulo /roles): lee roles, módulos y acciones DESDE LA BASE DE
+ * DATOS (ROL, FUNCION, ACCION, ROL_FUNCION) y edita la matriz función × acción
+ * agrupada por módulo. Al guardar, persiste en una sola transacción y refresca
+ * el sitio para que el Dashboard y el Navbar reflejen los cambios de inmediato.
  */
 export default function RolesPage() {
   const router = useRouter();
   const [montado, setMontado] = useState(false);
   const [roles, setRoles] = useState<RolEntity[]>([]);
   const [modulos, setModulos] = useState<ModuloPermiso[]>([]);
+  const [acciones, setAcciones] = useState<AccionEntity[]>([]);
   const [asignacion, setAsignacion] = useState<{ [rolId: number]: string[] }>({});
   const [rolSeleccionadoId, setRolSeleccionadoId] = useState<number>(1);
   const [esSesionAdministrador, setEsSesionAdministrador] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
+  const [creandoRol, setCreandoRol] = useState(false);
+  const [nombreRol, setNombreRol] = useState("");
+  const [descripcionRol, setDescripcionRol] = useState("");
 
   /** Aplica la configuración leída de la BD (solo desde callbacks asíncronos). */
   const aplicarConfiguracion = useCallback(
     (data: Awaited<ReturnType<typeof fetchRolesYPermisos>>) => {
       setRoles(data.roles);
       setModulos(data.modulos);
+      setAcciones(data.acciones);
       setAsignacion(data.asignacion);
       setEsSesionAdministrador(data.esSesionAdministrador);
       setRolSeleccionadoId((prev) =>
@@ -77,13 +86,29 @@ export default function RolesPage() {
   const activosDelRol = new Set(asignacion[rolSeleccionadoId] ?? []);
   // Los permisos del rol ADMINISTRADOR solo pueden modificarlos Administradores.
   const rolBloqueado = rolSeleccionado?.nombre === "ADMINISTRADOR" && !esSesionAdministrador;
+  const accionLeer = acciones.find((a) => a.nombre === "LEER");
+  const grupos = [...new Set(modulos.map((m) => m.grupo))];
 
-  const toggleModulo = (nombre: string) => {
-    if (rolBloqueado) return;
+  const esProtegida = (modulo: ModuloPermiso, accion: AccionEntity) =>
+    rolSeleccionado?.nombre === "ADMINISTRADOR" &&
+    MODULOS_PROTEGIDOS_ADMIN.includes(modulo.nombre) &&
+    ACCIONES_PROTEGIDAS_ADMIN.includes(accion.nombre);
+
+  /** Marcar una acción marca LEER; desmarcar LEER quita todas las del módulo. */
+  const alternar = (modulo: ModuloPermiso, accion: AccionEntity) => {
+    if (rolBloqueado || !accionLeer) return;
     setAsignacion((prev) => {
       const actuales = new Set(prev[rolSeleccionadoId] ?? []);
-      if (actuales.has(nombre)) actuales.delete(nombre);
-      else actuales.add(nombre);
+      const clave = celda(modulo.id, accion.id);
+      if (actuales.has(clave)) {
+        actuales.delete(clave);
+        if (accion.id === accionLeer.id) {
+          acciones.forEach((a) => actuales.delete(celda(modulo.id, a.id)));
+        }
+      } else {
+        actuales.add(clave);
+        actuales.add(celda(modulo.id, accionLeer.id));
+      }
       return { ...prev, [rolSeleccionadoId]: [...actuales] };
     });
   };
@@ -93,10 +118,11 @@ export default function RolesPage() {
     setMensajeError(null);
     setMensajeExito(null);
     try {
-      const listaActiva = modulos
-        .filter((m) => activosDelRol.has(m.nombre))
-        .map((m) => m.nombre);
-      const resp = await guardarPermisosRol(rolSeleccionadoId, listaActiva);
+      const permisos = (asignacion[rolSeleccionadoId] ?? []).map((c) => {
+        const [funcion_id, accion_id] = c.split(":").map(Number);
+        return { funcion_id, accion_id };
+      });
+      const resp = await guardarPermisosRol(rolSeleccionadoId, permisos);
       if (resp.ok) {
         setMensajeExito(resp.mensaje);
         router.refresh(); // re-renderiza los server components (Navbar, etc.)
@@ -108,6 +134,24 @@ export default function RolesPage() {
       setMensajeError(e instanceof Error ? e.message : "No se pudo guardar.");
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const handleCrearRol = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardando(true);
+    setMensajeError(null);
+    setMensajeExito(null);
+    const resp = await crearRolAccion(nombreRol, descripcionRol);
+    setGuardando(false);
+    if (resp.ok) {
+      setMensajeExito(resp.mensaje);
+      setCreandoRol(false);
+      setNombreRol("");
+      setDescripcionRol("");
+      await cargarConfiguracion();
+    } else {
+      setMensajeError(resp.mensaje);
     }
   };
 
@@ -130,7 +174,7 @@ export default function RolesPage() {
               Configuración de Roles y Permisos
             </h1>
             <p className="text-sm text-slate-500">
-              Asignación de módulos por rol, guardada en la base de datos (
+              Matriz de funciones y acciones por rol, guardada en la base de datos (
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs text-slate-600">
                 rol_funcion
               </code>
@@ -168,12 +212,51 @@ export default function RolesPage() {
         <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm md:grid-cols-12">
           {/* Columna izquierda: roles */}
           <div className="space-y-2 border-b border-slate-200 bg-slate-50/60 p-4 md:col-span-4 md:border-b-0 md:border-r">
-            <h2 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Roles del Sistema
-            </h2>
+            <div className="mb-2 flex items-center justify-between px-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Roles del Sistema
+              </h2>
+              <button
+                onClick={() => setCreandoRol((v) => !v)}
+                className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                + Nuevo Rol
+              </button>
+            </div>
+
+            {creandoRol && (
+              <form onSubmit={handleCrearRol} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                <input
+                  required
+                  maxLength={50}
+                  value={nombreRol}
+                  onChange={(e) => setNombreRol(e.target.value)}
+                  placeholder="Nombre del rol"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+                <input
+                  maxLength={255}
+                  value={descripcionRol}
+                  onChange={(e) => setDescripcionRol(e.target.value)}
+                  placeholder="Descripción (opcional)"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="w-full cursor-pointer rounded-lg bg-lime-400 px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-lime-300 disabled:opacity-50"
+                >
+                  Crear rol
+                </button>
+              </form>
+            )}
+
             {roles.map((rol) => {
               const seleccionado = rolSeleccionadoId === rol.id;
-              const cuenta = (asignacion[rol.id] ?? []).length;
+              const asignadas = asignacion[rol.id] ?? [];
+              const cuenta = accionLeer
+                ? modulos.filter((m) => asignadas.includes(celda(m.id, accionLeer.id))).length
+                : 0;
               return (
                 <button
                   key={rol.id}
@@ -205,11 +288,11 @@ export default function RolesPage() {
             })}
           </div>
 
-          {/* Columna derecha: módulos */}
+          {/* Columna derecha: matriz función × acción */}
           <div className="space-y-6 p-6 md:col-span-8">
             <div className="border-b border-slate-200 pb-4">
               <h2 className="text-lg font-semibold text-slate-900">
-                Módulos del rol:{" "}
+                Permisos del rol:{" "}
                 <span className="text-lime-700">
                   {rolSeleccionado?.nombre}
                 </span>
@@ -217,65 +300,62 @@ export default function RolesPage() {
               <p className="mt-1 text-xs text-slate-500">
                 {rolBloqueado
                   ? "Modo solo lectura: selecciona otro rol para gestionar sus permisos."
-                  : "Activa o desactiva los módulos que este rol puede ver en el Navbar y el Dashboard."}
+                  : "LEER permite entrar al módulo. Las demás acciones controlan las operaciones internas."}
               </p>
             </div>
 
-            <div className="grid max-h-[620px] grid-cols-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-2">
-              {modulos.map((modulo) => {
-                const activo = activosDelRol.has(modulo.nombre);
-                const protegido =
-                  rolSeleccionado?.nombre === "ADMINISTRADOR" && MODULOS_PROTEGIDOS_ADMIN.includes(modulo.nombre);
-                return (
-                  <div
-                    key={modulo.id}
-                    className={`space-y-3 rounded-xl border p-4 transition-all ${
-                      activo
-                        ? "border-lime-300/70 bg-lime-50/70"
-                        : "border-slate-200 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                            activo
-                              ? "border border-lime-200 bg-lime-100 text-lime-700"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          <IconoModulo clave={modulo.nombre} className="h-5 w-5" />
-                        </span>
-                        <div>
-                          <h3 className="text-sm font-semibold text-slate-800">
-                            {modulo.etiqueta}
-                          </h3>
-                          <code className="text-[11px] text-slate-500">{modulo.ruta}</code>
-                        </div>
-                      </div>
-                      <button
-                        role="switch"
-                        aria-checked={activo}
-                        aria-label={`Permitir ${modulo.etiqueta}`}
-                        onClick={() => toggleModulo(modulo.nombre)}
-                        disabled={rolBloqueado || protegido}
-                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                          activo
-                            ? "bg-lime-400"
-                            : "bg-slate-200"
-                        } ${rolBloqueado || protegido ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+            <div className="max-h-[620px] overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-white text-[11px] uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2 pr-3 font-semibold">Función</th>
+                    {acciones.map((a) => (
+                      <th key={a.id} className="px-2 py-2 text-center font-semibold">
+                        {a.nombre}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                {grupos.map((grupo) => (
+                  <tbody key={grupo}>
+                    <tr>
+                      <th
+                        colSpan={acciones.length + 1}
+                        className="bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600"
                       >
-                        <span
-                          className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                            activo ? "translate-x-5" : ""
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-500">{modulo.descripcion}</p>
-                  </div>
-                );
-              })}
+                        {grupo}
+                      </th>
+                    </tr>
+                    {modulos
+                      .filter((m) => m.grupo === grupo)
+                      .map((modulo) => (
+                        <tr key={modulo.id} className="border-t border-slate-100">
+                          <td className="py-2 pr-3">
+                            <span className="flex items-center gap-2">
+                              <IconoModulo clave={modulo.nombre} className="h-4 w-4 text-slate-500" />
+                              <span>
+                                <span className="block text-sm font-medium text-slate-800">{modulo.etiqueta}</span>
+                                <code className="text-[11px] text-slate-500">{modulo.ruta}</code>
+                              </span>
+                            </span>
+                          </td>
+                          {acciones.map((accion) => (
+                            <td key={accion.id} className="px-2 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                aria-label={`${accion.nombre} en ${modulo.etiqueta}`}
+                                checked={activosDelRol.has(celda(modulo.id, accion.id))}
+                                disabled={rolBloqueado || esProtegida(modulo, accion)}
+                                onChange={() => alternar(modulo, accion)}
+                                className="h-4 w-4 cursor-pointer accent-lime-500 disabled:cursor-not-allowed disabled:opacity-50"
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                  </tbody>
+                ))}
+              </table>
             </div>
           </div>
         </div>
