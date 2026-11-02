@@ -152,12 +152,12 @@ await prueba('Reporte de campo: solo en EN_PROGRESO', async () => {
   igual(llamadas, 0)
 })
 await prueba('Reporte de campo: usa la función SQL', async () => {
-  const { db } = dbFalsa({ estado: 'EN_PROGRESO' })
+  const { db } = dbFalsa({ estado: 'EN_PROGRESO', fecha_fin_real: '2026-11-01 12:00:00' })
   db.rpc = async (nombre) => ({ data: { orden: { nombre }, consumos: [] }, error: null })
   igual((await reporte(db)).orden.nombre, 'fn_procesar_reporte_campo')
 })
 await prueba('Reporte de campo: sin fallback, si la función falla se muestra el error', async () => {
-  const { db, escrito } = dbFalsa({ estado: 'EN_PROGRESO' })
+  const { db, escrito } = dbFalsa({ estado: 'EN_PROGRESO', fecha_fin_real: '2026-11-01 12:00:00' })
   db.rpc = async () => ({ data: null, error: { message: 'function does not exist' } })
   await falla(() => reporte(db), /function does not exist/)
   igual(escrito, {})
