@@ -10,8 +10,8 @@ import {
 } from '@/app/actions/recuperar'
 import { PageHeaderBadge } from '@/components/page-header-badge'
 
-const estadoSolicitud: SolicitarRecuperacionState = { ok: false }
-const estadoRestablecer: RestablecerContrasenaState = { ok: false }
+const estadoSolicitud: SolicitarRecuperacionState = { ok: false, success: false }
+const estadoRestablecer: RestablecerContrasenaState = { ok: false, success: false }
 
 const inputClase =
   'w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 px-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-lime-400 focus:ring-2 focus:ring-lime-300/50'
@@ -77,29 +77,16 @@ function FormularioEmail({ errorInicial }: { errorInicial?: string }) {
   )
 
   // Resultado exitoso (mostrarResultado)
-  if (state.ok && state.enlace) {
+  if (state.success || state.ok) {
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           Revisa tu correo: enviamos un enlace para restablecer tu contraseña a{' '}
           <span className="font-medium text-emerald-900">{state.correo}</span>.
         </div>
-
-        {/* Simulador: no hay SMTP configurado, el enlace se muestra aquí */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
-          <p className="font-semibold text-slate-700">
-            Simulador de correo (sin SMTP)
-          </p>
-          <a
-            href={state.enlace}
-            className="mt-1 block break-all text-lime-700 transition-colors hover:text-lime-800"
-          >
-            {state.enlace}
-          </a>
-          <p className="mt-2">
-            El enlace caduca en 15 minutos y solo puede usarse una vez.
-          </p>
-        </div>
+        <p className="text-center text-xs text-slate-500">
+          El enlace caduca en 15 minutos y solo puede usarse una vez. Si no lo encuentras en tu bandeja de entrada, revisa tu carpeta de correo no deseado o spam.
+        </p>
       </div>
     )
   }
@@ -145,7 +132,7 @@ function FormularioNuevaContrasena({ token }: { token: string }) {
   )
 
   // Resultado exitoso (mostrarResultado)
-  if (state.ok) {
+  if (state.success || state.ok) {
     return (
       <div className="space-y-4 text-center">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">

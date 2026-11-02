@@ -1,16 +1,6 @@
 import { z } from 'zod'
 
-/**
- * Evento de auditoría (CU05: 'ACTUALIZAR_PERFIL' / 'CAMBIAR_CONTRASENA').
- * `fecha_hora` se completa con CURRENT_TIMESTAMP en la BD.
- */
-export const registrarBitacoraSchema = z.object({
-  usuario_id: z.number().int().positive(),
-  accion: z.string().min(1, 'La acción es obligatoria').max(100),
-  descripcion: z.string().max(1000).nullable().optional(),
-})
-
-/** Usado por OTROS módulos para registrar un evento sensible (CU06). */
+/** Evento de auditoría (CU06). `fecha_hora` se completa con CURRENT_TIMESTAMP en la BD. */
 export const registrarEventoSchema = z.object({
   usuario_id: z.number().int().positive(),
   accion: z.string().min(1, 'La acción es obligatoria').max(100),
@@ -24,8 +14,8 @@ export const filtrarBitacoraSchema = z.object({
   usuario_id: z.number().int().positive().nullable().optional(),
   accion: z.string().max(100).nullable().optional(),
   ip: z.string().regex(/^[0-9a-fA-F:.]{1,45}$/, 'Dirección IP inválida').nullable().optional(),
+  pagina: z.coerce.number().int().positive().optional(),
 })
 
-export type RegistrarBitacoraInput = z.infer<typeof registrarBitacoraSchema>
 export type RegistrarEventoInput = z.infer<typeof registrarEventoSchema>
 export type FiltrarBitacoraInput = z.infer<typeof filtrarBitacoraSchema>

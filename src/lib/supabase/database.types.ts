@@ -32,9 +32,9 @@ export type Database = {
         Relationships: []
       }
       funcion: {
-        Row: { id: number; nombre: string; descripcion: string | null; modulo_id: number }
-        Insert: { id?: number; nombre: string; descripcion?: string | null; modulo_id: number }
-        Update: { id?: number; nombre?: string; descripcion?: string | null; modulo_id?: number }
+        Row: { id: number; nombre: string; descripcion: string | null; modulo_id: number; clave: string | null; ruta: string | null }
+        Insert: { id?: number; nombre: string; descripcion?: string | null; modulo_id: number; clave?: string | null; ruta?: string | null }
+        Update: { id?: number; nombre?: string; descripcion?: string | null; modulo_id?: number; clave?: string | null; ruta?: string | null }
         Relationships: [
           {
             foreignKeyName: 'funcion_modulo_id_fkey'
@@ -56,6 +56,7 @@ export type Database = {
           telefono: string | null
           telefono_alternativo: string | null
           fecha_registro: string
+          estado: boolean
         }
         Insert: {
           id?: number
@@ -67,6 +68,7 @@ export type Database = {
           telefono?: string | null
           telefono_alternativo?: string | null
           fecha_registro?: string
+          estado?: boolean
         }
         Update: {
           id?: number
@@ -78,6 +80,7 @@ export type Database = {
           telefono?: string | null
           telefono_alternativo?: string | null
           fecha_registro?: string
+          estado?: boolean
         }
         Relationships: []
       }
@@ -228,63 +231,6 @@ export type Database = {
           },
         ]
       }
-      permiso: {
-        Row: {
-          id: number
-          nombre: string
-          ruta: string
-          descripcion: string | null
-        }
-        Insert: {
-          id?: number
-          nombre: string
-          ruta: string
-          descripcion?: string | null
-        }
-        Update: {
-          id?: number
-          nombre?: string
-          ruta?: string
-          descripcion?: string | null
-        }
-        Relationships: []
-      }
-      rol_permiso: {
-        Row: {
-          id: number
-          rol_id: number
-          permiso_id: number
-          descripcion: string | null
-        }
-        Insert: {
-          id?: number
-          rol_id: number
-          permiso_id: number
-          descripcion?: string | null
-        }
-        Update: {
-          id?: number
-          rol_id?: number
-          permiso_id?: number
-          descripcion?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'rol_permiso_rol_id_fkey'
-            columns: ['rol_id']
-            isOneToOne: false
-            referencedRelation: 'rol'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'rol_permiso_permiso_id_fkey'
-            columns: ['permiso_id']
-            isOneToOne: false
-            referencedRelation: 'permiso'
-            referencedColumns: ['id']
-          },
-        ]
-      }
       usuario: {
         Row: {
           id: number
@@ -341,6 +287,7 @@ export type Database = {
           tipo_inmueble: string | null
           latitud: string | null
           longitud: string | null
+          estado: boolean
         }
         Insert: {
           id?: number
@@ -350,6 +297,7 @@ export type Database = {
           tipo_inmueble?: string | null
           latitud?: string | null
           longitud?: string | null
+          estado?: boolean
         }
         Update: {
           id?: number
@@ -359,6 +307,7 @@ export type Database = {
           tipo_inmueble?: string | null
           latitud?: string | null
           longitud?: string | null
+          estado?: boolean
         }
         Relationships: [
           {
@@ -595,6 +544,12 @@ export type Database = {
           fecha_vencimiento: string | null
           estado: string
           total: string
+          anticipo_monto: string
+          anticipo_metodo: string | null
+          anticipo_referencia: string | null
+          anticipo_fecha: string | null
+          anticipo_usuario_id: number | null
+          anticipo_stripe_session_id: string | null
         }
         Insert: {
           id?: number

@@ -23,7 +23,7 @@ export function sentidoMovimiento(tipo: string, motivo: string | null): 1 | -1 |
 
 /**
  * Decisión de acceso de CU16 (dos niveles, ambos obligatorios):
- *   1) permiso de ruta INVENTARIO en ROL_PERMISO;
+ *   1) permiso de ruta INVENTARIO en ROL_FUNCION (acción LEER);
  *   2) la acción concedida en ROL_FUNCION para 'Catálogo e Inventario'.
  */
 export function evaluarAccesoInventario(

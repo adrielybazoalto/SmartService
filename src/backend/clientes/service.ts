@@ -78,6 +78,26 @@ export async function actualizarCliente(
   return data
 }
 
+/** Subflujo "Desactivar": el cliente deja de ofrecerse, pero conserva su historial. */
+export async function cambiarEstadoCliente(db: Db, id: number, estado: boolean): Promise<Cliente> {
+  const { data, error } = await db.from('cliente').update({ estado }).eq('id', id).select().single()
+  if (error) throw new Error(`No se pudo cambiar el estado del cliente: ${error.message}`)
+  return data
+}
+
+/** Subflujo "Ver historial": cotizaciones del cliente con su orden y su nota de servicio. */
+export async function obtenerHistorialCliente(db: Db, id: number) {
+  const { data, error } = await db
+    .from('cotizacion')
+    .select(
+      'id, numero_cotizacion, fecha_emision, estado, total, orden_trabajo(id, codigo_orden, estado, nota_servicio(numero_nota, estado, monto_total))',
+    )
+    .eq('cliente_id', id)
+    .order('id', { ascending: false })
+  if (error) throw new Error(`No se pudo cargar el historial del cliente: ${error.message}`)
+  return data
+}
+
 export async function eliminarCliente(db: Db, id: number): Promise<void> {
   const { error } = await db.from('cliente').delete().eq('id', id)
   if (error) throw new Error(`No se pudo eliminar el cliente: ${error.message}`)

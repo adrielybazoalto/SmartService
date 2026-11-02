@@ -7,7 +7,7 @@
 export const ACCIONES_COMPRAS = ['LEER', 'CREAR'] as const
 export type AccionCompras = (typeof ACCIONES_COMPRAS)[number]
 
-/** Nombre de la función en FUNCION y del permiso de ruta en PERMISO (migracion_cu15_compras.sql). */
+/** FUNCION.nombre (acciones) y FUNCION.clave (acceso al módulo) de Compras. */
 export const FUNCION_COMPRAS = 'Compras'
 export const PERMISO_COMPRAS = 'COMPRAS'
 

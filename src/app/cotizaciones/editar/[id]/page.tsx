@@ -177,11 +177,8 @@ export default function EditarCotizacionPage() {
     const res = await actualizarCotizacionCompletaAccion(Number(params.id), {
       cliente_id: clienteId,
       establecimiento_id: establecimientoId,
-      usuario_id: 1,
-      productos: productosSeleccionados,
-      servicios: serviciosSeleccionados,
-      total: totalGeneral,
-      estado: estado
+      productos: productosSeleccionados.map(p => ({ producto_id: p.producto_id, cantidad: p.cantidad })),
+      servicios: serviciosSeleccionados.map(s => ({ servicio_id: s.servicio_id, horas_estimadas: s.horas_estimadas }))
     })
 
     if (res.success) {
@@ -310,11 +307,7 @@ export default function EditarCotizacionPage() {
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-gray-600 mb-1">Estado</label>
-              <select value={estado} onChange={(e) => setEstado(e.target.value)} className="w-full border rounded-lg p-2 text-xs bg-white font-bold text-amber-700">
-                <option value="PENDIENTE">PENDIENTE</option>
-                <option value="APROBADA">APROBADA</option>
-                <option value="RECHAZADA">RECHAZADA</option>
-              </select>
+              <p className="w-full border rounded-lg p-2 text-xs bg-gray-50 font-bold text-amber-700">{estado}</p>
             </div>
           </div>
 

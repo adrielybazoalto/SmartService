@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { tieneAccionModulo } from '@/lib/permisos'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { registrarEvento } from '@/backend/bitacora'
 import type { Db } from '@/lib/supabase/types'
@@ -36,13 +36,13 @@ function mensajeDe(e: unknown): string {
 }
 
 export async function listarOrdenesAction(filtros: FiltrarOrdenesInput = {}) {
-  if (!(await tienePermisoModulo(RUTA))) throw new Error(MSG_NO_AUTORIZADO)
+  if (!(await tieneAccionModulo('ASIGNAR_TECNICOS', 'LEER'))) throw new Error(MSG_NO_AUTORIZADO)
   const parsed = filtrarOrdenesSchema.parse(filtros)
   return listarOrdenes(getSupabaseServiceClient(), parsed)
 }
 
 export async function obtenerOrdenConTecnicosAction(ordenId: number) {
-  if (!(await tienePermisoModulo(RUTA))) throw new Error(MSG_NO_AUTORIZADO)
+  if (!(await tieneAccionModulo('ASIGNAR_TECNICOS', 'LEER'))) throw new Error(MSG_NO_AUTORIZADO)
   if (!Number.isInteger(ordenId) || ordenId <= 0) throw new Error('Orden no válida.')
   return obtenerOrdenConTecnicos(getSupabaseServiceClient(), ordenId)
 }
@@ -52,7 +52,7 @@ async function ejecutar(
   modo: 'ASIGNAR' | 'MODIFICAR',
 ): Promise<ResultadoAsignacion> {
   const usuario = await requireUser()
-  if (!(await tienePermisoModulo(RUTA))) return { ok: false, error: MSG_NO_AUTORIZADO }
+  if (!(await tieneAccionModulo('ASIGNAR_TECNICOS', 'ACTUALIZAR'))) return { ok: false, error: MSG_NO_AUTORIZADO }
 
   const parsed = guardarCuadrillaSchema.safeParse(data)
   if (!parsed.success) {

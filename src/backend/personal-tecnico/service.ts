@@ -1,4 +1,6 @@
 import type { Db } from '@/lib/supabase/types'
+import { aMs } from '@/backend/asignaciones/disponibilidad'
+import { ahoraBolivia, formatearFechaHora } from '@/lib/fechas'
 import {
   guardarJornadaSchema,
   registrarBloqueoSchema,
@@ -7,19 +9,42 @@ import {
 } from './schema'
 import type { BloqueoTecnico, CargaHoraria, TecnicoResumen } from './types'
 
+const ROL_TECNICO = 'TECNICO'
+const MSG_ERROR_GUARDAR = 'No se pudo guardar. Intente nuevamente.'
+const MSG_NO_TECNICO = 'El usuario seleccionado no es un técnico activo'
+const MSG_BLOQUEO_NO_EXISTE = 'El bloqueo no existe o ya fue eliminado'
+
+/** El usuario debe existir, estar activo y tener el rol TECNICO. */
+async function esTecnicoActivo(db: Db, usuarioId: number): Promise<boolean> {
+  const { data } = await db
+    .from('usuario')
+    .select('estado, rol:rol_id(nombre)')
+    .eq('id', usuarioId)
+    .maybeSingle()
+  return data?.estado === true && data.rol?.nombre === ROL_TECNICO
+}
+
 /**
  * 1. Listar el personal técnico activo.
  */
 export async function listarTecnicos(db: Db) {
+  const { data: rol, error: errorRol } = await db.from('rol').select('id').eq('nombre', ROL_TECNICO).maybeSingle()
+  if (errorRol) {
+    console.error('[personal-tecnico] Error al buscar el rol técnico:', errorRol)
+    throw new Error('No se pudo obtener la lista de técnicos.')
+  }
+  if (!rol) return []
+
   const { data, error } = await db
     .from('usuario')
     .select('id, nombre, correo, estado, rol_id')
-    .eq('rol_id', 3)
+    .eq('rol_id', rol.id)
     .eq('estado', true)
     .order('nombre', { ascending: true })
 
   if (error) {
-    throw new Error('Error al obtener la lista de técnicos: ' + error.message)
+    console.error('[personal-tecnico] Error al listar técnicos:', error)
+    throw new Error('No se pudo obtener la lista de técnicos.')
   }
   return data ?? []
 }
@@ -32,7 +57,6 @@ export async function obtenerResumenPersonalTecnico(db: Db): Promise<TecnicoResu
   if (tecnicos.length === 0) return []
 
   const ids = tecnicos.map((t) => t.id)
-  const ahora = new Date().toISOString()
 
   // Consultar todas las jornadas de los técnicos
   const { data: jornadasData } = await db
@@ -55,7 +79,8 @@ export async function obtenerResumenPersonalTecnico(db: Db): Promise<TecnicoResu
     }
   }
 
-  const ahoraMs = Date.now()
+  // Los bloqueos son TIMESTAMP sin zona en hora de Bolivia
+  const ahoraMs = aMs(ahoraBolivia())
   const bloqueosPorTecnico = new Map<number, BloqueoTecnico[]>()
   for (const b of bloqueosData ?? []) {
     const list = bloqueosPorTecnico.get(b.usuario_id) ?? []
@@ -69,15 +94,12 @@ export async function obtenerResumenPersonalTecnico(db: Db): Promise<TecnicoResu
 
     // 1. Bloqueo en curso ahora mismo (dentro del rango fecha_inicio - fecha_fin)
     const bloqEnCurso = techBloqueos.find((b) => {
-      const ini = new Date(b.fecha_inicio).getTime()
-      const fin = new Date(b.fecha_fin).getTime()
-      return ahoraMs >= ini && ahoraMs <= fin
+      return ahoraMs >= aMs(b.fecha_inicio) && ahoraMs <= aMs(b.fecha_fin)
     })
 
     // 2. Bloqueo vigente o programado (fecha_fin posterior o igual a la actual)
     const bloqVigente = techBloqueos.find((b) => {
-      const fin = new Date(b.fecha_fin).getTime()
-      return fin >= ahoraMs
+      return aMs(b.fecha_fin) >= ahoraMs
     })
 
     const bloq = bloqEnCurso || bloqVigente
@@ -159,6 +181,10 @@ export async function guardarJornada(
 
   const { usuario_id, dia_semana, hora_inicio, hora_fin } = validado.data
 
+  if (!(await esTecnicoActivo(db, usuario_id))) {
+    return { success: false, message: MSG_NO_TECNICO }
+  }
+
   // Formatear horas a HH:mm:ss si vienen en formato HH:mm
   const hInicio = hora_inicio.length === 5 ? `${hora_inicio}:00` : hora_inicio
   const hFin = hora_fin.length === 5 ? `${hora_fin}:00` : hora_fin
@@ -183,7 +209,10 @@ export async function guardarJornada(
       })
       .eq('id', existente.id)
 
-    if (error) return { success: false, message: error.message }
+    if (error) {
+      console.error('[personal-tecnico] Error al actualizar la jornada:', error)
+      return { success: false, message: MSG_ERROR_GUARDAR }
+    }
   } else {
     const { error } = await db.from('carga_horaria_tecnico').insert({
       usuario_id,
@@ -193,7 +222,10 @@ export async function guardarJornada(
       activo: true,
     })
 
-    if (error) return { success: false, message: error.message }
+    if (error) {
+      console.error('[personal-tecnico] Error al crear la jornada:', error)
+      return { success: false, message: MSG_ERROR_GUARDAR }
+    }
   }
 
   return { success: true, message: 'Jornada configurada / actualizada correctamente.' }
@@ -204,7 +236,7 @@ export async function guardarJornada(
  */
 export async function registrarBloqueo(
   db: Db,
-  input: RegistrarBloqueoInput,
+  input: Omit<RegistrarBloqueoInput, 'tipo'> & { tipo: string },
 ): Promise<{ success: boolean; message: string }> {
   const validado = registrarBloqueoSchema.safeParse(input)
   if (!validado.success) {
@@ -216,6 +248,10 @@ export async function registrarBloqueo(
 
   const { usuario_id, fecha_inicio, fecha_fin, motivo, tipo } = validado.data
 
+  if (!(await esTecnicoActivo(db, usuario_id))) {
+    return { success: false, message: MSG_NO_TECNICO }
+  }
+
   const { error } = await db.from('bloqueo_tecnico').insert({
     usuario_id,
     fecha_inicio,
@@ -224,7 +260,10 @@ export async function registrarBloqueo(
     tipo,
   })
 
-  if (error) return { success: false, message: error.message }
+  if (error) {
+    console.error('[personal-tecnico] Error al registrar el bloqueo:', error)
+    return { success: false, message: MSG_ERROR_GUARDAR }
+  }
 
   return { success: true, message: 'Bloqueo registrado exitosamente.' }
 }
@@ -235,14 +274,31 @@ export async function registrarBloqueo(
 export async function eliminarBloqueo(
   db: Db,
   bloqueoId: number,
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; detalle?: string }> {
   if (!Number.isInteger(bloqueoId) || bloqueoId <= 0) {
     return { success: false, message: 'Identificador de bloqueo inválido.' }
   }
 
-  const { error } = await db.from('bloqueo_tecnico').delete().eq('id', bloqueoId)
+  const { data: bloqueo } = await db
+    .from('bloqueo_tecnico')
+    .select('tipo, fecha_inicio, fecha_fin, usuario:usuario_id(nombre)')
+    .eq('id', bloqueoId)
+    .maybeSingle()
+  if (!bloqueo) return { success: false, message: MSG_BLOQUEO_NO_EXISTE }
 
-  if (error) return { success: false, message: error.message }
+  const { data: borrado, error } = await db.from('bloqueo_tecnico').delete().eq('id', bloqueoId).select('id')
 
-  return { success: true, message: 'Bloqueo cancelado y técnico desbloqueado con éxito.' }
+  if (error) {
+    console.error('[personal-tecnico] Error al eliminar el bloqueo:', error)
+    return { success: false, message: 'No se pudo eliminar el bloqueo. Intente nuevamente.' }
+  }
+  if (!borrado?.length) return { success: false, message: MSG_BLOQUEO_NO_EXISTE }
+
+  return {
+    success: true,
+    message: 'Bloqueo cancelado y técnico desbloqueado con éxito.',
+    detalle:
+      `técnico ${bloqueo.usuario?.nombre ?? 'desconocido'}, tipo ${bloqueo.tipo ?? 'sin tipo'}, ` +
+      `del ${formatearFechaHora(bloqueo.fecha_inicio)} al ${formatearFechaHora(bloqueo.fecha_fin)}`,
+  }
 }

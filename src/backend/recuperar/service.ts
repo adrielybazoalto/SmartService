@@ -1,8 +1,7 @@
 import { createHash, randomBytes } from 'crypto'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Db } from '@/lib/supabase/types'
 import { hashContrasena } from '@/lib/password'
-import { registrarBitacora } from '@/backend/bitacora'
-import { GestorSesiones } from '@/lib/sesiones'
 import {
   nuevaContrasenaSchema,
   solicitarRecuperacionSchema,
@@ -22,11 +21,6 @@ function crearTokenSeguro(): string {
   return randomBytes(32).toString('hex')
 }
 
-/** Simula el envío del correo (no hay SMTP): registra el enlace en el log. */
-function enviarCorreoRecuperacion(correo: string, enlace: string): void {
-  console.log(`[SIMULADOR-CORREO] Enlace de recuperación para ${correo}: ${enlace}`)
-}
-
 /**
  * ControlRecuperarContrasena (CU02).
  * Middleware entre la IURecuperarContrasena y los datos: valida, genera el
@@ -38,11 +32,13 @@ export class ControlRecuperarContrasena {
    * 1) Solicita el enlace: si el correo no está registrado lanza la excepción
    * 'No existe una cuenta asociada a este correo'. Si existe, genera un token
    * seguro con expiración limitada, lo guarda en TOKEN_RECUPERACION (solo su
-   * hash) y simula el envío del correo.
+   * hash) y genera el enlace para el envío por correo.
    */
   static async solicitarRecuperacion(
     db: Db,
     input: SolicitarRecuperacionInput,
+    baseUrl?: string,
+    ip: string | null = null,
   ): Promise<EnlaceRecuperacion> {
     const { correo: correoRaw } = solicitarRecuperacionSchema.parse(input)
     const correo = correoRaw.trim().toLowerCase()
@@ -56,26 +52,22 @@ export class ControlRecuperarContrasena {
     if (!usuario) throw new Error('No existe una cuenta asociada a este correo')
 
     const token = crearTokenSeguro()
-    const expira = new Date(Date.now() + VIGENCIA_MINUTOS * 60_000).toISOString()
-
-    const { error: errInsercion } = await db.from('token_recuperacion').insert({
-      usuario_id: usuario.id,
-      hash_token: hashToken(token),
-      fecha_expiracion: expira,
+    // Límite de 60 s, enlaces anteriores invalidados y bitácora, en una transacción
+    const { error: errToken } = await (db as unknown as SupabaseClient).rpc('fn_registrar_token_recuperacion', {
+      p_usuario_id: usuario.id,
+      p_hash_token: hashToken(token),
+      p_minutos: VIGENCIA_MINUTOS,
+      p_correo: correo,
+      p_ip: ip,
     })
-    if (errInsercion) {
-      throw new Error(`No se pudo guardar el token de recuperación: ${errInsercion.message}`)
-    }
+    if (errToken) throw new Error(errToken.message)
 
-    await registrarBitacora(db, {
-      usuario_id: usuario.id,
-      accion: 'SOLICITAR_RECUPERACION',
-      descripcion: `Solicitud de recuperación de contraseña para ${correo}`,
-    })
+    const enlaceRelativo = `/recuperar?token=${token}`
+    const enlaceCompleto = baseUrl
+      ? `${baseUrl.replace(/\/$/, '')}${enlaceRelativo}`
+      : enlaceRelativo
 
-    const enlace = `/recuperar?token=${token}`
-    enviarCorreoRecuperacion(correo, enlace)
-    return { correo, enlace }
+    return { correo, enlace: enlaceCompleto }
   }
 
   /**
@@ -101,44 +93,25 @@ export class ControlRecuperarContrasena {
   }
 
   /**
-   * 3) Restablece la contraseña: valida el formato, aplica hash bcrypt y
-   * actualiza la contraseña del usuario, marca el token como usado
-   * (marcarComoUsado), invalida las sesiones previas (GestorSesiones) y
-   * registra el evento RECUPERAR_CONTRASENA en la BITACORA (CU06).
+   * 3) Restablece la contraseña: valida el formato y aplica hash bcrypt. La
+   * actualización, el token usado, las sesiones invalidadas y el evento
+   * RECUPERAR_CONTRASENA van en una transacción (fn_restablecer_contrasena).
    */
   static async restablecerContrasena(
     db: Db,
     token: string,
     input: NuevaContrasenaInput,
+    ip: string | null = null,
   ): Promise<void> {
-    const registro = await ControlRecuperarContrasena.verificarEnlace(db, token)
+    await ControlRecuperarContrasena.verificarEnlace(db, token)
     const parsed = nuevaContrasenaSchema.parse(input)
 
     const hash = await hashContrasena(parsed.contrasena)
-    const { error: errContrasena } = await db
-      .from('usuario')
-      .update({ contrasena: hash })
-      .eq('id', registro.usuario_id)
-    if (errContrasena) {
-      throw new Error(`No se pudo actualizar la contraseña: ${errContrasena.message}`)
-    }
-
-    // Invalida las sesiones emitidas antes del cambio
-    await GestorSesiones.invalidarSesiones(db, registro.usuario_id)
-
-    // marcarComoUsado(): el enlace no se puede reutilizar
-    const { error: errToken } = await db
-      .from('token_recuperacion')
-      .update({ usado: true })
-      .eq('id', registro.id)
-    if (errToken) {
-      throw new Error(`No se pudo marcar el token como usado: ${errToken.message}`)
-    }
-
-    await registrarBitacora(db, {
-      usuario_id: registro.usuario_id,
-      accion: 'RECUPERAR_CONTRASENA',
-      descripcion: 'Contraseña restablecida mediante enlace de recuperación (CU02)',
+    const { error } = await (db as unknown as SupabaseClient).rpc('fn_restablecer_contrasena', {
+      p_hash_token: hashToken(token),
+      p_contrasena: hash,
+      p_ip: ip,
     })
+    if (error) throw new Error(error.message)
   }
 }

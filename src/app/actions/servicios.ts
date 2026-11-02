@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { tieneAccionModulo } from '@/lib/permisos'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { registrarEvento } from '@/backend/bitacora'
 import { obtenerIpOrigen } from '@/lib/ip'
@@ -43,14 +43,14 @@ function mensajeDe(e: unknown): string {
 }
 
 export async function listarServiciosAction(filtros: FiltrarServiciosInput = {}) {
-  if (!(await tienePermisoModulo(RUTA))) throw new Error(MSG_NO_AUTORIZADO)
+  if (!(await tieneAccionModulo('SERVICIOS', 'LEER'))) throw new Error(MSG_NO_AUTORIZADO)
   const parsed = filtrarServiciosSchema.parse(filtros)
   return listarServicios(getSupabaseServiceClient(), parsed)
 }
 
 export async function crearServicioAction(data: CrearServicioInput): Promise<ResultadoServicio> {
   const usuario = await requireUser()
-  if (!(await tienePermisoModulo(RUTA))) return { ok: false, error: MSG_NO_AUTORIZADO }
+  if (!(await tieneAccionModulo('SERVICIOS', 'CREAR'))) return { ok: false, error: MSG_NO_AUTORIZADO }
 
   const parsed = crearServicioSchema.safeParse(data)
   if (!parsed.success) {
@@ -78,7 +78,7 @@ export async function actualizarServicioAction(
   data: ActualizarServicioInput,
 ): Promise<ResultadoServicio> {
   const usuario = await requireUser()
-  if (!(await tienePermisoModulo(RUTA))) return { ok: false, error: MSG_NO_AUTORIZADO }
+  if (!(await tieneAccionModulo('SERVICIOS', 'ACTUALIZAR'))) return { ok: false, error: MSG_NO_AUTORIZADO }
   if (!Number.isInteger(id) || id <= 0) return { ok: false, error: 'Servicio no válido.' }
 
   const parsed = actualizarServicioSchema.safeParse(data)
@@ -122,7 +122,7 @@ export async function cambiarEstadoServicioAction(
   activo: boolean,
 ): Promise<ResultadoServicio> {
   const usuario = await requireUser()
-  if (!(await tienePermisoModulo(RUTA))) return { ok: false, error: MSG_NO_AUTORIZADO }
+  if (!(await tieneAccionModulo('SERVICIOS', 'ACTUALIZAR'))) return { ok: false, error: MSG_NO_AUTORIZADO }
   if (!Number.isInteger(id) || id <= 0 || typeof activo !== 'boolean') {
     return { ok: false, error: 'Datos no válidos.' }
   }

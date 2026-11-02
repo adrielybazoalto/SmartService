@@ -3,8 +3,8 @@
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
-import { tienePermisoModulo } from "@/lib/permisos";
-import { registrarBitacora } from "@/backend/bitacora";
+import { tieneAccionModulo, type AccionPermiso } from "@/lib/permisos";
+import { registrarEvento } from "@/backend/bitacora";
 import { obtenerIpOrigen } from "@/lib/ip";
 import {
   crearUsuario,
@@ -41,12 +41,12 @@ type Db = ReturnType<typeof getSupabaseServiceClient>;
 
 /**
  * Único guard de acceso del módulo: el permiso USUARIOS debe estar ACTIVO en
- * ROL_PERMISO (BD) para la sesión actual. Devuelve el usuario autenticado.
+ * ROL_FUNCION (acción LEER, BD) para la sesión actual. Devuelve el usuario autenticado.
  * Cualquier otra condición de rol se evalúa después, sobre los datos reales
  * (nunca por nombre de rol en la matriz).
  */
-async function exigirAccesoUsuarios() {
-  if (!(await tienePermisoModulo("/usuarios"))) {
+async function exigirAccesoUsuarios(accion: AccionPermiso = "LEER") {
+  if (!(await tieneAccionModulo("USUARIOS", accion))) {
     throw new Error("No autorizado: tu rol no tiene el permiso del módulo Usuarios.");
   }
   return requireUser();
@@ -70,7 +70,7 @@ function usuarioAEntidad(u: Usuario, roles: Rol[]): UsuarioEntity {
 async function registrarAuditoria(db: Db, usuarioId: number, accion: string, detalle: string) {
   try {
     const ip = await obtenerIpOrigen();
-    await registrarBitacora(db, { usuario_id: usuarioId, accion, descripcion: detalle }, ip);
+    await registrarEvento(db, { usuario_id: usuarioId, accion, descripcion: detalle }, ip);
   } catch (e) {
     console.error("Error al registrar en bitácora:", e);
   }
@@ -117,13 +117,13 @@ export async function registrarUsuario(
   rol_id: number
 ): Promise<RespuestaAccion> {
   try {
-    const actor = await exigirAccesoUsuarios();
+    const actor = await exigirAccesoUsuarios("CREAR");
 
     const db = getSupabaseServiceClient();
     const nuevo = await crearUsuario(db, {
       rol_id: Number(rol_id),
       nombre: nombre.trim(),
-      correo: correo.trim(),
+      correo: correo.trim().toLowerCase(),
       telefono: telefono.trim() || null,
       estado: true,
       contrasena,
@@ -152,7 +152,7 @@ export async function actualizarUsuario(
   datos: { nombre: string; correo: string; telefono: string; rol_id: number }
 ): Promise<RespuestaAccion> {
   try {
-    const actor = await exigirAccesoUsuarios();
+    const actor = await exigirAccesoUsuarios("ACTUALIZAR");
 
     // Evita auto-bloqueo: un usuario no puede cambiarse su propio rol.
     if (usuarioId === actor.id && Number(datos.rol_id) !== actor.rol_id) {
@@ -162,7 +162,7 @@ export async function actualizarUsuario(
     const db = getSupabaseServiceClient();
     await actualizarUsuarioEnBD(db, usuarioId, {
       nombre: datos.nombre.trim(),
-      correo: datos.correo.trim(),
+      correo: datos.correo.trim().toLowerCase(),
       telefono: datos.telefono.trim() || null,
       rol_id: Number(datos.rol_id),
     });
@@ -185,7 +185,7 @@ export async function cambiarEstadoCuenta(
   nuevoEstado: boolean
 ): Promise<RespuestaAccion> {
   try {
-    const actor = await exigirAccesoUsuarios();
+    const actor = await exigirAccesoUsuarios("ACTUALIZAR");
     const db = getSupabaseServiceClient();
 
     const { data: objetivo, error: errGet } = await db

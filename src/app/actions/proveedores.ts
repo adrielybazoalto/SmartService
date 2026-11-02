@@ -11,6 +11,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
+import { tieneAccionModulo, type AccionPermiso } from '@/lib/permisos';
 import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
 import {
@@ -43,12 +44,13 @@ const RUTA = '/proveedores';
 // ---------------------------------------------------------------------------
 // Contexto de la petición
 // ---------------------------------------------------------------------------
-async function contexto(): Promise<{ db: Db; auditoria: Auditoria }> {
+async function contexto(accion: AccionPermiso = 'LEER'): Promise<{ db: Db; auditoria: Auditoria }> {
   const u = (await getCurrentUser()) as any;
   const usuarioId = Number(u?.id ?? u?.uid);
   if (!u || !Number.isInteger(usuarioId) || usuarioId <= 0) {
     throw new ProveedorError('Sesión expirada. Vuelva a iniciar sesión.');
   }
+  if (!(await tieneAccionModulo('PROVEEDORES', accion))) throw new ProveedorError('No autorizado: tu rol no tiene el permiso de este módulo.');
   return {
     db: getSupabaseServiceClient() as unknown as Db,
     auditoria: { usuarioId, ip: await obtenerIpOrigen() },
@@ -117,7 +119,7 @@ export async function verificarNitAction(nit: string, excluirId?: number): Promi
 // ---------------------------------------------------------------------------
 export async function registrarProveedorAction(dto: ProveedorDTO): Promise<Respuesta<Proveedor>> {
   try {
-    const { db, auditoria } = await contexto();
+    const { db, auditoria } = await contexto('CREAR');
     const proveedor = await registrarProveedor(db, dto, auditoria);
     revalidatePath(RUTA);
     return exito(proveedor, `Proveedor "${proveedor.razon_social}" registrado`);
@@ -129,7 +131,7 @@ export async function registrarProveedorAction(dto: ProveedorDTO): Promise<Respu
 export async function actualizarProveedorAction(id: number, dto: ProveedorDTO): Promise<Respuesta<Proveedor>> {
   try {
     if (!idValido(id)) return { ok: false, error: 'Proveedor inválido' };
-    const { db, auditoria } = await contexto();
+    const { db, auditoria } = await contexto('ACTUALIZAR');
     const proveedor = await actualizarProveedor(db, id, dto, auditoria);
     revalidatePath(RUTA);
     return exito(proveedor, 'Proveedor actualizado');
@@ -141,7 +143,7 @@ export async function actualizarProveedorAction(id: number, dto: ProveedorDTO): 
 export async function cambiarEstadoProveedorAction(id: number, activo: boolean): Promise<Respuesta<Proveedor>> {
   try {
     if (!idValido(id)) return { ok: false, error: 'Proveedor inválido' };
-    const { db, auditoria } = await contexto();
+    const { db, auditoria } = await contexto('ACTUALIZAR');
     const proveedor = await cambiarEstadoProveedor(db, id, activo === true, auditoria);
     revalidatePath(RUTA);
     return exito(proveedor, activo ? 'Proveedor reactivado' : 'Proveedor desactivado');
@@ -156,7 +158,7 @@ export async function cambiarEstadoProveedorAction(id: number, activo: boolean):
 export async function vincularProductoAction(proveedorId: number, dto: ItemCatalogoDTO): Promise<Respuesta<ItemCatalogo>> {
   try {
     if (!idValido(proveedorId)) return { ok: false, error: 'Proveedor inválido' };
-    const { db, auditoria } = await contexto();
+    const { db, auditoria } = await contexto('ACTUALIZAR');
     const item = await vincularProducto(db, proveedorId, dto, auditoria);
     revalidatePath(RUTA);
     return exito(item, `"${item.producto_nombre}" agregado al catálogo`);
@@ -172,7 +174,7 @@ export async function actualizarItemCatalogoAction(
 ): Promise<Respuesta<ItemCatalogo>> {
   try {
     if (!idValido(proveedorId) || !idValido(productoId)) return { ok: false, error: 'Datos inválidos' };
-    const { db, auditoria } = await contexto();
+    const { db, auditoria } = await contexto('ACTUALIZAR');
     const item = await actualizarItemCatalogo(db, proveedorId, productoId, dto, auditoria);
     revalidatePath(RUTA);
     return exito(item, 'Catálogo actualizado');
@@ -184,7 +186,7 @@ export async function actualizarItemCatalogoAction(
 export async function quitarProductoCatalogoAction(proveedorId: number, productoId: number): Promise<Respuesta<ItemCatalogo>> {
   try {
     if (!idValido(proveedorId) || !idValido(productoId)) return { ok: false, error: 'Datos inválidos' };
-    const { db, auditoria } = await contexto();
+    const { db, auditoria } = await contexto('ACTUALIZAR');
     const item = await quitarProductoCatalogo(db, proveedorId, productoId, auditoria);
     revalidatePath(RUTA);
     return exito(item, `"${item.producto_nombre}" retirado del catálogo`);

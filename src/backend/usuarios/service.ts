@@ -1,22 +1,20 @@
 import { requireUser } from '@/lib/auth'
 import type { Db } from '@/lib/supabase/types'
 import { hashContrasena, verificarContrasena } from '@/lib/password'
-import { registrarBitacora } from '@/backend/bitacora'
+import { registrarEvento } from '@/backend/bitacora'
 import {
   actualizarPerfilSchema,
   actualizarUsuarioSchema,
-  asignarPermisoSchema,
   cambiarContrasenaSchema,
   crearRolSchema,
   crearUsuarioSchema,
   type ActualizarPerfilInput,
   type ActualizarUsuarioInput,
-  type AsignarPermisoInput,
   type CambiarContrasenaInput,
   type CrearRolInput,
   type CrearUsuarioInput,
 } from './schema'
-import type { NuevoRol, NuevoRolFuncion, PerfilUsuario, Rol, Usuario } from './types'
+import type { NuevoRol, PerfilUsuario, Rol, Usuario } from './types'
 
 // ---------------------------------------------------------------------------
 // ROLES
@@ -48,27 +46,14 @@ export async function eliminarRol(db: Db, id: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// PERMISOS (ROL_FUNCION)
-// ---------------------------------------------------------------------------
-
-export async function asignarPermiso(db: Db, input: AsignarPermisoInput): Promise<void> {
-  const parsed = asignarPermisoSchema.parse(input)
-  const { error } = await db.from('rol_funcion').insert(parsed as NuevoRolFuncion)
-  if (error) throw new Error(`No se pudo asignar el permiso: ${error.message}`)
-}
-
-export async function listarPermisosDelRol(db: Db, rolId: number) {
-  const { data, error } = await db
-    .from('rol_funcion')
-    .select('*, funcion(*), accion(*)')
-    .eq('rol_id', rolId)
-  if (error) throw new Error(`No se pudieron cargar los permisos: ${error.message}`)
-  return data
-}
-
-// ---------------------------------------------------------------------------
 // USUARIOS
 // ---------------------------------------------------------------------------
+
+/** El correo es UNIQUE: el error 23505 tiene mensaje propio. */
+function errorUsuario(error: { code?: string; message: string }, prefijo: string): string {
+  if (error.code === '23505') return 'El correo electrónico ya se encuentra registrado'
+  return `${prefijo}: ${error.message}`
+}
 
 export async function listarUsuarios(db: Db): Promise<Usuario[]> {
   const { data, error } = await db.from('usuario').select('*').order('id', { ascending: true })
@@ -157,7 +142,7 @@ export async function actualizarPerfil(
       ? `Perfil actualizado: ${cambios.join('; ')}.`
       : 'Perfil actualizado (sin cambios detectados en nombre ni teléfono).'
 
-  await registrarBitacora(db, {
+  await registrarEvento(db, {
     usuario_id: usuarioId,
     accion: 'ACTUALIZAR_PERFIL',
     descripcion,
@@ -183,7 +168,7 @@ export async function crearUsuario(db: Db, input: CrearUsuarioInput): Promise<Us
     })
     .select()
     .single()
-  if (error) throw new Error(`No se pudo registrar el usuario: ${error.message}`)
+  if (error) throw new Error(errorUsuario(error, 'No se pudo registrar el usuario'))
   return data
 }
 
@@ -201,7 +186,7 @@ export async function actualizarUsuario(
   }
 
   const { data, error } = await db.from('usuario').update(updates).eq('id', id).select().single()
-  if (error) throw new Error(`No se pudo actualizar el usuario: ${error.message}`)
+  if (error) throw new Error(errorUsuario(error, 'No se pudo actualizar el usuario'))
   return data
 }
 
@@ -216,12 +201,12 @@ export async function cambiarContrasena(
   db: Db,
   usuarioId: number,
   input: CambiarContrasenaInput,
-): Promise<void> {
+): Promise<number> {
   const parsed = cambiarContrasenaSchema.parse(input)
 
   const { data: usuario, error: errGet } = await db
     .from('usuario')
-    .select('contrasena')
+    .select('contrasena, version_sesion')
     .eq('id', usuarioId)
     .maybeSingle()
   if (errGet || !usuario) throw new Error('El usuario no existe.')
@@ -229,18 +214,21 @@ export async function cambiarContrasena(
   const valido = await verificarContrasena(parsed.contrasenaActual, usuario.contrasena)
   if (!valido) throw new Error('Contraseña actual incorrecta')
 
+  // Subir la versión cierra las demás sesiones abiertas de la cuenta
+  const version = usuario.version_sesion + 1
   const { error } = await db
     .from('usuario')
-    .update({ contrasena: await hashContrasena(parsed.contrasenaNueva) })
+    .update({ contrasena: await hashContrasena(parsed.contrasenaNueva), version_sesion: version })
     .eq('id', usuarioId)
   if (error) throw new Error(`No se pudo actualizar la contraseña: ${error.message}`)
 
   // BITÁCORA (CU05): registro obligatorio del evento de cambio de contraseña
-  await registrarBitacora(db, {
+  await registrarEvento(db, {
     usuario_id: usuarioId,
     accion: 'CAMBIAR_CONTRASENA',
     descripcion: 'Cambio de contraseña del propio perfil.',
   })
+  return version
 }
 
 /** Elimina la fila USUARIO (ya no hay credencial en Supabase Auth). */

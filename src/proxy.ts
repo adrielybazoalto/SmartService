@@ -41,10 +41,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (sesionValida && pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/', request.url))
-  }
-
+  // /login no redirige aquí: un JWT válido no prueba que la sesión siga viva (cuenta
+  // inactiva o version_sesion vencida) y causaría un bucle con /. Lo decide la página.
   return NextResponse.next()
 }
 

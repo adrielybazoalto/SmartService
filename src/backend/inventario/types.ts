@@ -7,7 +7,7 @@
 export const ACCIONES_INVENTARIO = ['LEER', 'CREAR', 'ACTUALIZAR', 'ELIMINAR', 'PROCESAR'] as const
 export type AccionInventario = (typeof ACCIONES_INVENTARIO)[number]
 
-/** Nombre de la función en FUNCION y del permiso de ruta en PERMISO. */
+/** FUNCION.nombre (acciones) y FUNCION.clave (acceso al módulo) de Inventario. */
 export const FUNCION_INVENTARIO = 'Catálogo e Inventario'
 export const PERMISO_INVENTARIO = 'INVENTARIO'
 

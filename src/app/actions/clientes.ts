@@ -3,12 +3,14 @@
 import { z } from 'zod'
 import { requireUser } from '@/lib/auth'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
-import { tienePermisoModulo } from '@/lib/permisos'
+import { tieneAccionModulo, type AccionPermiso } from '@/lib/permisos'
 import { obtenerIpOrigen } from '@/lib/ip'
-import { guardarEventoCliente } from '@/backend/bitacora'
+import { registrarEvento } from '@/backend/bitacora'
 import {
   actualizarCliente,
+  cambiarEstadoCliente,
   crearCliente,
+  obtenerHistorialCliente,
   listarClientes,
   buscarClientes,
   verificarDocumento,
@@ -20,6 +22,7 @@ import {
   type Cliente,
 } from '@/backend/clientes'
 import {
+  cambiarEstadoEstablecimiento,
   crearEstablecimiento,
   listarEstablecimientos,
   type CrearEstablecimientoInput,
@@ -31,7 +34,7 @@ import {
  * Orquesta el registro de un cliente y su establecimiento contra Supabase,
  * validando el documento único y registrando el evento de bitácora.
  *
- * Acceso: permiso CLIENTES activo en ROL_PERMISO (BD) + sesión JWT propia.
+ * Acceso: permiso CLIENTES (LEER) en ROL_FUNCION (BD) + sesión JWT propia.
  */
 
 // ── Entidades para la IU (nunca exponen columnas de auditoría) ──────────────
@@ -44,6 +47,7 @@ export interface EstablecimientoEntity {
   tipo_inmueble: string | null
   latitud: string | null
   longitud: string | null
+  estado: boolean
 }
 
 export interface ClienteEntity {
@@ -56,7 +60,13 @@ export interface ClienteEntity {
   telefono: string | null
   telefono_alternativo: string | null
   fecha_registro: string
+  estado: boolean
   establecimientos: EstablecimientoEntity[]
+}
+
+export interface RespuestaAccionEstado {
+  ok: boolean
+  mensaje: string
 }
 
 export interface RespuestaAccionCliente {
@@ -70,8 +80,8 @@ export interface RespuestaAccionCliente {
 
 // ── Guard de acceso del módulo ──────────────────────────────────────────────
 
-async function exigirAccesoClientes() {
-  if (!(await tienePermisoModulo('/clientes'))) {
+async function exigirAccesoClientes(accion: AccionPermiso = 'LEER') {
+  if (!(await tieneAccionModulo('CLIENTES', accion))) {
     throw new Error('No autorizado: tu rol no tiene el permiso del módulo Clientes.')
   }
   return requireUser()
@@ -88,6 +98,7 @@ function aEntidadEstablecimiento(e: Establecimiento): EstablecimientoEntity {
     tipo_inmueble: e.tipo_inmueble,
     latitud: e.latitud,
     longitud: e.longitud,
+    estado: e.estado,
   }
 }
 
@@ -102,6 +113,7 @@ function aEntidadCliente(c: Cliente, establecimientos: EstablecimientoEntity[]):
     telefono: c.telefono,
     telefono_alternativo: c.telefono_alternativo,
     fecha_registro: c.fecha_registro,
+    estado: c.estado,
     establecimientos,
   }
 }
@@ -129,7 +141,7 @@ export async function validarDocumentoUnico(documento: string): Promise<{ existe
 
 /** Crea el cliente en Supabase (tabla CLIENTE). Devuelve la fila creada. */
 export async function registrarClienteBD(datosCliente: CrearClienteInput): Promise<Cliente> {
-  await exigirAccesoClientes()
+  await exigirAccesoClientes('CREAR')
 
   const db = getSupabaseServiceClient()
   return crearCliente(db, datosCliente)
@@ -139,14 +151,14 @@ export async function registrarClienteBD(datosCliente: CrearClienteInput): Promi
 export async function registrarEstablecimientoBD(
   datosEstablecimiento: CrearEstablecimientoInput,
 ): Promise<Establecimiento> {
-  await exigirAccesoClientes()
+  await exigirAccesoClientes('CREAR')
 
   const db = getSupabaseServiceClient()
   return crearEstablecimiento(db, datosEstablecimiento)
 }
 
 /**
- * Invoca guardarEventoCliente() en la bitácora (CU06), persistando la IP de
+ * Invoca registrarEvento() en la bitácora (CU06), persistando la IP de
  * origen del solicitante. Un fallo de auditoría NO interrumpe el registro del
  * cliente.
  */
@@ -158,7 +170,7 @@ export async function registrarBitacoraAccion(
 ): Promise<void> {
   try {
     const db = getSupabaseServiceClient()
-    await guardarEventoCliente(db, usuario_id, accion, descripcion, ip)
+    await registrarEvento(db, { usuario_id, accion, descripcion }, ip)
   } catch (e) {
     console.error('Error al registrar en bitácora (CU07):', e)
   }
@@ -169,13 +181,13 @@ export async function registrarBitacoraAccion(
  *   1. validación del documento único (verificarDocumento)
  *   2. creación del cliente (CLIENTE)
  *   3. creación del establecimiento (ESTABLECIMIENTO)
- *   4. registro en bitácora (guardarEventoCliente) con la IP de origen
+ *   4. registro en bitácora (registrarEvento) con la IP de origen
  */
 export async function procesarRegistroCliente(
   datosFormulario: RegistroClienteFormulario,
 ): Promise<RespuestaAccionCliente> {
   try {
-    const actor = await exigirAccesoClientes()
+    const actor = await exigirAccesoClientes('CREAR')
     const formulario = registrarClienteCompletoSchema.parse(datosFormulario)
     const db = getSupabaseServiceClient()
 
@@ -212,11 +224,11 @@ export async function procesarRegistroCliente(
       longitud: formulario.longitud ?? null,
     })
 
-    // 4) Bitácora (guardarEventoCliente), incluyendo la IP de origen.
+    // 4) Bitácora (registrarEvento), incluyendo la IP de origen.
     const ip = await obtenerIpOrigen()
     await registrarBitacoraAccion(
       actor.id,
-      'REGISTRO_CLIENTE',
+      'NUEVO_CLIENTE',
       `Se registró el cliente ${cliente.nombre} (${cliente.tipo_cliente}) con el establecimiento ${establecimiento.nombre_establecimiento} (${establecimiento.direccion}).`,
       ip,
     )
@@ -241,13 +253,13 @@ export async function procesarRegistroCliente(
  * Orquesta la actualización de los datos de un cliente existente:
  *   1. valida documento único (que no pertenezca a otro cliente)
  *   2. actualiza el registro en la tabla CLIENTE (incluyendo teléfono alternativo)
- *   3. audita el cambio en la bitácora (ACTUALIZAR_CLIENTE) capturando la IP
+ *   3. audita el cambio en la bitácora (MODIFICAR_CLIENTE) capturando la IP
  */
 export async function procesarActualizacionCliente(
   datosFormulario: EditarClienteFormulario,
 ): Promise<RespuestaAccionCliente> {
   try {
-    const actor = await exigirAccesoClientes()
+    const actor = await exigirAccesoClientes('ACTUALIZAR')
     const formulario = editarClienteFormularioSchema.parse(datosFormulario)
     const db = getSupabaseServiceClient()
 
@@ -282,11 +294,11 @@ export async function procesarActualizacionCliente(
       .order('id', { ascending: true })
     const establecimientos = (ests ?? []).map(aEntidadEstablecimiento)
 
-    // 4) Bitácora (guardarEventoCliente), incluyendo la IP de origen
+    // 4) Bitácora (registrarEvento), incluyendo la IP de origen
     const ip = await obtenerIpOrigen()
     await registrarBitacoraAccion(
       actor.id,
-      'ACTUALIZAR_CLIENTE',
+      'MODIFICAR_CLIENTE',
       `Se actualizaron los datos del cliente ${cliente.nombre} (ID: ${cliente.id}, ${cliente.tipo_cliente}).`,
       ip,
     )
@@ -305,6 +317,47 @@ export async function procesarActualizacionCliente(
       mensaje: mensajeDeError(e, 'No se pudo actualizar el cliente.'),
     }
   }
+}
+
+/** Subflujo "Desactivar": deja de ofrecerse en cotizaciones y ventas; conserva su historial. */
+export async function cambiarEstadoClienteAction(id: number, activo: boolean): Promise<RespuestaAccionEstado> {
+  try {
+    const actor = await exigirAccesoClientes('ACTUALIZAR')
+    const db = getSupabaseServiceClient()
+    const cliente = await cambiarEstadoCliente(db, id, activo)
+    await registrarBitacoraAccion(
+      actor.id,
+      activo ? 'ACTIVAR_CLIENTE' : 'DESACTIVAR_CLIENTE',
+      `Cliente ${cliente.nombre} (ID ${id}) ${activo ? 'activado' : 'desactivado'}`,
+      await obtenerIpOrigen(),
+    )
+    return { ok: true, mensaje: `Cliente ${activo ? 'activado' : 'desactivado'}.` }
+  } catch (e) {
+    return { ok: false, mensaje: mensajeDeError(e, 'No se pudo cambiar el estado del cliente.') }
+  }
+}
+
+export async function cambiarEstadoEstablecimientoAction(id: number, activo: boolean): Promise<RespuestaAccionEstado> {
+  try {
+    const actor = await exigirAccesoClientes('ACTUALIZAR')
+    const db = getSupabaseServiceClient()
+    const est = await cambiarEstadoEstablecimiento(db, id, activo)
+    await registrarBitacoraAccion(
+      actor.id,
+      activo ? 'ACTIVAR_ESTABLECIMIENTO' : 'DESACTIVAR_ESTABLECIMIENTO',
+      `Establecimiento ${est.nombre_establecimiento} (ID ${id}) ${activo ? 'activado' : 'desactivado'}`,
+      await obtenerIpOrigen(),
+    )
+    return { ok: true, mensaje: `Establecimiento ${activo ? 'activado' : 'desactivado'}.` }
+  } catch (e) {
+    return { ok: false, mensaje: mensajeDeError(e, 'No se pudo cambiar el estado del establecimiento.') }
+  }
+}
+
+/** Subflujo "Ver historial": cotizaciones, órdenes y notas del cliente. */
+export async function obtenerHistorialClienteAction(id: number) {
+  await exigirAccesoClientes()
+  return obtenerHistorialCliente(getSupabaseServiceClient(), id)
 }
 
 // ── Consultas para la IU (solicitarModuloClientes) ──────────────────────────

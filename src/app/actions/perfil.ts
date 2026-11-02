@@ -80,10 +80,20 @@ export async function cambiarContrasenaAction(
     const usuario = await requireUser()
 
     const db = getSupabaseServiceClient()
-    await cambiarContrasena(db, usuario.id, {
+    const version = await cambiarContrasena(db, usuario.id, {
       contrasenaActual: String(formData.get('contrasena_actual') ?? ''),
       contrasenaNueva: String(formData.get('contrasena_nueva') ?? ''),
       confirmacion: String(formData.get('confirmacion') ?? ''),
+    })
+
+    // Las demás sesiones quedan cerradas; esta sigue abierta con la versión nueva
+    await createSession({
+      uid: usuario.id,
+      nombre: usuario.nombre,
+      correo: usuario.correo,
+      rol_id: usuario.rol_id,
+      rol: usuario.rol?.nombre ?? '',
+      version,
     })
 
     return { ok: true }

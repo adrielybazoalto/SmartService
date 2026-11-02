@@ -11,6 +11,9 @@ import {
   eliminarBloqueoAction,
 } from '@/app/actions/jornadas'
 import type { TecnicoResumen, BloqueoTecnico } from '@/backend/personal-tecnico'
+import { TIPOS_AUSENCIA } from '@/backend/personal-tecnico/schema'
+import { aMs } from '@/backend/asignaciones/disponibilidad'
+import { ahoraBolivia, formatearFechaHora } from '@/lib/fechas'
 import {
   Clock,
   UserCheck,
@@ -30,14 +33,6 @@ const OPCIONES_DIAS = [
   'Lunes a Sábado',
   'Lunes a Domingo',
   'Fines de Semana',
-] as const
-
-const TIPOS_AUSENCIA = [
-  'Permiso Particular',
-  'Vacaciones',
-  'Baja Médica',
-  'Capacitación',
-  'Misión Oficial',
 ] as const
 
 export default function GestionJornadasPage() {
@@ -205,9 +200,9 @@ export default function GestionJornadasPage() {
       return
     }
 
-    if (new Date(fechaFin) <= new Date(fechaInicio)) {
+    if (fechaFin <= fechaInicio) {
       setMensaje({
-        text: 'La fecha y hora de fin deben ser posteriores a las de inicio.',
+        text: 'La fecha y hora de fin deben ser posteriores a las de inicio',
         type: 'error',
       })
       return
@@ -281,11 +276,8 @@ export default function GestionJornadasPage() {
 
         // 2. Si ya no le quedan bloqueos vigentes al técnico, actualizar de inmediato el estado global
         if (selectedTecnico) {
-          const ahoraMs = Date.now()
-          const tieneBloqueosVigentes = nuevaLista.some((b) => {
-            const fin = new Date(b.fecha_fin).getTime()
-            return fin >= ahoraMs
-          })
+          const ahoraMs = aMs(ahoraBolivia())
+          const tieneBloqueosVigentes = nuevaLista.some((b) => aMs(b.fecha_fin) >= ahoraMs)
 
           if (!tieneBloqueosVigentes) {
             setResumenGlobal((prev) =>
@@ -815,9 +807,9 @@ export default function GestionJornadasPage() {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {bloqueosTecnico.map((bloq) => {
-                          const ahoraMs = Date.now()
-                          const iniMs = new Date(bloq.fecha_inicio).getTime()
-                          const finMs = new Date(bloq.fecha_fin).getTime()
+                          const ahoraMs = aMs(ahoraBolivia())
+                          const iniMs = aMs(bloq.fecha_inicio)
+                          const finMs = aMs(bloq.fecha_fin)
                           const esActivo = ahoraMs >= iniMs && ahoraMs <= finMs
                           const esFuturo = ahoraMs < iniMs
 
@@ -843,10 +835,10 @@ export default function GestionJornadasPage() {
                               <td className="p-3 font-semibold text-gray-800">{bloq.tipo}</td>
                               <td className="p-3 text-gray-600 max-w-xs truncate">{bloq.motivo}</td>
                               <td className="p-3 text-gray-600 text-xs">
-                                {new Date(bloq.fecha_inicio).toLocaleString()}
+                                {formatearFechaHora(bloq.fecha_inicio)}
                               </td>
                               <td className="p-3 text-gray-600 text-xs">
-                                {new Date(bloq.fecha_fin).toLocaleString()}
+                                {formatearFechaHora(bloq.fecha_fin)}
                               </td>
                               <td className="p-3 text-center">
                                 <button

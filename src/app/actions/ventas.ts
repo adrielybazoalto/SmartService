@@ -12,12 +12,16 @@
  */
 import { revalidatePath } from 'next/cache';
 import { getCurrentUser } from '@/lib/auth';
+import { tieneAccionModulo, type AccionPermiso } from '@/lib/permisos';
 import { obtenerIpOrigen } from '@/lib/ip';
 import { getSupabaseServiceClient } from '@/lib/supabase/service';
+import { ErrorPago, PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago';
 import {
   VentaError,
   anularVenta as anularVentaService,
   buscarClienteMostrador,
+  confirmarPagoTarjeta,
+  iniciarPagoTarjeta,
   listarClientesVenta as listarClientesService,
   listarProductosVenta as listarProductosService,
   listarTurnosCerrados as listarTurnosService,
@@ -52,10 +56,11 @@ type Contexto = { db: Db; usuarioId: number; nombre: string; esAdmin: boolean; i
  * createSession({ uid, nombre, correo, rol_id, rol, version }).
  * Se lee de forma defensiva (id o uid; rol como texto u objeto).
  */
-async function contexto(): Promise<Contexto> {
+async function contexto(accion: AccionPermiso = 'LEER'): Promise<Contexto> {
   const u = (await getCurrentUser()) as any;
   const id = Number(u?.id ?? u?.uid);
   if (!u || !Number.isInteger(id) || id <= 0) throw new VentaError('Sesión expirada. Vuelva a iniciar sesión.');
+  if (!(await tieneAccionModulo('VENTAS', accion))) throw new VentaError('No autorizado: tu rol no tiene el permiso de este módulo.');
   const rol: string = typeof u.rol === 'string' ? u.rol : (u.rol?.nombre ?? u.rol_nombre ?? '');
   return {
     db: getSupabaseServiceClient() as unknown as Db,
@@ -69,7 +74,7 @@ async function contexto(): Promise<Contexto> {
 const exito = <T>(data: T, mensaje: string) => ({ ok: true as const, data, mensaje });
 
 function falla(e: unknown, porDefecto: string) {
-  if (e instanceof VentaError) return { ok: false as const, error: e.message };
+  if (e instanceof VentaError || e instanceof ErrorPago) return { ok: false as const, error: e.message };
   console.error('[CU09]', e);
   return { ok: false as const, error: porDefecto };
 }
@@ -140,7 +145,7 @@ export async function abrirCaja(
     const monto = typeof montoInicial === 'object' ? montoInicial?.monto_inicial : montoInicial;
     if (!numeroValido(monto)) return { ok: false, error: 'Ingrese un fondo inicial válido' };
 
-    const { db, usuarioId, ip } = await contexto();
+    const { db, usuarioId, ip } = await contexto('PROCESAR');
     const resultado = await procesarAperturaOArqueo(db, { tipo: 'APERTURA', usuarioId, montoInicial: monto, ip });
     revalidatePath('/ventas');
     return exito(resultado, `Caja #${resultado.caja.id} abierta`);
@@ -172,7 +177,7 @@ export async function cerrarCaja(params: {
     const monto = params?.montoReal ?? params?.monto_final_real;
     if (!numeroValido(monto)) return { ok: false, error: 'Ingrese el efectivo contado' };
 
-    const { db, usuarioId, ip } = await contexto();
+    const { db, usuarioId, ip } = await contexto('PROCESAR');
     const resultado = await procesarAperturaOArqueo(db, {
       tipo: 'ARQUEO',
       usuarioId,
@@ -208,7 +213,7 @@ export async function procesarCajaAction(
 /** Pasos 3-7: venta atómica de productos (stock y kárdex: include CU16) */
 export async function registrarVentaAction(input: RegistrarVentaInput): Promise<RespuestaAccion<ComprobanteVenta>> {
   try {
-    const { db, usuarioId, ip } = await contexto();
+    const { db, usuarioId, ip } = await contexto('CREAR');
     // usuarioId e ip van al final: el navegador no puede sobrescribirlos
     const comprobante = await registrarVentaDirecta(db, { ...(input as any), usuarioId, ip });
     revalidatePath('/ventas');
@@ -222,13 +227,45 @@ export async function registrarVenta(input: RegistrarVentaInput): Promise<Respue
   return registrarVentaAction(input);
 }
 
+/** Flujo alternativo "Pago con tarjeta": crea el cobro en Stripe y devuelve su enlace */
+export async function iniciarPagoTarjetaAction(input: RegistrarVentaInput): Promise<RespuestaAccion<{ url: string }>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('CREAR');
+    const r = await iniciarPagoTarjeta(db, new PasarelaPago(), { ...(input as any), usuarioId, ip }, await obtenerUrlBase());
+    return exito(r, 'Redirigiendo a la pasarela de pago');
+  } catch (e) {
+    return falla(e, 'No se pudo iniciar el pago con tarjeta');
+  }
+}
+
+/** Al volver de Stripe: verifica el pago y recién entonces registra la venta */
+export async function confirmarPagoTarjetaAction(sessionId: string): Promise<RespuestaAccion<ComprobanteVenta>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('CREAR');
+    const { comprobante, yaRegistrada } = await confirmarPagoTarjeta(db, new PasarelaPago(), {
+      sessionId: String(sessionId),
+      usuarioId,
+      ip,
+    });
+    revalidatePath('/ventas');
+    return exito(
+      comprobante,
+      yaRegistrada
+        ? `La venta ${comprobante.nroComprobante} ya estaba registrada`
+        : `Pago con tarjeta confirmado · venta ${comprobante.nroComprobante} registrada`
+    );
+  } catch (e) {
+    return falla(e, 'No se pudo confirmar el pago con tarjeta');
+  }
+}
+
 /** Subflujo: anulación (solo turno abierto y del mismo usuario) */
 export async function anularVentaAction(
   ventaId: number
 ): Promise<RespuestaAccion<{ ventaId: number; nroComprobante: string | null }>> {
   try {
     if (!Number.isInteger(ventaId) || ventaId <= 0) return { ok: false, error: 'Venta inválida' };
-    const { db, usuarioId, ip } = await contexto();
+    const { db, usuarioId, ip } = await contexto('PROCESAR');
     const resultado = await anularVentaService(db, { usuarioId, ventaId, ip });
     revalidatePath('/ventas');
     return exito(resultado, `${resultado.nroComprobante ?? 'Venta'} anulada; stock devuelto al inventario`);

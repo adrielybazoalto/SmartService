@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { obtenerCotizacionPorIdAccion } from '@/app/actions/cotizaciones'
+import { textoAnticipo } from '@/app/cotizaciones/anticipo'
 
 export default function CotizacionPdfPage() {
   const params = useParams()
@@ -203,6 +204,11 @@ export default function CotizacionPdfPage() {
           <div className="text-right">
             <span className="text-xs font-bold uppercase text-gray-600">Total General: </span>
             <span className="text-xl font-black text-blue-600 ml-2">Bs. {Number(cotizacion.total).toFixed(2)}</span>
+            {cotizacion.estado === 'APROBADA' && (
+              <p className="mt-1 text-xs text-gray-600">
+                <b>Anticipo:</b> {textoAnticipo(cotizacion)}
+              </p>
+            )}
           </div>
         </div>
 

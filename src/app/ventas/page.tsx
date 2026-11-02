@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { anularVenta, listarTurnosCerrados, obtenerDatosVentas } from '@/app/actions/ventas';
+import { confirmarAbonoTarjetaAction } from '@/app/actions/abonos';
 import type { Caja, DatosVentas, VentaResumen } from '@/backend/ventas';
 import VentasForm, { abrirNotaVentaPdf } from './ventas-form';
 import ArqueoModal from './arqueo-modal';
+import AbonoModal from './abono-modal';
 
 // ---------------------------------------------------------------------------
 // Utilidades de formato
@@ -35,7 +37,7 @@ export default function VentasPage() {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast>(null);
-  const [modal, setModal] = useState<'apertura' | 'cierre' | null>(null);
+  const [modal, setModal] = useState<'apertura' | 'cierre' | 'abono' | null>(null);
   const [turnos, setTurnos] = useState<Caja[]>([]);
   const [verTurnos, setVerTurnos] = useState(false);
   const [porAnular, setPorAnular] = useState<VentaResumen | null>(null);
@@ -69,6 +71,31 @@ export default function VentasPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  // Abono con tarjeta: Stripe vuelve a /ventas?abono=exito&session_id=...
+  // El recibo se registra aquí, una sola vez (la BD es idempotente por sesión).
+  const abonoProcesado = useRef(false);
+  useEffect(() => {
+    if (abonoProcesado.current) return;
+    abonoProcesado.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const abono = q.get('abono');
+    const sessionId = q.get('session_id');
+    if (!abono) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    if (abono === 'cancelado') {
+      notificar('error', 'Pago con tarjeta cancelado: el abono no se registró.');
+      return;
+    }
+    if (abono === 'exito' && sessionId) {
+      confirmarAbonoTarjetaAction(sessionId).then((r) => {
+        if (r.ok) {
+          notificar('ok', r.mensaje);
+          cargar();
+        } else notificar('error', r.error);
+      });
+    }
+  }, [cargar, notificar]);
 
   useEffect(() => {
     if (verTurnos) cargarTurnos();
@@ -128,6 +155,15 @@ export default function VentasPage() {
                 className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
                 {verTurnos ? 'Ocultar turnos' : 'Turnos cerrados'}
+              </button>
+            )}
+            {caja && (
+              <button
+                type="button"
+                onClick={() => setModal('abono')}
+                className="rounded-xl border border-[#8cd600] bg-white px-4 py-2.5 text-sm font-semibold text-[#3f6b00] shadow-sm transition hover:bg-[#8cd600]/10"
+              >
+                Abono a orden de trabajo
               </button>
             )}
             {caja ? (
@@ -256,7 +292,13 @@ export default function VentasPage() {
                             <div className="flex flex-wrap items-center gap-1.5 text-slate-500">
                               <span>{fecha(v.fecha_emision, true)}</span>
                               <span>·</span>
-                              <span>{v.items} ítem(s)</span>
+                              {v.tipo_comprobante?.startsWith('RECIBO') ? (
+                                <span className="rounded-md bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
+                                  {v.tipo_comprobante === 'RECIBO_SALDO' ? 'Saldo OT' : 'Abono OT'}
+                                </span>
+                              ) : (
+                                <span>{v.items} ítem(s)</span>
+                              )}
                               <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
                                 {ETIQUETA_PAGO[v.tipo_pago] ?? v.tipo_pago}
                               </span>
@@ -356,8 +398,13 @@ export default function VentasPage() {
         )}
       </div>
 
+      {/* Subflujo: abono a orden de trabajo */}
+      {modal === 'abono' && (
+        <AbonoModal onClose={() => setModal(null)} notificar={notificar} onCompletado={cargar} />
+      )}
+
       {/* Modal de apertura / arqueo y cierre */}
-      {modal && (
+      {modal && modal !== 'abono' && (
         <ArqueoModal
           modo={modal}
           onClose={() => setModal(null)}

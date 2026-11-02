@@ -132,6 +132,8 @@ export interface DatosVentaDTO {
   tipoPago: TipoPago;
   tipoComprobante: TipoComprobante;
   descuento?: number;
+  /** N° de referencia del comprobante (TRANSFERENCIA) */
+  referenciaPago?: string;
   items: ItemVentaDTO[];
 }
 
@@ -196,6 +198,10 @@ export interface ResumenArqueo {
   total_vendido: number;
   /** fondo inicial + ventas EMITIDAS en EFECTIVO */
   efectivo_esperado: number;
+  /** QR + TARJETA + TRANSFERENCIA: no está en el cajón, se concilia con el banco / Stripe */
+  total_electronico: number;
+  /** Abonos y saldos de órdenes de trabajo (recibos RECIBO_ABONO / RECIBO_SALDO) incluidos en los totales */
+  cobros_ordenes: number;
 }
 
 /** Resultado de procesarAperturaOArqueo() */

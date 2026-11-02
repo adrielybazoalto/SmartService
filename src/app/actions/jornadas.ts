@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
+import { exigirPermiso, type AccionPermiso } from '@/lib/permisos'
 import { getSupabaseServiceClient } from '@/lib/supabase/service'
 import { registrarEvento } from '@/backend/bitacora'
 import { obtenerIpOrigen } from '@/lib/ip'
@@ -17,6 +18,10 @@ import {
 
 const RUTA_MODULO = '/personal-tecnico'
 
+async function exigirModulo(accion: AccionPermiso = 'LEER') {
+  await exigirPermiso('PERSONAL_TECNICO', accion)
+}
+
 /** Helper para auditar en bitácora sin interrumpir la operación si falla */
 async function auditar(db: Db, usuarioId: number, accion: string, descripcion: string) {
   try {
@@ -29,18 +34,21 @@ async function auditar(db: Db, usuarioId: number, accion: string, descripcion: s
 
 // 1. Listar el personal técnico
 export async function listarTecnicos() {
+  await exigirModulo()
   const db = getSupabaseServiceClient()
   return listarTecnicosService(db)
 }
 
 // 1.1. Obtener resumen global para el estado actual de los técnicos
 export async function obtenerResumenPersonalTecnico() {
+  await exigirModulo()
   const db = getSupabaseServiceClient()
   return obtenerResumenPersonalTecnicoService(db)
 }
 
 // 1.2. Obtener los bloqueos activos de un técnico específico (para poder desbloquearlo)
 export async function obtenerBloqueosTecnico(usuarioId: number) {
+  await exigirModulo()
   const db = getSupabaseServiceClient()
   return obtenerBloqueosTecnicoService(db, usuarioId)
 }
@@ -53,6 +61,10 @@ export async function guardarJornada(
   horaFin: string,
 ) {
   const usuarioActual = await getCurrentUser()
+  if (!usuarioActual || !usuarioActual.id) {
+    throw new Error('Sesión requerida: debe iniciar sesión para configurar jornadas laborales.')
+  }
+  await exigirModulo('ACTUALIZAR')
   const db = getSupabaseServiceClient()
 
   const resultado = await guardarJornadaService(db, {
@@ -66,11 +78,10 @@ export async function guardarJornada(
     return resultado
   }
 
-  // Registrar en bitácora (CU06)
-  const usuarioIdAuditoria = usuarioActual?.id ?? 1
+  // Registrar en bitácora con usuario verificado (sin fallback genérico)
   await auditar(
     db,
-    usuarioIdAuditoria,
+    usuarioActual.id,
     'CONFIGURAR_JORNADA',
     `Se actualizó la jornada laboral (${dias}: ${horaInicio} - ${horaFin}) para el técnico ID ${usuarioId}`,
   )
@@ -88,6 +99,10 @@ export async function registrarBloqueo(
   tipo: string,
 ) {
   const usuarioActual = await getCurrentUser()
+  if (!usuarioActual || !usuarioActual.id) {
+    throw new Error('Sesión requerida: debe iniciar sesión para registrar bloqueos de técnicos.')
+  }
+  await exigirModulo('CREAR')
   const db = getSupabaseServiceClient()
 
   const resultado = await registrarBloqueoService(db, {
@@ -102,11 +117,10 @@ export async function registrarBloqueo(
     return resultado
   }
 
-  // Registrar en bitácora (CU06)
-  const usuarioIdAuditoria = usuarioActual?.id ?? 1
+  // Registrar en bitácora con usuario verificado (sin fallback genérico)
   await auditar(
     db,
-    usuarioIdAuditoria,
+    usuarioActual.id,
     'REGISTRAR_BLOQUEO',
     `Se registró bloqueo (${tipo}) para el técnico ID ${usuarioId}. Motivo: ${motivo}`,
   )
@@ -118,6 +132,10 @@ export async function registrarBloqueo(
 // 4. Eliminar Bloqueo (Desbloquear al técnico)
 export async function eliminarBloqueoAction(bloqueoId: number) {
   const usuarioActual = await getCurrentUser()
+  if (!usuarioActual || !usuarioActual.id) {
+    throw new Error('Sesión requerida: debe iniciar sesión para eliminar bloqueos de técnicos.')
+  }
+  await exigirModulo('ELIMINAR')
   const db = getSupabaseServiceClient()
 
   const resultado = await eliminarBloqueoService(db, bloqueoId)
@@ -126,13 +144,12 @@ export async function eliminarBloqueoAction(bloqueoId: number) {
     return resultado
   }
 
-  // Registrar en bitácora (CU06)
-  const usuarioIdAuditoria = usuarioActual?.id ?? 1
+  // Registrar en bitácora con usuario verificado (sin fallback genérico)
   await auditar(
     db,
-    usuarioIdAuditoria,
+    usuarioActual.id,
     'ELIMINAR_BLOQUEO',
-    `Se canceló el bloqueo ID ${bloqueoId} y se habilitó la disponibilidad del técnico`,
+    `Se eliminó el bloqueo ID ${bloqueoId}: ${resultado.detalle}`,
   )
 
   revalidatePath(RUTA_MODULO)

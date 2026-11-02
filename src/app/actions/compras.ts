@@ -50,7 +50,7 @@ function mensajeDeError(e: unknown, fallback: string): string {
 }
 
 /** IP de origen para la bitácora centralizada (CU06). */
-async function ipCliente(): Promise<string> {
+async function ipCliente(): Promise<string | null> {
   return obtenerIpOrigen()
 }
 

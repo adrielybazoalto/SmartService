@@ -26,11 +26,12 @@ function diaDe(token: string): number | null {
 /**
  * Convierte el texto de `dia_semana` en números de día (1 = lunes … 7 = domingo).
  * Entiende: "Lunes", "Lunes a Viernes", "Viernes a Lunes", "Lunes, Miércoles y Viernes",
- * "Todos los días", y abreviaturas ("lun", "mié").
+ * "Todos los días", "Fines de Semana", y abreviaturas ("lun", "mié").
  */
 export function parseDiasSemana(texto: string): number[] {
   const t = normalizar(texto)
   if (/todos|diario|toda la semana/.test(t)) return [1, 2, 3, 4, 5, 6, 7]
+  if (/fin(es)? de semana/.test(t)) return [6, 7]
 
   const rango = t.match(/^([a-z]+)(?:\s+(?:a|al|hasta)\s+|\s*-\s*)([a-z]+)$/)
   if (rango) {
@@ -67,8 +68,10 @@ export function aMs(ts: string): number {
   return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0))
 }
 
-export function formatearTs(ts: string): string {
-  return ts.replace('T', ' ').slice(0, 16)
+/** Horas entre dos marcas reales, redondeadas como fn_calcular_liquidacion. null si falta alguna. */
+export function horasEntre(inicio: string | null, fin: string | null): number | null {
+  if (!inicio || !fin) return null
+  return Math.round(((aMs(fin) - aMs(inicio)) / 3600000) * 100) / 100
 }
 
 /** Dos intervalos [a,b) y [c,d) se cruzan si a < d y c < b. */

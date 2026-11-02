@@ -1,11 +1,12 @@
 import type { Tables } from '@/lib/supabase/types'
 
 export const ROL_TECNICO = 'TECNICO'
-export const ESTADO_PROGRAMADA = 'PROGRAMADA'
-export const ESTADO_FINALIZADA = 'FINALIZADA'
-export const ESTADO_CANCELADA = 'CANCELADA'
-/** Una orden en cualquier otro estado (en proceso, programada, etc.) ocupa al técnico. */
-export const ESTADOS_NO_ACTIVOS: readonly string[] = ['FINALIZADA', 'CANCELADA']
+export {
+  ESTADO_CANCELADA,
+  ESTADO_FINALIZADA,
+  ESTADO_PROGRAMADA,
+  ESTADOS_NO_ACTIVOS,
+} from '@/backend/ordenes/estados'
 
 export type OrdenTrabajo = Tables<'orden_trabajo'>
 

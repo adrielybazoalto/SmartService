@@ -1,0 +1,287 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { getSupabaseServiceClient } from '@/lib/supabase/service'
+import { getCurrentUser } from '@/lib/auth'
+import { obtenerIpOrigen } from '@/lib/ip'
+import { ControlOrdenesTrabajo, type VentanaHorariaInput } from '@/backend/ordenes/control-ordenes-trabajo'
+import { horasEntre } from '@/backend/asignaciones/disponibilidad'
+import type { OrdenTrabajo } from '@/backend/ordenes/types'
+import { exigirPermiso, type AccionPermiso } from '@/lib/permisos'
+import type { Db } from '@/lib/supabase/types'
+
+type RespuestaAccion<T> = { ok: true; data: T; mensaje: string } | { ok: false; error: string }
+
+function exito<T>(data: T, mensaje: string) {
+  return { ok: true as const, data, mensaje }
+}
+
+function falla(e: unknown, porDefecto: string) {
+  console.error('[CU12]', e)
+  return { ok: false as const, error: e instanceof Error ? e.message : porDefecto }
+}
+
+async function contexto(accion: AccionPermiso = 'LEER') {
+  const u = (await getCurrentUser()) as any
+  const id = Number(u?.id ?? u?.uid)
+  if (!u || !Number.isInteger(id) || id <= 0) throw new Error('Sesión expirada. Vuelva a iniciar sesión.')
+  await exigirPermiso('ORDENES_TRABAJO', accion)
+  return {
+    db: getSupabaseServiceClient() as unknown as Db,
+    usuarioId: id,
+    ip: await obtenerIpOrigen(),
+  }
+}
+
+/**
+ * Obtener órdenes de trabajo asignadas al técnico logueado
+ */
+export async function obtenerOrdenesTecnicoAccion(): Promise<RespuestaAccion<any[]>> {
+  try {
+    const { db, usuarioId } = await contexto()
+    const { data, error } = await db
+      .from('orden_trabajo_tecnico')
+      .select('*, orden_trabajo(*, cotizacion(*, cliente(*)))')
+      .eq('usuario_id', usuarioId)
+    if (error) throw new Error(error.message)
+    const ordenes = (data || []).map((d: any) => d.orden_trabajo).filter(Boolean)
+    return exito(ordenes, `${ordenes.length} orden(es) de trabajo`)
+  } catch (e) {
+    return falla(e, 'Error al obtener órdenes de trabajo')
+  }
+}
+
+/**
+ * Obtener todas las órdenes de trabajo
+ */
+export async function obtenerOrdenesTrabajoAccion(): Promise<RespuestaAccion<any[]>> {
+  try {
+    const { db } = await contexto()
+    const { data, error } = await db
+      .from('orden_trabajo')
+      .select('*, cotizacion(*, cliente(*)), orden_trabajo_tecnico(*, usuario(nombre)), nota_servicio(id)')
+      .order('id', { ascending: false })
+    if (error) throw new Error(error.message)
+    return exito(data || [], `${(data || []).length} orden(es) de trabajo`)
+  } catch (e) {
+    return falla(e, 'Error al obtener órdenes de trabajo')
+  }
+}
+
+/**
+ * Obtener detalle de una orden de trabajo (un técnico solo ve las suyas)
+ */
+export async function obtenerOrdenTrabajoDetalleAccion(id: number): Promise<RespuestaAccion<any>> {
+  try {
+    const { db, usuarioId } = await contexto()
+    await ControlOrdenesTrabajo.validarTecnicoAsignado(db, id, usuarioId)
+    const { data, error } = await db
+      .from('orden_trabajo')
+      .select(
+        '*, cotizacion(*, cliente(*)), orden_trabajo_tecnico(usuario_id, es_lider, usuario(nombre)), detalle_consumo_material(*, producto(nombre, unidad_medida)), nota_servicio(id, numero_nota, estado, monto_total)',
+      )
+      .eq('id', id)
+      .single()
+    if (error) throw new Error(error.message)
+    return exito({ ...data, horas_trabajadas: horasEntre(data.fecha_inicio_real, data.fecha_fin_real) }, 'Orden cargada')
+  } catch (e) {
+    return falla(e, 'Error al obtener detalle de orden')
+  }
+}
+
+/**
+ * Cancelar una orden PROGRAMADA: exige ACTUALIZAR en asignación, porque cancela
+ * quien programa la orden, no quien la ejecuta.
+ */
+export async function cancelarOrdenAccion(ordenId: number): Promise<RespuestaAccion<OrdenTrabajo>> {
+  try {
+    const { db, usuarioId, ip } = await contexto()
+    await exigirPermiso('ASIGNAR_TECNICOS', 'ACTUALIZAR')
+    const orden = await ControlOrdenesTrabajo.cancelarOrden(db, ordenId, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, `Orden ${orden.codigo_orden} cancelada`)
+  } catch (e) {
+    return falla(e, 'Error al cancelar la orden')
+  }
+}
+
+/**
+ * Convertir cotización aprobada a orden de trabajo con ventana horaria
+ */
+export async function convertirCotizacionAOrdenAccion(
+  cotizacionId: number,
+  datosVentana: VentanaHorariaInput,
+): Promise<RespuestaAccion<any>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('CREAR')
+    const orden = await ControlOrdenesTrabajo.convertirCotizacionAOrdenBD(
+      db,
+      cotizacionId,
+      usuarioId,
+      ip,
+      datosVentana,
+    )
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/cotizaciones')
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, `Orden de trabajo ${orden.codigo_orden} creada exitosamente con ventana programada`)
+  } catch (e) {
+    return falla(e, 'Error al convertir cotización a orden')
+  }
+}
+
+/**
+ * Actualizar ventana horaria programada de una orden de trabajo
+ */
+export async function actualizarVentanaOrdenAccion(
+  ordenId: number,
+  ventana: VentanaHorariaInput,
+): Promise<RespuestaAccion<OrdenTrabajo>> {
+  try {
+    const { db, usuarioId, ip } = await contexto()
+    await exigirPermiso('ASIGNAR_TECNICOS', 'ACTUALIZAR')
+    const orden = await ControlOrdenesTrabajo.cambiarVentanaOrden(db, ordenId, ventana, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, 'Ventana horaria programada actualizada')
+  } catch (e) {
+    return falla(e, 'Error al actualizar ventana horaria')
+  }
+}
+
+/**
+ * Orden correctiva, sin cotización (subflujo del CU12)
+ */
+export async function crearOrdenCorrectivaAccion(
+  datos: VentanaHorariaInput & { tipo_trabajo: string },
+): Promise<RespuestaAccion<OrdenTrabajo>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('CREAR')
+    const orden = await ControlOrdenesTrabajo.crearOrdenCorrectiva(db, datos, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/asignar-tecnicos')
+    return exito(orden, `Orden correctiva ${orden.codigo_orden} creada`)
+  } catch (e) {
+    return falla(e, 'Error al crear la orden correctiva')
+  }
+}
+
+/**
+ * Registrar marca de tiempo de inicio
+ */
+export async function registrarInicioOrdenAccion(ordenId: number): Promise<RespuestaAccion<any>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('ACTUALIZAR')
+    const orden = await ControlOrdenesTrabajo.registrarMarcaTiempoInicio(db, ordenId, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    return exito(orden, 'Inicio de labores registrado')
+  } catch (e) {
+    return falla(e, 'Error al registrar inicio')
+  }
+}
+
+/**
+ * Registrar marca de tiempo de fin
+ */
+export async function registrarFinOrdenAccion(ordenId: number): Promise<RespuestaAccion<any>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('ACTUALIZAR')
+    const orden = await ControlOrdenesTrabajo.registrarMarcaTiempoFin(db, ordenId, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    return exito(orden, 'Fin de labores registrado')
+  } catch (e) {
+    return falla(e, 'Error al registrar fin')
+  }
+}
+
+/**
+ * Procesar reporte de campo (orquestador atómico)
+ */
+export async function procesarReporteCampoAccion(input: {
+  ordenId: number
+  diagnostico: string
+  materiales?: Array<{ producto_id: number; cantidad_utilizada: number; observacion?: string | null }>
+  confirmarSinMateriales?: boolean
+}): Promise<RespuestaAccion<any>> {
+  try {
+    const { db, usuarioId, ip } = await contexto('PROCESAR')
+    const resultado = await ControlOrdenesTrabajo.procesarReporteCampo(db, { ...input, materiales: input.materiales || [], confirmarSinMateriales: input.confirmarSinMateriales ?? false }, usuarioId, ip)
+    revalidatePath('/ordenes-trabajo')
+    revalidatePath('/inventario')
+    return exito(resultado, 'Reporte de campo procesado y orden finalizada')
+  } catch (e) {
+    return falla(e, 'Error al procesar reporte de campo')
+  }
+}
+
+/**
+ * Listar productos disponibles para consumo en OT
+ */
+export async function listarProductosParaConsumoAccion(): Promise<RespuestaAccion<any[]>> {
+  try {
+    const { db } = await contexto()
+    const { data, error } = await (db as any)
+      .from('producto')
+      .select('id, codigo, nombre, unidad_medida, stock_disponible')
+      .eq('estado', true)
+    if (error) throw new Error(error.message)
+    const sorted = (data || []).sort((a: any, b: any) => (a.nombre || '').localeCompare(b.nombre || ''))
+    return exito(sorted, `${sorted.length} producto(s)`)
+  } catch (e) {
+    return falla(e, 'Error al listar productos')
+  }
+}
+
+/**
+ * Lo cotizado para la orden (CU08): materiales con su cantidad y servicios con
+ * sus horas estimadas. El reporte de campo parte de esta lista y el técnico
+ * solo ajusta lo realmente usado (y agrega adicionales).
+ */
+export async function obtenerCotizadoOrdenAccion(ordenId: number): Promise<
+  RespuestaAccion<{
+    numero_cotizacion: string | null
+    materiales: { producto_id: number; codigo: string | null; nombre: string; unidad_medida: string; cantidad_cotizada: number; stock_disponible: number }[]
+    servicios: { nombre: string; horas_estimadas: number }[]
+  }>
+> {
+  try {
+    const { db } = await contexto()
+    const { data, error } = await (db as any)
+      .from('orden_trabajo')
+      .select(
+        'id, cotizacion:cotizacion_id(numero_cotizacion, detalle_cotizacion_producto(producto_id, cantidad, producto:producto_id(codigo, nombre, unidad_medida, stock_disponible)), detalle_cotizacion_servicio(horas_estimadas, servicio:servicio_id(nombre)))',
+      )
+      .eq('id', ordenId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    const cot = Array.isArray(data?.cotizacion) ? data.cotizacion[0] : data?.cotizacion
+    // Varias líneas del mismo producto se suman en una sola
+    const porProducto = new Map<number, any>()
+    for (const d of (cot?.detalle_cotizacion_producto ?? []) as any[]) {
+      const p = Array.isArray(d.producto) ? d.producto[0] : d.producto
+      const previo = porProducto.get(d.producto_id)
+      if (previo) previo.cantidad_cotizada += Number(d.cantidad)
+      else
+        porProducto.set(d.producto_id, {
+          producto_id: d.producto_id,
+          codigo: p?.codigo ?? null,
+          nombre: p?.nombre ?? `Producto #${d.producto_id}`,
+          unidad_medida: p?.unidad_medida ?? 'UND',
+          cantidad_cotizada: Number(d.cantidad),
+          stock_disponible: Number(p?.stock_disponible ?? 0),
+        })
+    }
+    const servicios = ((cot?.detalle_cotizacion_servicio ?? []) as any[]).map((s) => {
+      const sv = Array.isArray(s.servicio) ? s.servicio[0] : s.servicio
+      return { nombre: sv?.nombre ?? 'Servicio', horas_estimadas: Number(s.horas_estimadas) }
+    })
+    const materiales = [...porProducto.values()]
+    return exito(
+      { numero_cotizacion: cot?.numero_cotizacion ?? null, materiales, servicios },
+      `${materiales.length} material(es) cotizado(s)`,
+    )
+  } catch (e) {
+    return falla(e, 'Error al obtener lo cotizado')
+  }
+}

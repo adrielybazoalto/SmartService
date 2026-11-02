@@ -37,6 +37,7 @@ import {
   type ProductoVenta,
   type ResultadoCaja,
   type ResumenArqueo,
+  type TipoComprobante,
   type TipoPago,
   type TotalesVenta,
   type VentaResumen,
@@ -217,6 +218,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
   const totales: Record<TipoPago, number> = { EFECTIVO: 0, QR: 0, TARJETA: 0, TRANSFERENCIA: 0 };
   let emitidas = 0;
   let anuladas = 0;
+  let cobrosOrdenes = 0;
   for (const v of ventas) {
     if (v.estado === 'ANULADA') {
       anuladas++;
@@ -224,6 +226,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
     }
     emitidas++;
     totales[v.tipo_pago] = r2(totales[v.tipo_pago] + v.total);
+    if (String(v.tipo_comprobante ?? '').startsWith('RECIBO_')) cobrosOrdenes = r2(cobrosOrdenes + v.total);
   }
   return {
     caja,
@@ -232,6 +235,8 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
     cantidad_anuladas: anuladas,
     total_vendido: r2(Object.values(totales).reduce((a, b) => a + b, 0)),
     efectivo_esperado: r2(caja.monto_inicial + totales.EFECTIVO),
+    total_electronico: r2(totales.QR + totales.TARJETA + totales.TRANSFERENCIA),
+    cobros_ordenes: cobrosOrdenes,
   };
 }
 
@@ -368,7 +373,7 @@ export async function listarProductosVenta(db: Db): Promise<ProductoVenta[]> {
 
 /** Clientes para la venta (solo lectura; venta.cliente_id es obligatorio) */
 export async function listarClientesVenta(db: Db, limite = 500): Promise<ClienteVenta[]> {
-  const { data, error } = await db.from('cliente').select('*').limit(limite);
+  const { data, error } = await db.from('cliente').select('*').eq('estado', true).limit(limite);
   if (error) throw errorBD(error, 'No se pudieron cargar los clientes');
   return ((data ?? []) as any[])
     .map((c) => ({
@@ -424,6 +429,8 @@ export function calcularTotalesYDescuentos(
 export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO): Promise<ComprobanteVenta> {
   const datos = validar(registrarVentaSchema, datosVentaDTO);
   const { usuarioId } = datosVentaDTO;
+  // TARJETA solo se registra después de que Stripe confirma el pago
+  if (datos.tipoPago === 'TARJETA') throw new VentaError('El pago con tarjeta se realiza con la pasarela de pago (Stripe)');
 
   const clienteId = datos.clienteId ?? (await buscarClienteMostrador(db));
   if (!clienteId) throw new VentaError('Seleccione un cliente para la venta');
@@ -449,7 +456,15 @@ export async function registrarVentaDirecta(db: Db, datosVentaDTO: DatosVentaDTO
     tipoComprobante: datos.tipoComprobante,
   };
 
-  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', await describirVenta(db, comprobante), datosVentaDTO.ip ?? null);
+  // TRANSFERENCIA: se guarda el número de referencia del comprobante bancario
+  let referencia = '';
+  if (datos.tipoPago === 'TRANSFERENCIA' && datos.referenciaPago) {
+    const { error: errRef } = await db.from('venta').update({ referencia_pago: datos.referenciaPago } as any).eq('id', comprobante.ventaId);
+    if (errRef) console.warn('[CU09] No se pudo guardar la referencia de la transferencia:', errRef.message);
+    referencia = ` · Ref. transferencia: ${datos.referenciaPago}`;
+  }
+
+  await guardarEventoCaja(db, usuarioId, 'REGISTRO_VENTA', `${await describirVenta(db, comprobante)}${referencia}`, datosVentaDTO.ip ?? null);
   return comprobante;
 }
 
@@ -507,7 +522,7 @@ export async function anularVenta(
 export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVenta | null> {
   const { data, error } = await db
     .from('venta')
-    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
+    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), orden:orden_trabajo_id(codigo_orden), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
     .eq('id', ventaId)
     .maybeSingle();
   if (error) throw errorBD(error, 'No se pudo leer la venta');
@@ -524,15 +539,27 @@ export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVen
     usuario_id: v.usuario_id,
     cajero: v.usuario?.nombre ?? `Usuario #${v.usuario_id}`,
     cliente: { nombre: nombreCliente(v.cliente), documento: v.cliente?.documento_identidad ?? null },
-    items: ((v.detalle_venta ?? []) as any[])
-      .sort((a, b) => a.id - b.id)
-      .map((d) => ({
-        descripcion: d.producto?.nombre ?? `Producto #${d.producto_id}`,
-        unidad: d.producto?.unidad_medida ?? 'UND',
-        cantidad: num(d.cantidad),
-        precio_unitario: num(d.precio_unitario),
-        subtotal: num(d.subtotal),
-      })),
+    items: String(v.tipo_comprobante ?? '').startsWith('RECIBO_')
+      ? // Recibo de abono / saldo de una orden de trabajo (sin productos)
+        [{
+          descripcion:
+            (v.tipo_comprobante === 'RECIBO_SALDO' ? 'Cobro del saldo de la nota de servicio - orden ' : 'Abono a cuenta de la orden de trabajo ') +
+            (v.orden?.codigo_orden ?? `#${v.orden_trabajo_id}`) +
+            (v.referencia_pago ? ` (Ref. ${v.referencia_pago})` : ''),
+          unidad: 'SERV',
+          cantidad: 1,
+          precio_unitario: num(v.total),
+          subtotal: num(v.total),
+        }]
+      : ((v.detalle_venta ?? []) as any[])
+          .sort((a, b) => a.id - b.id)
+          .map((d) => ({
+            descripcion: d.producto?.nombre ?? `Producto #${d.producto_id}`,
+            unidad: d.producto?.unidad_medida ?? 'UND',
+            cantidad: num(d.cantidad),
+            precio_unitario: num(d.precio_unitario),
+            subtotal: num(d.subtotal),
+          })),
     subtotal: num(v.subtotal),
     descuento: num(v.descuento),
     total: num(v.total),
@@ -564,6 +591,8 @@ const ETIQUETA_PAGO: Record<string, string> = {
 const ETIQUETA_COMPROBANTE: Record<string, string> = {
   NOTA_VENTA: 'Nota de venta',
   RECIBO: 'Recibo',
+  RECIBO_ABONO: 'Recibo de abono',
+  RECIBO_SALDO: 'Recibo de saldo',
 };
 
 const bsPdf = (n: number) =>
@@ -720,4 +749,156 @@ export async function generarNotaVentaPdf(nota: NotaVenta): Promise<Uint8Array> 
   );
 
   return pdf.save();
+}
+
+// ===========================================================================
+// PAGO CON TARJETA (Stripe) — flujo alternativo del CU09
+//   iniciarPagoTarjeta(datosVentaDTO)  -> PasarelaPago.crearSesionPago
+//   confirmarPagoTarjeta(sessionId)    -> PasarelaPago.verificarPago
+//                                         -> fn_registrar_venta_tarjeta (venta,
+//                                            detalle, stock y kárdex) + bitácora
+// La venta SOLO se registra cuando Stripe confirma el pago.
+// ===========================================================================
+
+/** Lo que el CU09 usa de PasarelaPago (backend/pagos/pasarela-pago.ts) */
+export interface PasarelaPagoVenta {
+  crearSesionPago(p: {
+    montoBs: number;
+    descripcion: string;
+    urlRetorno: string;
+    urlCancelacion: string;
+    metadata: Record<string, string>;
+    /** Evita el cobro doble: misma clave = misma sesión de Stripe */
+    claveIdempotencia?: string;
+  }): Promise<{ sessionId: string; url: string; montoUsd: number }>;
+  verificarPago(sessionId: string): Promise<{ pagado: boolean; sessionId: string; metadata: Record<string, string>; montoUsd: number }>;
+}
+
+// El carrito viaja en la metadata del pago (Stripe: máx. 500 caracteres por valor)
+const TROZO_METADATA = 450;
+function itemsAMetadata(items: { productoId: number; cantidad: number }[]): Record<string, string> {
+  const json = JSON.stringify(items.map((i) => [i.productoId, i.cantidad]));
+  const meta: Record<string, string> = {};
+  for (let i = 0, k = 0; i < json.length; i += TROZO_METADATA, k++) meta[`items_${k}`] = json.slice(i, i + TROZO_METADATA);
+  return meta;
+}
+function itemsDeMetadata(meta: Record<string, string>): { producto_id: number; cantidad: number }[] {
+  let json = '';
+  for (let k = 0; meta[`items_${k}`] !== undefined; k++) json += meta[`items_${k}`];
+  const arr = JSON.parse(json) as [number, number][];
+  if (!Array.isArray(arr) || arr.length === 0) throw new Error('sin ítems');
+  return arr.map(([p, c]) => ({ producto_id: Number(p), cantidad: Number(c) }));
+}
+
+/**
+ * iniciarPagoTarjeta(datosVentaDTO): valida caja, cliente, stock y totales
+ * con los precios vigentes, y crea el cobro en Stripe. Devuelve el enlace.
+ */
+export async function iniciarPagoTarjeta(
+  db: Db,
+  pasarela: PasarelaPagoVenta,
+  datosVentaDTO: DatosVentaDTO,
+  urlBase: string
+): Promise<{ url: string }> {
+  const datos = validar(registrarVentaSchema, datosVentaDTO);
+  if (datos.tipoPago !== 'TARJETA') throw new VentaError('Este cobro es solo para pago con tarjeta');
+  const { usuarioId } = datosVentaDTO;
+
+  if (!(await verificarCajaAbierta(db, usuarioId))) throw new VentaError(MENSAJES.SIN_CAJA);
+  const clienteId = datos.clienteId ?? (await buscarClienteMostrador(db));
+  if (!clienteId) throw new VentaError('Seleccione un cliente para la venta');
+
+  // Totales con precios y stock vigentes (la BD vuelve a calcular al registrar)
+  const cantidades = new Map<number, number>();
+  for (const it of datos.items) cantidades.set(it.productoId, r2((cantidades.get(it.productoId) ?? 0) + it.cantidad));
+  const { data, error } = await db
+    .from('producto')
+    .select('id, nombre, stock_disponible, precio_compra_actual, margen_ganancia')
+    .in('id', [...cantidades.keys()]);
+  if (error) throw errorBD(error, 'No se pudieron leer los productos');
+  const productos = new Map(((data ?? []) as any[]).map((p) => [p.id as number, p]));
+
+  let subtotal = 0;
+  for (const [id, cantidad] of cantidades) {
+    const p = productos.get(id);
+    if (!p) throw new VentaError(`El producto ${id} no existe`);
+    if (num(p.stock_disponible) < cantidad) {
+      throw new VentaError(`Stock insuficiente para "${p.nombre}": disponible ${num(p.stock_disponible)}, solicitado ${cantidad}`);
+    }
+    subtotal = r2(subtotal + r2(calcularPrecioVenta(p) * cantidad));
+  }
+  const { descuento, total } = calcularTotalesYDescuentos([{ precioUnitario: subtotal, cantidad: 1 }], datos.descuento);
+  if (total <= 0) throw new VentaError('El total debe ser mayor a 0 para cobrar con tarjeta');
+
+  const sesion = await pasarela.crearSesionPago({
+    montoBs: total,
+    descripcion: `Venta en mostrador SgarNet (${cantidades.size} producto(s))`,
+    urlRetorno: `${urlBase}/ventas?pago=exito`,
+    urlCancelacion: `${urlBase}/ventas?pago=cancelado`,
+    metadata: {
+      tipo: 'VENTA',
+      usuario_id: String(usuarioId),
+      cliente_id: String(clienteId),
+      tipo_comprobante: datos.tipoComprobante,
+      descuento: descuento.toFixed(2),
+      total_bs: total.toFixed(2),
+      ...itemsAMetadata(datos.items),
+    },
+  });
+  return { url: sesion.url };
+}
+
+/**
+ * confirmarPagoTarjeta(sessionId): al volver de Stripe verifica el pago y
+ * registra la venta con tipo_pago TARJETA (una sola vez por pago).
+ */
+export async function confirmarPagoTarjeta(
+  db: Db,
+  pasarela: PasarelaPagoVenta,
+  params: { sessionId: string; usuarioId: number; ip?: string | null }
+): Promise<{ comprobante: ComprobanteVenta; yaRegistrada: boolean }> {
+  const pago = await pasarela.verificarPago(params.sessionId);
+  if (!pago.pagado) throw new VentaError('El pago con tarjeta no fue confirmado. La venta no se registró.');
+  const m = pago.metadata;
+  if (m.tipo !== 'VENTA') throw new VentaError('El pago no corresponde a una venta');
+  if (Number(m.usuario_id) !== params.usuarioId) throw new VentaError('El pago fue iniciado por otro usuario');
+
+  let items: { producto_id: number; cantidad: number }[];
+  try {
+    items = itemsDeMetadata(m);
+  } catch {
+    throw new VentaError('No se pudo leer el detalle de la venta pagada');
+  }
+
+  const { data: rpc, error } = await db.rpc('fn_registrar_venta_tarjeta', {
+    p_session_id: pago.sessionId,
+    p_monto_pagado: Number(m.total_bs),
+    p_usuario_id: params.usuarioId,
+    p_cliente_id: Number(m.cliente_id),
+    p_tipo_comprobante: m.tipo_comprobante,
+    p_descuento: Number(m.descuento),
+    p_items: items,
+  } as any);
+  if (error || !rpc) throw errorBD(error, 'No se pudo registrar la venta pagada con tarjeta');
+
+  const r = rpc as any;
+  const comprobante: ComprobanteVenta = {
+    ventaId: r.id,
+    nroComprobante: r.nro_comprobante,
+    subtotal: num(r.subtotal),
+    descuento: num(r.descuento),
+    total: num(r.total),
+    tipoPago: 'TARJETA',
+    tipoComprobante: m.tipo_comprobante as TipoComprobante,
+  };
+  if (!r.ya_registrada) {
+    await guardarEventoCaja(
+      db,
+      params.usuarioId,
+      'REGISTRO_VENTA',
+      `${await describirVenta(db, comprobante)} · Stripe ${pago.sessionId}`,
+      params.ip ?? null
+    );
+  }
+  return { comprobante, yaRegistrada: !!r.ya_registrada };
 }

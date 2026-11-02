@@ -4,3 +4,6 @@ export async function requireUser() {
   if (!usuario) throw new Error('No autorizado: inicia sesión para continuar.')
   return usuario
 }
+export async function getCurrentUser() {
+  return globalThis.__cu16?.usuario ?? null
+}
