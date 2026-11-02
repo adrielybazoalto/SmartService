@@ -433,21 +433,13 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                       </>
                     )}
                     {permisos.gestionar && orden.estado === 'PROGRAMADA' && (
-                      <>
-                        <Link href={`/asignar-tecnicos/${orden.id}`} className="text-blue-600 hover:text-blue-900">
-                          {orden.orden_trabajo_tecnico?.length ? 'Modificar cuadrilla' : 'Asignar cuadrilla'}
-                        </Link>
-                        <button onClick={() => setOrdenVentana(orden)} className="text-blue-600 hover:text-blue-900">
-                          {orden.fecha_inicio_programada ? 'Cambiar ventana' : 'Definir ventana'}
-                        </button>
-                        <button
-                          onClick={() => cancelarOrden(orden)}
-                          disabled={cargando}
-                          className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                        >
-                          Cancelar orden
-                        </button>
-                      </>
+                      <button
+                        onClick={() => cancelarOrden(orden)}
+                        disabled={cargando}
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50"
+                      >
+                        Cancelar orden
+                      </button>
                     )}
                     {permisos.liquidar && orden.estado === 'FINALIZADA' && (
                       <Link href={`/liquidacion/${orden.id}`} className="text-emerald-600 hover:text-emerald-900">
