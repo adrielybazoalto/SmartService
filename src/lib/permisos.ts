@@ -26,7 +26,6 @@ import { moduloPorRuta } from '@/lib/navigation'
 export { MODULOS, moduloPorRuta } from '@/lib/navigation'
 export type { ModuloRegistrado } from '@/lib/navigation'
 
-/** Permisos (claves) activos de un rol, leídos de ROL_PERMISO ⋈ PERMISO. */
 /** Acción de ACCION que da acceso (entrar) a un módulo. */
 export const ACCION_ACCESO = 'LEER'
 
