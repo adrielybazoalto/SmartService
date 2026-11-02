@@ -66,6 +66,11 @@ export class PasarelaPago {
     urlRetorno: string
     urlCancelacion: string
     metadata: Record<string, string>
+    /**
+     * Evita el cobro doble: con la misma clave Stripe devuelve la MISMA
+     * sesión de pago (doble clic, reintento) en lugar de crear otra.
+     */
+    claveIdempotencia?: string
   }): Promise<SesionPago> {
     const centavos = bsACentavosUsd(params.montoBs)
     if (centavos < MINIMO_CENTAVOS) {
@@ -95,7 +100,7 @@ export class PasarelaPago {
         success_url: `${params.urlRetorno}${separador}session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: params.urlCancelacion,
         metadata: params.metadata,
-      })
+      }, params.claveIdempotencia ? { idempotencyKey: params.claveIdempotencia } : undefined)
       if (!sesion.url) throw new ErrorPago('Stripe no devolvió la página de pago.')
       return { sessionId: sesion.id, url: sesion.url, montoUsd: centavos / 100 }
     } catch (e) {

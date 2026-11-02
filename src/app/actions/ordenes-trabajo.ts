@@ -202,10 +202,11 @@ export async function procesarReporteCampoAccion(input: {
   ordenId: number
   diagnostico: string
   materiales?: Array<{ producto_id: number; cantidad_utilizada: number; observacion?: string | null }>
+  confirmarSinMateriales?: boolean
 }): Promise<RespuestaAccion<any>> {
   try {
     const { db, usuarioId, ip } = await contexto('PROCESAR')
-    const resultado = await ControlOrdenesTrabajo.procesarReporteCampo(db, { ...input, materiales: input.materiales || [] }, usuarioId, ip)
+    const resultado = await ControlOrdenesTrabajo.procesarReporteCampo(db, { ...input, materiales: input.materiales || [], confirmarSinMateriales: input.confirmarSinMateriales ?? false }, usuarioId, ip)
     revalidatePath('/ordenes-trabajo')
     revalidatePath('/inventario')
     return exito(resultado, 'Reporte de campo procesado y orden finalizada')
@@ -229,5 +230,58 @@ export async function listarProductosParaConsumoAccion(): Promise<RespuestaAccio
     return exito(sorted, `${sorted.length} producto(s)`)
   } catch (e) {
     return falla(e, 'Error al listar productos')
+  }
+}
+
+/**
+ * Lo cotizado para la orden (CU08): materiales con su cantidad y servicios con
+ * sus horas estimadas. El reporte de campo parte de esta lista y el técnico
+ * solo ajusta lo realmente usado (y agrega adicionales).
+ */
+export async function obtenerCotizadoOrdenAccion(ordenId: number): Promise<
+  RespuestaAccion<{
+    numero_cotizacion: string | null
+    materiales: { producto_id: number; codigo: string | null; nombre: string; unidad_medida: string; cantidad_cotizada: number; stock_disponible: number }[]
+    servicios: { nombre: string; horas_estimadas: number }[]
+  }>
+> {
+  try {
+    const { db } = await contexto()
+    const { data, error } = await (db as any)
+      .from('orden_trabajo')
+      .select(
+        'id, cotizacion:cotizacion_id(numero_cotizacion, detalle_cotizacion_producto(producto_id, cantidad, producto:producto_id(codigo, nombre, unidad_medida, stock_disponible)), detalle_cotizacion_servicio(horas_estimadas, servicio:servicio_id(nombre)))',
+      )
+      .eq('id', ordenId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    const cot = Array.isArray(data?.cotizacion) ? data.cotizacion[0] : data?.cotizacion
+    // Varias líneas del mismo producto se suman en una sola
+    const porProducto = new Map<number, any>()
+    for (const d of (cot?.detalle_cotizacion_producto ?? []) as any[]) {
+      const p = Array.isArray(d.producto) ? d.producto[0] : d.producto
+      const previo = porProducto.get(d.producto_id)
+      if (previo) previo.cantidad_cotizada += Number(d.cantidad)
+      else
+        porProducto.set(d.producto_id, {
+          producto_id: d.producto_id,
+          codigo: p?.codigo ?? null,
+          nombre: p?.nombre ?? `Producto #${d.producto_id}`,
+          unidad_medida: p?.unidad_medida ?? 'UND',
+          cantidad_cotizada: Number(d.cantidad),
+          stock_disponible: Number(p?.stock_disponible ?? 0),
+        })
+    }
+    const servicios = ((cot?.detalle_cotizacion_servicio ?? []) as any[]).map((s) => {
+      const sv = Array.isArray(s.servicio) ? s.servicio[0] : s.servicio
+      return { nombre: sv?.nombre ?? 'Servicio', horas_estimadas: Number(s.horas_estimadas) }
+    })
+    const materiales = [...porProducto.values()]
+    return exito(
+      { numero_cotizacion: cot?.numero_cotizacion ?? null, materiales, servicios },
+      `${materiales.length} material(es) cotizado(s)`,
+    )
+  } catch (e) {
+    return falla(e, 'Error al obtener lo cotizado')
   }
 }

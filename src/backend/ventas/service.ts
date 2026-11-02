@@ -218,6 +218,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
   const totales: Record<TipoPago, number> = { EFECTIVO: 0, QR: 0, TARJETA: 0, TRANSFERENCIA: 0 };
   let emitidas = 0;
   let anuladas = 0;
+  let cobrosOrdenes = 0;
   for (const v of ventas) {
     if (v.estado === 'ANULADA') {
       anuladas++;
@@ -225,6 +226,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
     }
     emitidas++;
     totales[v.tipo_pago] = r2(totales[v.tipo_pago] + v.total);
+    if (String(v.tipo_comprobante ?? '').startsWith('RECIBO_')) cobrosOrdenes = r2(cobrosOrdenes + v.total);
   }
   return {
     caja,
@@ -233,6 +235,8 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
     cantidad_anuladas: anuladas,
     total_vendido: r2(Object.values(totales).reduce((a, b) => a + b, 0)),
     efectivo_esperado: r2(caja.monto_inicial + totales.EFECTIVO),
+    total_electronico: r2(totales.QR + totales.TARJETA + totales.TRANSFERENCIA),
+    cobros_ordenes: cobrosOrdenes,
   };
 }
 
@@ -518,7 +522,7 @@ export async function anularVenta(
 export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVenta | null> {
   const { data, error } = await db
     .from('venta')
-    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
+    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), orden:orden_trabajo_id(codigo_orden), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
     .eq('id', ventaId)
     .maybeSingle();
   if (error) throw errorBD(error, 'No se pudo leer la venta');
@@ -535,15 +539,27 @@ export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVen
     usuario_id: v.usuario_id,
     cajero: v.usuario?.nombre ?? `Usuario #${v.usuario_id}`,
     cliente: { nombre: nombreCliente(v.cliente), documento: v.cliente?.documento_identidad ?? null },
-    items: ((v.detalle_venta ?? []) as any[])
-      .sort((a, b) => a.id - b.id)
-      .map((d) => ({
-        descripcion: d.producto?.nombre ?? `Producto #${d.producto_id}`,
-        unidad: d.producto?.unidad_medida ?? 'UND',
-        cantidad: num(d.cantidad),
-        precio_unitario: num(d.precio_unitario),
-        subtotal: num(d.subtotal),
-      })),
+    items: String(v.tipo_comprobante ?? '').startsWith('RECIBO_')
+      ? // Recibo de abono / saldo de una orden de trabajo (sin productos)
+        [{
+          descripcion:
+            (v.tipo_comprobante === 'RECIBO_SALDO' ? 'Cobro del saldo de la nota de servicio - orden ' : 'Abono a cuenta de la orden de trabajo ') +
+            (v.orden?.codigo_orden ?? `#${v.orden_trabajo_id}`) +
+            (v.referencia_pago ? ` (Ref. ${v.referencia_pago})` : ''),
+          unidad: 'SERV',
+          cantidad: 1,
+          precio_unitario: num(v.total),
+          subtotal: num(v.total),
+        }]
+      : ((v.detalle_venta ?? []) as any[])
+          .sort((a, b) => a.id - b.id)
+          .map((d) => ({
+            descripcion: d.producto?.nombre ?? `Producto #${d.producto_id}`,
+            unidad: d.producto?.unidad_medida ?? 'UND',
+            cantidad: num(d.cantidad),
+            precio_unitario: num(d.precio_unitario),
+            subtotal: num(d.subtotal),
+          })),
     subtotal: num(v.subtotal),
     descuento: num(v.descuento),
     total: num(v.total),
@@ -575,6 +591,8 @@ const ETIQUETA_PAGO: Record<string, string> = {
 const ETIQUETA_COMPROBANTE: Record<string, string> = {
   NOTA_VENTA: 'Nota de venta',
   RECIBO: 'Recibo',
+  RECIBO_ABONO: 'Recibo de abono',
+  RECIBO_SALDO: 'Recibo de saldo',
 };
 
 const bsPdf = (n: number) =>
@@ -750,6 +768,8 @@ export interface PasarelaPagoVenta {
     urlRetorno: string;
     urlCancelacion: string;
     metadata: Record<string, string>;
+    /** Evita el cobro doble: misma clave = misma sesión de Stripe */
+    claveIdempotencia?: string;
   }): Promise<{ sessionId: string; url: string; montoUsd: number }>;
   verificarPago(sessionId: string): Promise<{ pagado: boolean; sessionId: string; metadata: Record<string, string>; montoUsd: number }>;
 }

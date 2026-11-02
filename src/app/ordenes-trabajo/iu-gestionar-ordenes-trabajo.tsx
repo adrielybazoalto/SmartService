@@ -7,6 +7,7 @@ import {
   procesarReporteCampoAccion,
   obtenerOrdenTrabajoDetalleAccion,
   listarProductosParaConsumoAccion,
+  obtenerCotizadoOrdenAccion,
   actualizarVentanaOrdenAccion,
   cancelarOrdenAccion,
   crearOrdenCorrectivaAccion,
@@ -19,10 +20,19 @@ import { ModalVentana, type DatosVentana } from './modal-ventana'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
-interface Material {
+/**
+ * Línea del reporte de campo. Las que vienen de la cotización traen la cantidad
+ * cotizada y el técnico solo corrige lo realmente usado (0 = no se usó).
+ * Las adicionales (cotizada = null) son materiales que no estaban cotizados.
+ */
+interface LineaMaterial {
   producto_id: number
-  cantidad_utilizada: number
-  observacion?: string
+  nombre: string
+  codigo: string | null
+  unidad_medida: string
+  cotizada: number | null
+  usada: string
+  observacion: string
 }
 
 interface Producto {
@@ -67,7 +77,10 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<any>(null)
   const [mostrarReporte, setMostrarReporte] = useState(false)
   const [diagnostico, setDiagnostico] = useState('')
-  const [materiales, setMateriales] = useState<Material[]>([])
+  const [materiales, setMateriales] = useState<LineaMaterial[]>([])
+  const [serviciosCotizados, setServiciosCotizados] = useState<{ nombre: string; horas_estimadas: number }[]>([])
+  const [numeroCotizacion, setNumeroCotizacion] = useState<string | null>(null)
+  const [confirmarSinMateriales, setConfirmarSinMateriales] = useState(false)
   const [productos, setProductos] = useState<Producto[]>([])
   const [productoSeleccionado, setProductoSeleccionado] = useState('')
   const [cantidadMaterial, setCantidadMaterial] = useState('')
@@ -118,44 +131,99 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
     setOrdenSeleccionada(orden)
     setDiagnostico('')
     setMateriales([])
+    setServiciosCotizados([])
+    setNumeroCotizacion(null)
+    setConfirmarSinMateriales(false)
     setMostrarReporte(true)
     setMensaje(null)
-    const res = await listarProductosParaConsumoAccion()
-    if (res.ok) {
-      setProductos(res.data)
+    const [prods, cotizado] = await Promise.all([listarProductosParaConsumoAccion(), obtenerCotizadoOrdenAccion(orden.id)])
+    if (prods.ok) setProductos(prods.data)
+    if (cotizado.ok) {
+      // Se precargan los materiales cotizados con la cantidad cotizada; el técnico corrige lo usado
+      setNumeroCotizacion(cotizado.data.numero_cotizacion)
+      setServiciosCotizados(cotizado.data.servicios)
+      setMateriales(
+        cotizado.data.materiales.map((m) => ({
+          producto_id: m.producto_id,
+          nombre: m.nombre,
+          codigo: m.codigo,
+          unidad_medida: m.unidad_medida,
+          cotizada: m.cantidad_cotizada,
+          usada: String(m.cantidad_cotizada),
+          observacion: '',
+        })),
+      )
+    } else {
+      setMensaje({ tipo: 'error', texto: cotizado.error })
     }
   }
 
+  /** Material adicional (no cotizado). Si ya está en la lista, se suma a la cantidad usada. */
   function agregarMaterial() {
-    if (!productoSeleccionado || !cantidadMaterial) {
-      setMensaje({ tipo: 'error', texto: 'Seleccione un producto y cantidad' })
+    const cantidad = parseFloat(cantidadMaterial)
+    if (!productoSeleccionado || !Number.isFinite(cantidad) || cantidad <= 0) {
+      setMensaje({ tipo: 'error', texto: 'Seleccione un producto y una cantidad mayor a 0' })
       return
     }
     const prod = productos.find((p) => p.id === parseInt(productoSeleccionado))
     if (!prod) return
 
-    setMateriales([
-      ...materiales,
-      {
-        producto_id: prod.id,
-        cantidad_utilizada: parseFloat(cantidadMaterial),
-        observacion: obsMaterial || undefined,
-      },
-    ])
+    const existente = materiales.find((m) => m.producto_id === prod.id)
+    if (existente) {
+      setMateriales(
+        materiales.map((m) =>
+          m.producto_id === prod.id
+            ? { ...m, usada: String((parseFloat(m.usada) || 0) + cantidad), observacion: obsMaterial || m.observacion }
+            : m,
+        ),
+      )
+    } else {
+      setMateriales([
+        ...materiales,
+        {
+          producto_id: prod.id,
+          nombre: prod.nombre,
+          codigo: prod.codigo,
+          unidad_medida: prod.unidad_medida,
+          cotizada: null,
+          usada: String(cantidad),
+          observacion: obsMaterial,
+        },
+      ])
+    }
     setProductoSeleccionado('')
     setCantidadMaterial('')
     setObsMaterial('')
     setMensaje(null)
   }
 
+  function cambiarLinea(index: number, cambios: Partial<LineaMaterial>) {
+    setMateriales(materiales.map((m, i) => (i === index ? { ...m, ...cambios } : m)))
+  }
+
   function eliminarMaterial(index: number) {
     setMateriales(materiales.filter((_, i) => i !== index))
   }
+
+  // Lo que se envía: solo las líneas con cantidad usada > 0
+  const materialesUsados = materiales
+    .map((m) => ({ ...m, cantidad: parseFloat(m.usada) }))
+    .filter((m) => Number.isFinite(m.cantidad) && m.cantidad > 0)
+  const hayCantidadInvalida = materiales.some((m) => m.usada.trim() !== '' && !(parseFloat(m.usada) >= 0))
+  const habiaCotizados = materiales.some((m) => m.cotizada !== null)
 
   async function procesarReporte() {
     if (!ordenSeleccionada) return
     if (!diagnostico.trim()) {
       setMensaje({ tipo: 'error', texto: 'El diagnóstico es obligatorio' })
+      return
+    }
+    if (hayCantidadInvalida) {
+      setMensaje({ tipo: 'error', texto: 'Revise las cantidades usadas: deben ser números mayores o iguales a 0' })
+      return
+    }
+    if (materialesUsados.length === 0 && habiaCotizados && !confirmarSinMateriales) {
+      setMensaje({ tipo: 'error', texto: 'Confirme que no se usó ningún material de la cotización' })
       return
     }
 
@@ -165,7 +233,15 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
       const res = await procesarReporteCampoAccion({
         ordenId: ordenSeleccionada.id,
         diagnostico,
-        materiales,
+        materiales: materialesUsados.map((m) => ({
+          producto_id: m.producto_id,
+          cantidad_utilizada: m.cantidad,
+          observacion:
+            [m.cotizada === null ? 'Adicional (no cotizado)' : m.cantidad !== m.cotizada ? `Cotizado: ${m.cotizada}` : '', m.observacion.trim()]
+              .filter(Boolean)
+              .join(' · ') || null,
+        })),
+        confirmarSinMateriales: materialesUsados.length === 0 && confirmarSinMateriales,
       })
       if (res.ok) {
         setMensaje({ tipo: 'ok', texto: res.mensaje })
@@ -334,15 +410,19 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                         Marcar Inicio
                       </button>
                     )}
-                    {esTecnico && orden.estado === 'EN_PROGRESO' && (
+                    {/* 1° Marcar fin (horas técnicas)  ->  2° Reporte de campo (materiales y diagnóstico) -> FINALIZADA */}
+                    {esTecnico && orden.estado === 'EN_PROGRESO' && !orden.fecha_fin_real && (
+                      <button
+                        onClick={() => finalizarOrden(orden.id)}
+                        disabled={cargando}
+                        className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
+                      >
+                        Marcar Fin
+                      </button>
+                    )}
+                    {esTecnico && orden.estado === 'EN_PROGRESO' && orden.fecha_fin_real && (
                       <>
-                        <button
-                          onClick={() => finalizarOrden(orden.id)}
-                          disabled={cargando}
-                          className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
-                        >
-                          Marcar Fin
-                        </button>
+                        <span className="text-xs text-amber-700">Labor terminada · falta reporte</span>
                         <button
                           onClick={() => abrirReporte(orden)}
                           disabled={cargando}
@@ -495,8 +575,92 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                 />
               </div>
 
+              {serviciosCotizados.length > 0 && (
+                <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="font-medium">Servicios cotizados ({numeroCotizacion})</p>
+                  <p className="text-xs text-slate-500">
+                    La mano de obra se liquida con las horas reales (inicio y fin marcados) y la tarifa cotizada.
+                    Si hubo trabajos adicionales, descríbalos en el diagnóstico.
+                  </p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {serviciosCotizados.map((s, i) => (
+                      <li key={i}>
+                        {s.nombre} · {s.horas_estimadas} h estimadas
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Materiales Utilizados</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Materiales utilizados</label>
+                <p className="mb-2 text-xs text-slate-500">
+                  {habiaCotizados
+                    ? 'Se cargaron los materiales de la cotización. Corrija la cantidad realmente usada (0 si no se usó) y agregue los adicionales.'
+                    : 'Orden sin materiales cotizados: agregue los materiales usados en campo, si hubo.'}
+                </p>
+                {materiales.length > 0 && (
+                  <div className="mb-3 overflow-hidden rounded-lg border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Producto</th>
+                          <th className="px-3 py-2 text-right">Cotizado</th>
+                          <th className="px-3 py-2 text-left">Usado</th>
+                          <th className="px-3 py-2 text-left">Obs.</th>
+                          <th className="px-3 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {materiales.map((m, idx) => (
+                          <tr key={m.producto_id} className="border-t">
+                            <td className="px-3 py-2">
+                              {m.nombre}
+                              {m.cotizada === null && (
+                                <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">Adicional</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-slate-500">
+                              {m.cotizada === null ? '—' : `${m.cotizada} ${m.unidad_medida}`}
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={m.usada}
+                                onChange={(e) => cambiarLinea(idx, { usada: e.target.value })}
+                                className="w-24 rounded border border-slate-300 px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={m.observacion}
+                                onChange={(e) => cambiarLinea(idx, { observacion: e.target.value })}
+                                placeholder="Opcional"
+                                className="w-full rounded border border-slate-300 px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {m.cotizada === null ? (
+                                <button onClick={() => eliminarMaterial(idx)} className="text-red-600 hover:text-red-800">
+                                  Quitar
+                                </button>
+                              ) : (
+                                <button onClick={() => cambiarLinea(idx, { usada: '0' })} className="text-slate-500 hover:text-slate-800">
+                                  No se usó
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <p className="mb-1 text-xs font-medium text-slate-600">Agregar material adicional (no cotizado)</p>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
                   <select
                     value={productoSeleccionado}
@@ -529,39 +693,20 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
                   type="text"
                   value={obsMaterial}
                   onChange={(e) => setObsMaterial(e.target.value)}
-                  placeholder="Observación del material (opcional)"
+                  placeholder="Observación del material adicional (opcional)"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3"
                 />
-                {materiales.length > 0 && (
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left">Producto</th>
-                          <th className="px-3 py-2 text-left">Cantidad</th>
-                          <th className="px-3 py-2 text-left">Obs.</th>
-                          <th className="px-3 py-2"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {materiales.map((m, idx) => {
-                          const prod = productos.find((p) => p.id === m.producto_id)
-                          return (
-                            <tr key={idx} className="border-t">
-                              <td className="px-3 py-2">{prod?.nombre}</td>
-                              <td className="px-3 py-2">{m.cantidad_utilizada}</td>
-                              <td className="px-3 py-2">{m.observacion || '-'}</td>
-                              <td className="px-3 py-2">
-                                <button onClick={() => eliminarMaterial(idx)} className="text-red-600 hover:text-red-800">
-                                  Eliminar
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+
+                {habiaCotizados && materialesUsados.length === 0 && (
+                  <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <input
+                      type="checkbox"
+                      checked={confirmarSinMateriales}
+                      onChange={(e) => setConfirmarSinMateriales(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Confirmo que no se usó ningún material de la cotización (la liquidación quedará sin materiales).</span>
+                  </label>
                 )}
               </div>
             </div>

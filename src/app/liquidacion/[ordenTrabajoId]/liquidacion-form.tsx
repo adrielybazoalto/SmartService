@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent }
 import {
   calcularLiquidacionAction,
   confirmarPagoSaldoAction,
+  consultarNotaEmitidaAction,
   emitirNotaServicioAction,
   iniciarCobroSaldoAction,
   registrarPagoSaldoAction,
@@ -21,7 +22,7 @@ import { PanelQr } from "@/components/pagos/panel-qr";
 import { PanelTransferencia } from "@/components/pagos/panel-transferencia";
 import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
 import { descargarNotaServicioPDF } from "../_lib/pdf";
-import { etiquetaMetodoPago, formatearBs, formatearFechaHora } from "../_lib/formato";
+import { etiquetaMetodoPago, formatearBs, formatearFecha, formatearFechaHora } from "../_lib/formato";
 import { formatearFechaHora as formatearTimestamp } from "@/lib/fechas";
 export function LiquidacionForm({
   detalleInicial,
@@ -37,7 +38,10 @@ export function LiquidacionForm({
 }) {
   const [detalle, setDetalle] = useState(detalleInicial);
   const [servicioId, setServicioId] = useState<number | null>(null);
-  const [anticipoTexto, setAnticipoTexto] = useState(notaInicial ? String(notaInicial.anticipo_pagado) : "0");
+  // Solo órdenes sin cotización: anticipo ingresado a mano (los abonos de caja van aparte)
+  const [anticipoTexto, setAnticipoTexto] = useState(
+    notaInicial ? String(Math.max(0, Math.round((notaInicial.anticipo_pagado - detalleInicial.total_abonos) * 100) / 100)) : "0",
+  );
   const [error, setError] = useState<string | null>(null);
   const [nota, setNota] = useState<NotaServicio | null>(notaInicial);
   const [pendiente, iniciar] = useTransition();
@@ -60,12 +64,20 @@ export function LiquidacionForm({
         if (r.ok) {
           setNota(r.data);
           setAviso(`Pago confirmado: la nota ${r.data.numero_nota} quedó PAGADA.`);
+          refrescarDetalle();
         } else setError(r.error);
       });
     }
     // quita ?pago=...&session_id=... de la barra de direcciones
     if (sessionIdRetorno || pagoCancelado) window.history.replaceState(null, "", window.location.pathname);
   }, [sessionIdRetorno, pagoCancelado]);
+
+  // Vuelve a leer la nota con sus recibos (para mostrar el recibo del saldo)
+  function refrescarDetalle() {
+    consultarNotaEmitidaAction(detalleInicial.orden.id).then((r) => {
+      if (r.ok && r.data) setDetalle(r.data.detalle);
+    });
+  }
 
   // cobrarSaldoConTarjeta -> redirigirPago(url)
   // seleccionarMetodoPago -> registrarPagoSaldo (EFECTIVO, QR o TRANSFERENCIA)
@@ -86,6 +98,7 @@ export function LiquidacionForm({
       setCobrando(false);
       if (r.ok) {
         setNota(r.data);
+        refrescarDetalle();
         setAviso(`Pago registrado: la nota ${r.data.numero_nota} quedó PAGADA (${etiquetaMetodoPago(r.data.metodo_pago)}).`);
       } else setError(r.error);
     });
@@ -104,19 +117,23 @@ export function LiquidacionForm({
     });
   }
 
-  const { orden, materiales, calculo } = detalle;
-  // Con cotización el anticipo viene de la base y se aplica hasta el total; sin ella es manual.
+  const { orden, materiales, calculo, datos, abonos, total_abonos, reciboSaldo } = detalle;
+  // Pagos a cuenta = anticipo (CU08: de la cotización; sin cotización, manual) + abonos de caja (CU09).
+  // Con cotización se aplican hasta el total (el excedente es saldo a favor del cliente).
   const registrado = orden.anticipo_cotizacion;
-  const anticipo = nota
-    ? nota.anticipo_pagado
-    : registrado
-      ? Math.min(registrado.monto, calculo.total_liquidacion)
-      : Number(anticipoTexto.replace(",", "."));
-  const anticipoValido = Number.isFinite(anticipo) && anticipo >= 0 && anticipo <= calculo.total_liquidacion;
-  const excedente = registrado ? Math.round((registrado.monto - calculo.total_liquidacion) * 100) / 100 : 0;
+  const anticipo = registrado ? registrado.monto : Number(anticipoTexto.replace(",", "."));
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const anticipoValido =
+    Number.isFinite(anticipo) &&
+    anticipo >= 0 &&
+    (!!registrado || Math.round((anticipo + total_abonos) * 100) <= Math.round(calculo.total_liquidacion * 100));
+  const pagadoACuenta = r2((Number.isFinite(anticipo) ? anticipo : 0) + total_abonos);
+  const aplicado = nota ? nota.anticipo_pagado : Math.min(pagadoACuenta, calculo.total_liquidacion);
+  const excedente = Math.max(0, r2(pagadoACuenta - aplicado));
   const saldo = useMemo(
-    () => (anticipoValido ? Math.round((calculo.total_liquidacion - anticipo) * 100) / 100 : null),
-    [anticipo, anticipoValido, calculo.total_liquidacion],
+    () => (anticipoValido ? r2(calculo.total_liquidacion - aplicado) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aplicado, anticipoValido, calculo.total_liquidacion],
   );
   const faltaServicio = detalle.requiereServicio && !servicioId;
 
@@ -135,7 +152,7 @@ export function LiquidacionForm({
   function confirmarEmision() {
     setError(null);
     if (!anticipoValido) {
-      setError("El anticipo debe ser mayor o igual a cero y no superar el monto total.");
+      setError("El anticipo debe ser mayor o igual a cero y, sumado a los abonos, no superar el monto total.");
       return;
     }
     if (faltaServicio) {
@@ -169,12 +186,39 @@ export function LiquidacionForm({
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Liquidación {orden.codigo_orden}</h1>
           <p className="text-sm text-gray-600">
-            {orden.cliente_nombre ?? "Cliente no registrado"} · {orden.tipo_trabajo}
-            {orden.numero_cotizacion ? ` · ${orden.numero_cotizacion}` :" · Sin cotización"}
+            {orden.tipo_trabajo}
+            {orden.numero_cotizacion ? ` · ${orden.numero_cotizacion}` : " · Correctiva sin cotización"}
           </p>
         </div>
         <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">{orden.estado}</span>
       </header>
+
+      {/* Datos de la orden: cliente, establecimiento, técnicos y fechas reales */}
+      <div className="grid gap-4 rounded-lg border border-gray-200 bg-white p-4 text-sm md:grid-cols-3">
+        <div>
+          <h2 className="mb-1 text-xs font-semibold uppercase text-gray-500">Cliente</h2>
+          <p className="font-medium">{datos.cliente?.nombre ?? orden.cliente_nombre ?? "Cliente no registrado"}</p>
+          {datos.cliente?.razon_social && <p>{datos.cliente.razon_social}</p>}
+          {datos.cliente?.documento_identidad && <p>CI/NIT: {datos.cliente.documento_identidad}</p>}
+          {datos.cliente?.telefono && <p>Tel.: {datos.cliente.telefono}</p>}
+        </div>
+        <div>
+          <h2 className="mb-1 text-xs font-semibold uppercase text-gray-500">Establecimiento</h2>
+          <p className="font-medium">{datos.establecimiento?.nombre ?? "—"}</p>
+          {datos.establecimiento?.direccion && <p>{datos.establecimiento.direccion}</p>}
+        </div>
+        <div>
+          <h2 className="mb-1 text-xs font-semibold uppercase text-gray-500">Ejecución</h2>
+          <p>Inicio real: {formatearTimestamp(orden.fecha_inicio_real)}</p>
+          <p>Fin real: {formatearTimestamp(orden.fecha_fin_real)}</p>
+          <p>
+            Técnicos:{" "}
+            {datos.tecnicos.length
+              ? datos.tecnicos.map((t) => t.nombre + (t.es_lider ? " (líder)" : "")).join(", ")
+              : "—"}
+          </p>
+        </div>
+      </div>
 
       {/* Materiales consumidos (DetalleConsumoMaterial + Producto) */}
       <div className="rounded-lg border border-gray-200 bg-white">
@@ -231,8 +275,10 @@ export function LiquidacionForm({
           )}
 
           <dl className="grid grid-cols-2 gap-y-1 text-sm">
-            <dt className="text-gray-600">Horas trabajadas</dt>
+            <dt className="text-gray-600">Horas cobradas{orden.cotizacion_id !== null ? " (mín. las cotizadas)" : ""}</dt>
             <dd className="text-right">{calculo.horas_trabajadas} h</dd>
+            <dt className="text-xs text-gray-500">Horas reales (CU12)</dt>
+            <dd className="text-right text-xs text-gray-500">{orden.horas_trabajadas} h</dd>
             <dt className="text-gray-600">Tarifa por hora</dt>
             <dd className="text-right">{formatearBs(calculo.tarifa_hora)}</dd>
           </dl>
@@ -248,7 +294,7 @@ export function LiquidacionForm({
               </p>
               {excedente > 0 && (
                 <p role="status" className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-                  El anticipo supera el total liquidado en {formatearBs(excedente)}
+                  Lo pagado a cuenta supera el total liquidado: saldo a favor del cliente {formatearBs(excedente)}
                 </p>
               )}
             </div>
@@ -275,8 +321,21 @@ export function LiquidacionForm({
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt>Costo de materiales</dt><dd>{formatearBs(calculo.costo_materiales)}</dd></div>
             <div className="flex justify-between"><dt>Costo de mano de obra</dt><dd>{formatearBs(calculo.costo_mano_obra)}</dd></div>
-            <div className="flex justify-between border-t pt-2 font-semibold"><dt>Monto total</dt><dd>{formatearBs(calculo.total_liquidacion)}</dd></div>
-            <div className="flex justify-between"><dt>Anticipo</dt><dd>- {formatearBs(anticipoValido ? anticipo : 0)}</dd></div>
+            <div className="flex justify-between border-t pt-2 font-semibold"><dt>Monto total ejecutado</dt><dd>{formatearBs(calculo.total_liquidacion)}</dd></div>
+            {orden.total_cotizacion !== null && (
+              <div className="flex justify-between text-xs text-gray-500">
+                <dt>Monto pactado ({orden.numero_cotizacion}) · diferencia</dt>
+                <dd>
+                  {formatearBs(orden.total_cotizacion)} · {calculo.total_liquidacion - orden.total_cotizacion >= 0 ? "+" : "-"}{" "}
+                  {formatearBs(Math.abs(r2(calculo.total_liquidacion - orden.total_cotizacion)))}
+                </dd>
+              </div>
+            )}
+            <div className="flex justify-between"><dt>Anticipo{registrado ? " (cotización)" : ""}</dt><dd>- {formatearBs(anticipoValido ? anticipo : 0)}</dd></div>
+            <div className="flex justify-between"><dt>Abonos registrados en caja ({abonos.length})</dt><dd>- {formatearBs(total_abonos)}</dd></div>
+            {excedente > 0 && (
+              <div className="flex justify-between text-amber-700"><dt>Saldo a favor del cliente</dt><dd>{formatearBs(excedente)}</dd></div>
+            )}
             <div className="flex justify-between border-t pt-2 text-base font-semibold text-blue-800">
               <dt>Saldo pendiente</dt><dd>{saldo === null ? "—" : formatearBs(saldo)}</dd>
             </div>
@@ -295,6 +354,43 @@ export function LiquidacionForm({
         </div>
       </div>
 
+      {/* Pagos a cuenta: abonos registrados en caja (CU09) y cobro del saldo */}
+      <div className="rounded-lg border border-gray-200 bg-white">
+        <h2 className="border-b border-gray-200 px-4 py-3 font-medium">Pagos a cuenta registrados en caja</h2>
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-600">
+            <tr>
+              <th className="px-4 py-2">Recibo</th>
+              <th className="px-4 py-2">Concepto</th>
+              <th className="px-4 py-2">Fecha</th>
+              <th className="px-4 py-2">Método</th>
+              <th className="px-4 py-2 text-right">Monto</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {abonos.length === 0 && !reciboSaldo && (
+              <tr>
+                <td colSpan={5} className="px-4 py-4 text-center text-gray-500">
+                  No hay abonos registrados en caja para esta orden.
+                </td>
+              </tr>
+            )}
+            {[...abonos, ...(reciboSaldo ? [reciboSaldo] : [])].map((p) => (
+              <tr key={p.venta_id}>
+                <td className="px-4 py-2 font-mono text-xs">{p.nro_comprobante}</td>
+                <td className="px-4 py-2">{p.tipo === "RECIBO_SALDO" ? "Cobro del saldo" : "Abono"}</td>
+                <td className="px-4 py-2">{formatearTimestamp(p.fecha)}</td>
+                <td className="px-4 py-2">
+                  {etiquetaMetodoPago(p.tipo_pago)}
+                  {p.referencia_pago ? ` · Ref. ${p.referencia_pago}` : ""}
+                </td>
+                <td className="px-4 py-2 text-right">{formatearBs(p.monto)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {error && (
         <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
@@ -307,7 +403,8 @@ export function LiquidacionForm({
         <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-800">
           <p className="font-medium">Nota de servicio {nota.numero_nota} emitida ({nota.estado}).</p>
           <p className="mt-1">
-            Total {formatearBs(nota.monto_total)} · Anticipo {formatearBs(nota.anticipo_pagado)} ·{" "}
+            Emitida el {formatearFecha(nota.fecha_emision)} · Total {formatearBs(nota.monto_total)} · Pagado a cuenta{" "}
+            {formatearBs(nota.anticipo_pagado)} (anticipo + abonos) ·{" "}
             {nota.estado.toUpperCase() === "PENDIENTE"
               ? `Saldo pendiente ${formatearBs(Math.round((nota.monto_total - nota.anticipo_pagado) * 100) / 100)}`
               : "Sin saldo pendiente"}
@@ -321,6 +418,9 @@ export function LiquidacionForm({
           {nota.estado.toUpperCase() === "PENDIENTE" && nota.monto_total - nota.anticipo_pagado > 0 && (
             <div className="mt-4 space-y-3 rounded-md border border-gray-200 bg-white p-3 text-gray-800">
               <p className="font-medium">Cobrar saldo</p>
+              <p className="text-xs text-gray-600">
+                El cobro se registra como recibo en su caja abierta y entra al arqueo del turno (CU09).
+              </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {(["EFECTIVO", "QR", "TRANSFERENCIA", "TARJETA"] as const).map((m) => (
                   <button

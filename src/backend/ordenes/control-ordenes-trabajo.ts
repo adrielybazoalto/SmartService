@@ -320,7 +320,7 @@ export class ControlOrdenesTrabajo {
     ip?: string | null,
   ): Promise<{ orden: OrdenTrabajo; consumos: any[] }> {
     const parsed = procesarReporteCampoSchema.parse(input)
-    const { ordenId, diagnostico, materiales = [] } = parsed
+    const { ordenId, diagnostico, materiales = [], confirmarSinMateriales = false } = parsed
 
     // 1. Validar que el técnico esté asignado
     if (usuarioId) {
@@ -344,6 +344,26 @@ export class ControlOrdenesTrabajo {
 
     if (orden.estado !== ESTADO_EN_PROGRESO) {
       throw new Error('Debe iniciar la labor antes de reportar')
+    }
+
+    // Fin de labor (marca de tiempo) y reporte de campo son pasos distintos:
+    // primero se marca el fin (horas técnicas) y luego se reporta y finaliza la orden.
+    if (!orden.fecha_fin_real) {
+      throw new Error('Primero marque el fin de la labor; después registre el reporte de campo')
+    }
+
+    // Si la cotización incluía materiales, el reporte no puede quedar vacío por olvido
+    if (materiales.length === 0 && orden.cotizacion_id && !confirmarSinMateriales) {
+      const { count, error: errCot } = await (db as unknown as SupabaseClient)
+        .from('detalle_cotizacion_producto')
+        .select('id', { count: 'exact', head: true })
+        .eq('cotizacion_id', orden.cotizacion_id)
+      if (errCot) throw new Error(`No se pudo revisar la cotización: ${errCot.message}`)
+      if ((count ?? 0) > 0) {
+        throw new Error(
+          'La cotización incluye materiales: registre los materiales usados o confirme que no se usó ninguno',
+        )
+      }
     }
 
     const ipOrigen = ip && ip.trim() ? ip.trim() : await obtenerIpOrigen()

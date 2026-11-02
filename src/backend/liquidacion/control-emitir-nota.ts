@@ -22,8 +22,14 @@ import type {
   NotaPendientePago,
   NotaServicio,
   OrdenPendienteLiquidar,
+  PagoACuenta,
 } from "./types";
 import type { PasarelaPago } from "@/backend/pagos/pasarela-pago";
+
+/** Suma de montos de recibos, redondeada a centavos. */
+function sumar(pagos: PagoACuenta[]): number {
+  return Math.round(pagos.reduce((s, p) => s + p.monto, 0) * 100) / 100;
+}
 
 export class LiquidacionController {
   constructor(
@@ -52,13 +58,21 @@ export class LiquidacionController {
     const orden = await this.verificarEstadoOrden(ordenTrabajoId);
     const requiereServicio = requiereElegirServicio(orden);
 
-    const [materiales, calculo, servicios] = await Promise.all([
+    const [materiales, calculo, servicios, datos, pagos] = await Promise.all([
       this.repositorio.listarMaterialesConsumidos(ordenTrabajoId),
       this.repositorio.calcularLiquidacion(ordenTrabajoId, servicioId),
       requiereServicio ? this.repositorio.listarServiciosActivos() : Promise.resolve([]),
+      this.repositorio.obtenerDatosNota(ordenTrabajoId),
+      this.repositorio.listarPagosOrden(ordenTrabajoId),
     ]);
+    if (!orden.cliente_nombre) orden.cliente_nombre = datos.cliente?.nombre ?? null;
 
-    return { orden, materiales, calculo, requiereServicio, servicios };
+    // Abonos registrados en caja (CU09) antes de liquidar
+    const abonos = pagos.filter((p) => p.tipo === "RECIBO_ABONO");
+    return {
+      orden, materiales, calculo, requiereServicio, servicios, datos,
+      abonos, total_abonos: sumar(abonos), reciboSaldo: null,
+    };
   }
     /** Orden que ya tiene nota: devuelve la nota y su detalle (para ver y descargar el PDF). */
   async consultarNotaEmitida(
@@ -71,10 +85,17 @@ export class LiquidacionController {
 
     const { tieneNota: _tieneNota, ...orden } = fila;
     void _tieneNota;
-    const materiales = await this.repositorio.listarMaterialesConsumidos(ordenTrabajoId);
+    const [materiales, datos, pagos] = await Promise.all([
+      this.repositorio.listarMaterialesConsumidos(ordenTrabajoId),
+      this.repositorio.obtenerDatosNota(ordenTrabajoId),
+      this.repositorio.listarPagosOrden(ordenTrabajoId),
+    ]);
+    if (!orden.cliente_nombre) orden.cliente_nombre = datos.cliente?.nombre ?? null;
+    const abonos = pagos.filter((p) => p.tipo === "RECIBO_ABONO");
     const costoMateriales = Math.round(materiales.reduce((s, m) => s + m.subtotal, 0) * 100) / 100;
     const costoManoObra = Math.max(0, Math.round((nota.monto_total - costoMateriales) * 100) / 100);
-    const horas = orden.horas_trabajadas;
+    // Horas cobradas (reales o, con cotización, al menos las pactadas): mismo cálculo que fn_calcular_liquidacion
+    const horas = (await this.repositorio.calcularLiquidacion(ordenTrabajoId)).horas_trabajadas;
 
     return {
       nota,
@@ -90,6 +111,10 @@ export class LiquidacionController {
         },
         requiereServicio: false,
         servicios: [],
+        datos,
+        abonos,
+        total_abonos: sumar(abonos),
+        reciboSaldo: pagos.find((p) => p.tipo === "RECIBO_SALDO") ?? null,
       },
     };
   }
@@ -134,6 +159,8 @@ export class LiquidacionController {
       urlRetorno: `${retorno}?pago=exito`,
       urlCancelacion: `${retorno}?pago=cancelado`,
       metadata: { tipo: "NOTA_SERVICIO", nota_id: String(nota!.id), numero_nota: nota!.numero_nota, saldo_bs: saldo.toFixed(2) },
+      // Un solo cobro por nota y saldo (por día): doble clic o reintento reutilizan la misma sesión
+      claveIdempotencia: `nota-${nota!.id}-saldo-${saldo.toFixed(2)}-${new Date().toISOString().slice(0, 10)}`,
     });
     return { url: sesion.url };
   }
@@ -178,9 +205,13 @@ export class LiquidacionController {
     }
 
     // Con cotización, el anticipo lo pone la base (sp_emitir_nota_servicio) y aquí se ignora.
+    // Los abonos de caja (CU09) los suma la base; aquí solo se valida la orden correctiva.
     if (orden.cotizacion_id === null) {
-      const calculo = await this.repositorio.calcularLiquidacion(input.ordenTrabajoId, input.servicioId);
-      validarAnticipo(input.anticipo, calculo.total_liquidacion);
+      const [calculo, pagos] = await Promise.all([
+        this.repositorio.calcularLiquidacion(input.ordenTrabajoId, input.servicioId),
+        this.repositorio.listarPagosOrden(input.ordenTrabajoId),
+      ]);
+      validarAnticipo(input.anticipo, calculo.total_liquidacion, sumar(pagos.filter((p) => p.tipo === "RECIBO_ABONO")));
     }
 
     // La base vuelve a validar todo dentro de una sola transacción.

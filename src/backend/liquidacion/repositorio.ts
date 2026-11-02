@@ -12,7 +12,9 @@ import { obtenerUsuarioSesion } from "./integracion";
 import { verificarOrdenLiquidable } from "./reglas";
 import {
   type CalculoLiquidacion,
+  type DatosNota,
   type MaterialConsumido,
+  type PagoACuenta,
   type NotaPendientePago,
   type NotaServicio,
   type OrdenPendienteLiquidar,
@@ -22,7 +24,7 @@ import {
 
 const COLUMNAS_ORDEN = `
   id, codigo_orden, tipo_trabajo, estado, fecha_inicio_real, fecha_fin_real, cotizacion_id,
-  cotizacion ( numero_cotizacion, anticipo_monto, anticipo_metodo, anticipo_referencia, anticipo_fecha, anticipo_stripe_session_id, cliente ( nombre ) ),
+  cotizacion ( numero_cotizacion, total, anticipo_monto, anticipo_metodo, anticipo_referencia, anticipo_fecha, anticipo_stripe_session_id, cliente ( nombre ) ),
   nota_servicio ( id )
 `;
 
@@ -74,6 +76,7 @@ function mapearOrden(fila: any): OrdenConNota {
     horas_trabajadas: calcularHoras(fila.fecha_inicio_real, fila.fecha_fin_real),
     cotizacion_id: fila.cotizacion_id,
     numero_cotizacion: cotizacion?.numero_cotizacion ?? null,
+    total_cotizacion: cotizacion?.total != null ? Number(cotizacion.total) : null,
     cliente_nombre: cliente?.nombre ?? null,
     anticipo_cotizacion: cotizacion
       ? {
@@ -103,11 +106,63 @@ export class LiquidacionRepositorio {
     if (error) throw new Error(`No se pudieron listar las órdenes: ${error.message}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filas: any[] = data ?? [];
-    return filas
+    const ordenes = filas
       .map(mapearOrden)
       .filter((o: OrdenConNota) => !o.tieneNota)
       .map((o: OrdenConNota) => verificarOrdenLiquidable(o));
+    // Órdenes correctivas (sin cotización): el cliente sale por ticket -> establecimiento
+    await Promise.all(
+      ordenes
+        .filter((o) => !o.cliente_nombre)
+        .map(async (o) => {
+          o.cliente_nombre = (await this.obtenerDatosNota(o.id)).cliente?.nombre ?? null;
+        }),
+    );
+    return ordenes;
   }
+
+  /** Cliente, establecimiento y técnicos de la orden (fn_datos_nota_orden). */
+  async obtenerDatosNota(ordenTrabajoId: number): Promise<DatosNota> {
+    const { data, error } = await this.db.rpc("fn_datos_nota_orden", { p_orden_id: ordenTrabajoId });
+    if (error) throw new Error(`No se pudieron obtener los datos de la nota: ${error.message}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d: any = data ?? {};
+    return {
+      cliente: d.cliente
+        ? {
+            nombre: d.cliente.nombre,
+            documento_identidad: d.cliente.documento_identidad ?? null,
+            razon_social: d.cliente.razon_social ?? null,
+            telefono: d.cliente.telefono ?? null,
+            correo: d.cliente.correo ?? null,
+          }
+        : null,
+      establecimiento: d.establecimiento
+        ? { nombre: d.establecimiento.nombre, direccion: d.establecimiento.direccion ?? null }
+        : null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tecnicos: Array.isArray(d.tecnicos) ? d.tecnicos.map((t: any) => ({ nombre: t.nombre, es_lider: !!t.es_lider })) : [],
+    };
+  }
+
+  /** Venta (recibos de caja): abonos y cobro del saldo de la orden (fn_pagos_orden). */
+  async listarPagosOrden(ordenTrabajoId: number): Promise<PagoACuenta[]> {
+    const { data, error } = await this.db.rpc("fn_pagos_orden", { p_orden_id: ordenTrabajoId });
+    if (error) throw new Error(`No se pudieron obtener los pagos de la orden: ${error.message}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filas: any[] = Array.isArray(data) ? data : [];
+    return filas.map((f): PagoACuenta => ({
+      venta_id: f.venta_id,
+      nro_comprobante: f.nro_comprobante,
+      tipo: f.tipo,
+      fecha: f.fecha,
+      tipo_pago: f.tipo_pago ?? null,
+      referencia_pago: f.referencia_pago ?? null,
+      monto: Number(f.monto),
+      usuario_nombre: f.usuario_nombre ?? null,
+    }));
+  }
+
 
   /** OrdenTrabajo.verificarFinalizada: obtiene la orden con su estado. */
   async obtenerOrden(ordenTrabajoId: number): Promise<OrdenConNota | null> {
@@ -150,7 +205,7 @@ export class LiquidacionRepositorio {
     if (error) throw new Error(`No se pudieron listar las notas pendientes: ${error.message}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filas: any[] = data ?? [];
-    return filas.map((f): NotaPendientePago => {
+    const notas = filas.map((f): NotaPendientePago => {
       const n = mapearNota(f);
       const orden = primero(f.orden_trabajo);
       const cotizacion = orden ? primero(orden.cotizacion) : null;
@@ -167,6 +222,14 @@ export class LiquidacionRepositorio {
         saldo: Math.round((n.monto_total - n.anticipo_pagado) * 100) / 100,
       };
     });
+    await Promise.all(
+      notas
+        .filter((n) => !n.cliente_nombre)
+        .map(async (n) => {
+          n.cliente_nombre = (await this.obtenerDatosNota(n.orden_trabajo_id)).cliente?.nombre ?? null;
+        }),
+    );
+    return notas;
   }
 
   /**

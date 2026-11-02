@@ -18,7 +18,7 @@ export const MENSAJES = {
   SIN_SESION: "Debe iniciar sesión con un usuario activo.",
   SIN_PERMISO: "Su rol no tiene permiso para emitir notas de servicio.",
   ANTICIPO_INVALIDO: "El anticipo debe ser un número mayor o igual a cero.",
-  ANTICIPO_MAYOR_TOTAL: "El anticipo no puede ser mayor al monto total.",
+  ANTICIPO_MAYOR_TOTAL: "El anticipo más los abonos registrados en caja no pueden superar el monto total.",
   FALTA_SERVICIO: "La orden no tiene cotización: seleccione el servicio para calcular la mano de obra.",
   ID_INVALIDO: "El identificador de la orden no es válido.",
   NOTA_NO_EXISTE: "La nota de servicio no existe.",

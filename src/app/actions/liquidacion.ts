@@ -28,6 +28,20 @@ export async function calcularLiquidacionAction(
   }
 }
 
+/** Nota ya emitida con su detalle y recibos (para refrescar después de cobrar). */
+export async function consultarNotaEmitidaAction(
+  ordenTrabajoId: number,
+): Promise<ResultadoAccion<{ nota: NotaServicio; detalle: DetalleLiquidacion } | null>> {
+  try {
+    await exigirPermiso('NOTAS_SERVICIO')
+    if (!Number.isInteger(ordenTrabajoId) || ordenTrabajoId <= 0) throw new Error('La orden no es válida.')
+    const controller = crearLiquidacionController()
+    return { ok: true, data: await controller.consultarNotaEmitida(ordenTrabajoId) }
+  } catch (error) {
+    return { ok: false, error: mensajeDeError(error) }
+  }
+}
+
 /** LiquidacionController.emitirNotaServicio */
 export async function emitirNotaServicioAction(datos: unknown): Promise<ResultadoAccion<NotaServicio>> {
   try {

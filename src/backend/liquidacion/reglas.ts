@@ -32,6 +32,7 @@ export function verificarOrdenLiquidable(orden: OrdenConNota | null): OrdenPendi
     numero_cotizacion: orden.numero_cotizacion,
     cliente_nombre: orden.cliente_nombre,
     anticipo_cotizacion: orden.anticipo_cotizacion,
+    total_cotizacion: orden.total_cotizacion,
   };
 }
 
@@ -40,10 +41,33 @@ export function requiereElegirServicio(orden: OrdenPendienteLiquidar): boolean {
   return orden.cotizacion_id === null;
 }
 
-/** El anticipo debe estar entre 0 y el monto total. */
-export function validarAnticipo(anticipo: number, total: number): void {
+/**
+ * Orden sin cotización: el anticipo manual debe ser >= 0 y, sumado a los
+ * abonos registrados en caja, no puede superar el monto total.
+ */
+export function validarAnticipo(anticipo: number, total: number, abonos = 0): void {
   if (!Number.isFinite(anticipo) || anticipo < 0) throw new ErrorNegocio(MENSAJES.ANTICIPO_INVALIDO);
-  if (anticipo > total) throw new ErrorNegocio(MENSAJES.ANTICIPO_MAYOR_TOTAL);
+  if (Math.round((anticipo + abonos) * 100) > Math.round(total * 100)) {
+    throw new ErrorNegocio(MENSAJES.ANTICIPO_MAYOR_TOTAL);
+  }
+}
+
+/**
+ * Pagos a cuenta aplicados a la nota (mismo cálculo que sp_emitir_nota_servicio):
+ * anticipo + abonos, hasta el total. El excedente es saldo a favor del cliente.
+ */
+export function calcularPagosACuenta(
+  anticipo: number,
+  abonos: number,
+  total: number,
+): { aplicado: number; excedente: number; saldo: number } {
+  const pagado = Math.round((anticipo + abonos) * 100) / 100;
+  const aplicado = Math.min(pagado, total);
+  return {
+    aplicado,
+    excedente: Math.round((pagado - aplicado) * 100) / 100,
+    saldo: Math.round((total - aplicado) * 100) / 100,
+  };
 }
 
 /** Cobro con tarjeta: la nota debe estar PENDIENTE y tener saldo. Devuelve el saldo. */

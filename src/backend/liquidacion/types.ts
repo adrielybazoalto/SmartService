@@ -38,6 +38,8 @@ export interface OrdenPendienteLiquidar extends OrdenTrabajo {
   cliente_nombre: string | null;
   /** null en órdenes correctivas (sin cotización). */
   anticipo_cotizacion: AnticipoCotizacion | null;
+  /** Monto pactado con el cliente (cotizacion.total). null sin cotización. */
+  total_cotizacion: number | null;
 }
 
 /** Tabla detalle_consumo_material + producto (materiales usados en campo). */
@@ -66,6 +68,34 @@ export interface CalculoLiquidacion {
   total_liquidacion: number;
 }
 
+/**
+ * Pago a cuenta de la orden: recibo registrado en caja (VENTA con
+ * tipo_comprobante RECIBO_ABONO o RECIBO_SALDO). Ver fn_pagos_orden.
+ */
+export interface PagoACuenta {
+  venta_id: number;
+  nro_comprobante: string;
+  tipo: "RECIBO_ABONO" | "RECIBO_SALDO" | string;
+  fecha: string;
+  tipo_pago: string | null;
+  referencia_pago: string | null;
+  monto: number;
+  usuario_nombre: string | null;
+}
+
+/** Datos para la nota completa (fn_datos_nota_orden). */
+export interface DatosNota {
+  cliente: {
+    nombre: string;
+    documento_identidad: string | null;
+    razon_social: string | null;
+    telefono: string | null;
+    correo: string | null;
+  } | null;
+  establecimiento: { nombre: string; direccion: string | null } | null;
+  tecnicos: { nombre: string; es_lider: boolean }[];
+}
+
 /** Todo lo que muestra UI_Liquidacion. */
 export interface DetalleLiquidacion {
   orden: OrdenPendienteLiquidar;
@@ -73,6 +103,13 @@ export interface DetalleLiquidacion {
   calculo: CalculoLiquidacion;
   requiereServicio: boolean; // orden correctiva sin cotización
   servicios: Servicio[];
+  /** Cliente, establecimiento y técnicos de la orden. */
+  datos: DatosNota;
+  /** Abonos registrados en caja (CU09) antes de liquidar. */
+  abonos: PagoACuenta[];
+  total_abonos: number;
+  /** Recibo con el que se cobró el saldo (si ya se cobró). */
+  reciboSaldo: PagoACuenta | null;
 }
 
 /** Tabla nota_servicio. */

@@ -168,11 +168,14 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
                   resumen && (
                     <div className="space-y-2 rounded-xl bg-[#f8fafc] p-4 text-sm">
                       <Fila etiqueta="Fondo inicial" valor={bs(resumen.caja.monto_inicial)} />
-                      <Fila etiqueta="Ventas en efectivo" valor={bs(resumen.totales_por_pago.EFECTIVO)} />
+                      <Fila etiqueta="Cobros en efectivo (ventas, abonos y saldos)" valor={bs(resumen.totales_por_pago.EFECTIVO)} />
                       <div className="border-t border-gray-200 pt-2">
                         <Fila etiqueta="Efectivo esperado en caja" valor={bs(resumen.efectivo_esperado)} fuerte />
                       </div>
-                      <div className="grid grid-cols-3 gap-2 border-t border-gray-200 pt-3 text-center">
+                      <p className="border-t border-gray-200 pt-2 text-xs font-medium text-slate-500">
+                        Pagos electrónicos (no están en el cajón: se concilian con el banco / Stripe): {bs(resumen.total_electronico)}
+                      </p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
                         <Mini etiqueta="QR" valor={bs(resumen.totales_por_pago.QR)} />
                         <Mini etiqueta="Tarjeta" valor={bs(resumen.totales_por_pago.TARJETA)} />
                         <Mini etiqueta="Transf." valor={bs(resumen.totales_por_pago.TRANSFERENCIA)} />
@@ -180,6 +183,7 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
                       <p className="pt-1 text-xs text-slate-500">
                         {resumen.cantidad_ventas} venta(s) · total {bs(resumen.total_vendido)}
                         {resumen.cantidad_anuladas > 0 && ` · ${resumen.cantidad_anuladas} anulada(s) excluidas`}
+                        {resumen.cobros_ordenes > 0 && ` · incluye ${bs(resumen.cobros_ordenes)} de órdenes de trabajo`}
                       </p>
                     </div>
                   )

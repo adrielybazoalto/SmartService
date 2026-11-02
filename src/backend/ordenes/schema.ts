@@ -38,6 +38,8 @@ export const procesarReporteCampoSchema = z.object({
     .min(0)
     .optional()
     .default([]),
+  /** Orden con materiales cotizados y reporte sin materiales: el técnico confirma que no usó ninguno */
+  confirmarSinMateriales: z.boolean().optional().default(false),
 })
 
 export type CrearOrdenTrabajoInput = z.infer<typeof crearOrdenTrabajoSchema>
