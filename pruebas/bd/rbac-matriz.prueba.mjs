@@ -18,6 +18,7 @@ const RAIZ = process.env.SMARTSERVICE_RAIZ ?? fileURLToPath(new URL('../../', im
 const leer = (...ruta) => readFileSync(join(RAIZ, 'db', ...ruta), 'utf8');
 const MIGRACION = leer('migrations', 'aplicadas', 'migracion_rbac_ajuste_matriz.sql');
 const COMPLETA = leer('migrations', 'aplicadas', 'migracion_rbac_matriz_completa.sql');
+const CU18 = leer('migrations', 'aplicadas', 'migracion_cu18_tickets.sql');
 
 let ok = 0, fallos = 0;
 function resultado(nombre, paso, detalle) {
@@ -42,10 +43,10 @@ async function modulosDe(db, rol) {
 /** Módulos del menú (navigation.ts) a los que entra el rol, por ruta. */
 const entra = (claves) => MODULOS.filter((m) => claves.includes(m.clave)).map((m) => m.ruta).sort();
 
-// Tabla 3.2 del plan
+// Tabla 3.2 del plan (+ CU18 Tickets de Soporte, Ciclo 4)
 const ENCARGADO = ['/asignar-tecnicos', '/clientes', '/compras', '/cotizaciones', '/inventario', '/liquidacion',
-  '/ordenes-trabajo', '/perfil', '/personal-tecnico', '/proveedores', '/ventas'];
-const TECNICO = ['/cotizaciones', '/ordenes-trabajo', '/perfil'];
+  '/ordenes-trabajo', '/perfil', '/personal-tecnico', '/proveedores', '/tickets-soporte', '/ventas'];
+const TECNICO = ['/cotizaciones', '/ordenes-trabajo', '/perfil', '/tickets-soporte'];
 
 (async () => {
   // ---------- Estado actual de producción: Jornadas sin clave y Encargado con Bitácora ----------
@@ -72,7 +73,7 @@ const TECNICO = ['/cotizaciones', '/ordenes-trabajo', '/perfil'];
   resultado('ADMINISTRADOR entra a todos los módulos', MODULOS.every((m) => a.includes(m.clave)));
   resultado('ENCARGADO entra a sus módulos, sin Usuarios, Roles, Bitácora ni Servicios',
     JSON.stringify(entra(e)) === JSON.stringify(ENCARGADO), entra(e).join(' '));
-  resultado('TECNICO entra solo a Perfil, Cotizaciones y Órdenes', JSON.stringify(entra(t)) === JSON.stringify(TECNICO), entra(t).join(' '));
+  resultado('TECNICO entra solo a Perfil, Cotizaciones, Órdenes y Tickets', JSON.stringify(entra(t)) === JSON.stringify(TECNICO), entra(t).join(' '));
   resultado('TECNICO no entra a Personal Técnico', !t.includes('PERSONAL_TECNICO'));
 
   const acciones = (await db.query(`
@@ -81,6 +82,20 @@ const TECNICO = ['/cotizaciones', '/ordenes-trabajo', '/perfil'];
      WHERE rf.rol_id = 2 AND f.clave = 'PERSONAL_TECNICO'`)).rows[0].l;
   resultado('ENCARGADO tiene LEER, CREAR, ACTUALIZAR y ELIMINAR en el CU10', acciones === 'ACTUALIZAR,CREAR,ELIMINAR,LEER', acciones);
   await db.close();
+
+  // ---------- CU18: la función 10 sin clave (estado de producción) ----------
+  const db18 = await nuevaBD();
+  await db18.exec(`DELETE FROM rol_funcion WHERE funcion_id = 10; UPDATE funcion SET clave = NULL, ruta = NULL WHERE id = 10;`);
+  for (let i = 0; i < 2; i++) await db18.exec(CU18);
+  const acc18 = async (rol) => (await db18.query(`
+    SELECT string_agg(a.nombre, ',' ORDER BY a.nombre) l FROM rol_funcion rf
+      JOIN rol r ON r.id = rf.rol_id JOIN funcion f ON f.id = rf.funcion_id JOIN accion a ON a.id = rf.accion_id
+     WHERE r.nombre = $1 AND f.clave = 'MANTENIMIENTO_TICKETS'`, [rol])).rows[0].l;
+  resultado('CU18: Encargado crea y actualiza tickets', (await acc18('ENCARGADO')) === 'ACTUALIZAR,CREAR,LEER', await acc18('ENCARGADO'));
+  resultado('CU18: Técnico solo consulta tickets', (await acc18('TECNICO')) === 'LEER', await acc18('TECNICO'));
+  resultado('CU18: migración idempotente y en /tickets-soporte',
+    (await db18.query(`SELECT ruta FROM funcion WHERE clave = 'MANTENIMIENTO_TICKETS'`)).rows.map((f) => f.ruta).join() === '/tickets-soporte');
+  await db18.close();
 
   // ---------- seed.sql produce la misma matriz ----------
   const dbSeed = await nuevaBD();

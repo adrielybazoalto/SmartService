@@ -118,8 +118,9 @@ ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 --   ADMINISTRADOR: todos los módulos (ya tiene todas las acciones arriba)
 --   ENCARGADO:     perfil, clientes, proveedores, compras, inventario,
 --                  cotizaciones, personal técnico, órdenes, asignar técnicos,
---                  caja, ventas y notas de servicio
---   TECNICO:       perfil, cotizaciones (lectura), órdenes de trabajo
+--                  caja, ventas, notas de servicio y tickets de soporte (CU18)
+--   TECNICO:       perfil, cotizaciones (lectura), órdenes de trabajo y
+--                  tickets de soporte (solo lectura)
 -- ============================================================
 UPDATE FUNCION SET clave = 'USUARIOS',        ruta = '/usuarios'        WHERE id = 1;
 UPDATE FUNCION SET clave = 'ROLES',           ruta = '/roles'           WHERE id = 2;
@@ -130,6 +131,7 @@ UPDATE FUNCION SET clave = 'INVENTARIO',      ruta = '/inventario'      WHERE id
 UPDATE FUNCION SET clave = 'COTIZACIONES',    ruta = '/cotizaciones'    WHERE id = 7;
 UPDATE FUNCION SET clave = 'VENTAS',          ruta = '/ventas'          WHERE id = 8;
 UPDATE FUNCION SET clave = 'ORDENES_TRABAJO', ruta = '/ordenes-trabajo' WHERE id = 9;
+UPDATE FUNCION SET clave = 'MANTENIMIENTO_TICKETS', ruta = '/tickets-soporte' WHERE id = 10;
 
 INSERT INTO FUNCION (id, modulo_id, nombre, descripcion, clave, ruta) VALUES
 (11, 4, 'Compras',          'Registro de compras de equipos e insumos (CU15)',      'COMPRAS',          '/compras'),
@@ -153,7 +155,8 @@ INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
 SELECT 2, f.id, a.id, 'Acceso al módulo'
 FROM FUNCION f JOIN ACCION a ON a.nombre = 'LEER'
 WHERE f.clave IN ('PERFIL', 'CLIENTES', 'PROVEEDORES', 'COMPRAS', 'INVENTARIO', 'COTIZACIONES',
-                  'PERSONAL_TECNICO', 'ORDENES_TRABAJO', 'ASIGNAR_TECNICOS', 'CAJA', 'VENTAS', 'NOTAS_SERVICIO')
+                  'PERSONAL_TECNICO', 'ORDENES_TRABAJO', 'ASIGNAR_TECNICOS', 'CAJA', 'VENTAS', 'NOTAS_SERVICIO',
+                  'MANTENIMIENTO_TICKETS')
 ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 -- ENCARGADO: jornadas y bloqueos (CU10)
 INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
@@ -173,7 +176,8 @@ INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
 SELECT 2, f.id, a.id, 'Operación del Encargado'
 FROM (VALUES
   ('COTIZACIONES', 'ACTUALIZAR'), ('PROVEEDORES', 'CREAR'), ('PROVEEDORES', 'ACTUALIZAR'),
-  ('ASIGNAR_TECNICOS', 'ACTUALIZAR'), ('NOTAS_SERVICIO', 'CREAR'), ('NOTAS_SERVICIO', 'PROCESAR')
+  ('ASIGNAR_TECNICOS', 'ACTUALIZAR'), ('NOTAS_SERVICIO', 'CREAR'), ('NOTAS_SERVICIO', 'PROCESAR'),
+  ('MANTENIMIENTO_TICKETS', 'CREAR'), ('MANTENIMIENTO_TICKETS', 'ACTUALIZAR')
 ) AS v(clave, accion)
 JOIN FUNCION f ON f.clave = v.clave
 JOIN ACCION a ON a.nombre = v.accion
@@ -183,7 +187,7 @@ ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 INSERT INTO ROL_FUNCION (rol_id, funcion_id, accion_id, descripcion)
 SELECT 3, f.id, a.id, 'Acceso al módulo'
 FROM FUNCION f JOIN ACCION a ON a.nombre = 'LEER'
-WHERE f.clave IN ('PERFIL', 'COTIZACIONES', 'ORDENES_TRABAJO')
+WHERE f.clave IN ('PERFIL', 'COTIZACIONES', 'ORDENES_TRABAJO', 'MANTENIMIENTO_TICKETS')
 ON CONFLICT (rol_id, funcion_id, accion_id) DO NOTHING;
 
 -- ============================================================
