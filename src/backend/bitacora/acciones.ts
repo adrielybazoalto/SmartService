@@ -79,6 +79,13 @@ export const ACCIONES_BITACORA = [
   'CREAR_SERVICIO',
   'MODIFICAR_SERVICIO',
   'CAMBIAR_ESTADO_SERVICIO',
+  // CU18 Tickets de soporte
+  'CREAR_TICKET',
+  'ACTUALIZAR_ESTADO_TICKET',
+  'DERIVAR_TICKET_ORDEN',
+  // RF31 Hoja de vida (trigger al pagar la nota)
+  'GENERAR_HOJA_VIDA',
+  'ACTUALIZAR_HOJA_VIDA',
 ] as const
 
 export type AccionBitacora = (typeof ACCIONES_BITACORA)[number]

@@ -53,9 +53,16 @@ Orden histórico de `aplicadas/`:
 | 17 | `migracion_rbac_matriz_completa.sql` | Matriz de acciones y guardado atómico |
 | 18 | `migracion_cu12_crear_orden.sql`, `migracion_cu08_guardar_cotizacion.sql` | Correlativos y cálculos en SQL |
 | 19 | `migracion_fase9_ciclo1.sql` | Estado de clientes, bitácora de solo inserción y CU02 |
+| 20 | `migracion_cu18_tickets.sql` | CU18: módulo `MANTENIMIENTO_TICKETS`, CHECK del ticket y `fn_derivar_ticket_orden` |
+| 21 | `migracion_rf31_hoja_vida.sql` | RF31: trigger diferido en `nota_servicio` (hoja de vida al quedar PAGADA) y carga de los sistemas instalados existentes |
 
 > Si solo necesitas permisos/datos sobre una BD migrada, puedes re-ejecutar
 > `seed.sql` sin romper lo existente.
+
+## `seeds/` (solo entornos de prueba)
+
+- `seed_cu18_sistemas_prueba.sql` — 3 clientes, 4 establecimientos y 5 sistemas
+  instalados ficticios (`PRUEBA-CU18-*`) para probar el CU18. Idempotente.
 
 ## `legacy/` (no usar en instalaciones nuevas)
 
@@ -67,6 +74,7 @@ Orden histórico de `aplicadas/`:
 
 - `diagnostico_cu15_cu16.sql` — revisa el estado de CU15/CU16.
 - `extraer_funciones_cu09.sql` — extrae las funciones de CU09.
+- `vista_previa_rf31_hoja_vida.sql` — sistemas instalados que crearía la carga de `migracion_rf31_hoja_vida.sql`.
 
 ## Pruebas
 

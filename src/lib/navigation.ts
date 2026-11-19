@@ -13,8 +13,8 @@
  *      CU15 compras, CU16 inventario, CU17 servicios).
  * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → habilitado
  *     (CU10 personal técnico, CU11 asignar técnicos, CU12 órdenes, CU13 notas).
- * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → deshabilitado
- *     (CU18–CU20, aún sin pantallas).
+ * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → habilitado
+ *     (CU18 tickets de soporte; CU19–CU20 aún sin pantallas).
  *
  * La visibilidad de cada ítem además depende del permiso activo del rol en
  * la BD (ROL_FUNCION ⋈ FUNCION, acción LEER, ver lib/permisos.ts).
@@ -201,8 +201,17 @@ export const PAQUETES: PaqueteNav[] = [
   {
     id: 'P4',
     nombre: 'POST-VENTA, ALERTAS Y REPORTES GERENCIALES',
-    habilitado: false,
-    items: [],
+    habilitado: true,
+    items: [
+      {
+        id: 'tickets-soporte',
+        etiqueta: 'Tickets de Soporte (CU18)',
+        ruta: '/tickets-soporte',
+        clave: 'MANTENIMIENTO_TICKETS',
+        cu: 'CU18',
+        descripcion: 'Tickets de soporte y mantenimiento de sistemas instalados, con dictado por voz.',
+      },
+    ],
   },
 ]
 
@@ -212,7 +221,7 @@ export const PAQUETES: PaqueteNav[] = [
 // `MODULOS` es la vista que consume el RBAC (lib/permisos.ts): una entrada por
 // ítem con clave de permiso, en el orden de PAQUETES. Se derivan solo los
 // ítems de paquetes HABILITADOS y con clave no vacía (excluye "Inicio", que no
-// aplica RBAC, y el paquete P4 aún sin pantallas). Así, habilitar un
+// aplica RBAC). Así, habilitar un
 // paquete en PAQUETES actualiza el menú, el panel y el RBAC a la vez.
 // ---------------------------------------------------------------------------
 

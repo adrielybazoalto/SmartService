@@ -16,7 +16,9 @@
     "test:permisos": "node pruebas/ordenes/fase4-permisos.prueba.mjs",
     "test:cu10": "node pruebas/personal-tecnico/cu10-backend.prueba.mjs",
     "test:bd:fase9": "node pruebas/bd/fase9.prueba.mjs",
-    "test:ordenes": "node pruebas/ordenes/cu11-cu12-fechas.prueba.mjs"
+    "test:ordenes": "node pruebas/ordenes/cu11-cu12-fechas.prueba.mjs",
+    "test:bd:rf31": "node pruebas/bd/rf31-hoja-vida.prueba.mjs",
+    "test:cu18": "node pruebas/tickets/cu18-voz.prueba.mjs && node pruebas/tickets/cu18-backend.prueba.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.1",
