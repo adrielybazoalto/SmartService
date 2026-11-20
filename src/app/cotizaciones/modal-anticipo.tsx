@@ -1,7 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { aprobarCotizacionAccion, iniciarAnticipoTarjetaAction } from '@/app/actions/cotizaciones'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import {
+  aprobarCotizacionAccion,
+  cajaAbiertaAnticipoAccion,
+  iniciarAnticipoTarjetaAction,
+} from '@/app/actions/cotizaciones'
 import { PanelQr } from '@/components/pagos/panel-qr'
 import { PanelTransferencia } from '@/components/pagos/panel-transferencia'
 
@@ -29,7 +34,8 @@ export function ModalAnticipo({
 }: {
   cotizacion: CotizacionParaAprobar
   onCerrar: () => void
-  onAprobada: () => void
+  /** Recibe el mensaje de la aprobación (incluye el recibo de caja del anticipo) */
+  onAprobada: (mensaje: string) => void
 }) {
   const { total } = cotizacion
   const [montoTexto, setMontoTexto] = useState((total / 2).toFixed(2))
@@ -38,11 +44,21 @@ export function ModalAnticipo({
   const [confirmado, setConfirmado] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // null = verificando; el anticipo en EFECTIVO / QR / TRANSFERENCIA se registra en la caja abierta
+  const [caja, setCaja] = useState<{ abierta: boolean; cajaId: number | null } | null>(null)
+
+  useEffect(() => {
+    cajaAbiertaAnticipoAccion()
+      .then(setCaja)
+      .catch(() => setCaja({ abierta: false, cajaId: null }))
+  }, [])
 
   const monto = Number(montoTexto.replace(',', '.'))
   const montoValido = Number.isFinite(monto) && monto >= 0 && monto <= total
   const porcentaje = montoValido && total > 0 ? Math.round((monto / total) * 1000) / 10 : 0
-  const puedeRegistrar = montoValido && monto > 0 && (metodo === 'TARJETA' || confirmado)
+  const requiereCaja = metodo !== 'TARJETA'
+  const sinCaja = requiereCaja && caja !== null && !caja.abierta
+  const puedeRegistrar = montoValido && monto > 0 && (metodo === 'TARJETA' || (confirmado && caja?.abierta === true))
 
   function cambiarMetodo(m: Metodo) {
     setMetodo(m)
@@ -60,7 +76,7 @@ export function ModalAnticipo({
     setError(null)
     const r = await aprobarCotizacionAccion(cotizacion.id, anticipo)
     setEnviando(false)
-    if (r.success) onAprobada()
+    if (r.success) onAprobada(r.message)
     else setError(r.message)
   }
 
@@ -163,6 +179,19 @@ export function ModalAnticipo({
           {metodo === 'TARJETA' && (
             <p className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
               Se abrirá la pasarela de pago segura (Stripe)
+              {caja?.abierta ? ` · el recibo quedará en tu turno de caja #${caja.cajaId}` : ''}
+            </p>
+          )}
+
+          {requiereCaja && caja?.abierta && (
+            <p className="rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-green-800">
+              El anticipo se registrará con un recibo en tu turno de caja abierto (#{caja.cajaId}) y entrará al arqueo.
+            </p>
+          )}
+          {sinCaja && (
+            <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              No tienes un turno de caja abierto. Para cobrar el anticipo en efectivo, QR o transferencia primero{' '}
+              <Link href="/ventas" className="font-semibold underline">abre la caja en Ventas</Link>.
             </p>
           )}
 

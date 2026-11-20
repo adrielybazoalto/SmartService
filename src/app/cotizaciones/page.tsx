@@ -273,8 +273,9 @@ export default function CotizacionesPage() {
         <ModalAnticipo
           cotizacion={cotizacionParaAprobar}
           onCerrar={() => setCotizacionParaAprobar(null)}
-          onAprobada={() => {
+          onAprobada={(mensaje) => {
             setCotizacionParaAprobar(null)
+            setAvisoPago({ ok: true, texto: mensaje })
             cargarCotizaciones()
           }}
         />

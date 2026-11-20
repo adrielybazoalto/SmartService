@@ -184,6 +184,7 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
                         {resumen.cantidad_ventas} venta(s) · total {bs(resumen.total_vendido)}
                         {resumen.cantidad_anuladas > 0 && ` · ${resumen.cantidad_anuladas} anulada(s) excluidas`}
                         {resumen.cobros_ordenes > 0 && ` · incluye ${bs(resumen.cobros_ordenes)} de órdenes de trabajo`}
+                        {resumen.anticipos_cotizaciones > 0 && ` · incluye ${bs(resumen.anticipos_cotizaciones)} de anticipos de cotizaciones`}
                       </p>
                     </div>
                   )

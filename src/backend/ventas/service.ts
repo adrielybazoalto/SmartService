@@ -219,6 +219,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
   let emitidas = 0;
   let anuladas = 0;
   let cobrosOrdenes = 0;
+  let anticipos = 0;
   for (const v of ventas) {
     if (v.estado === 'ANULADA') {
       anuladas++;
@@ -226,7 +227,8 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
     }
     emitidas++;
     totales[v.tipo_pago] = r2(totales[v.tipo_pago] + v.total);
-    if (String(v.tipo_comprobante ?? '').startsWith('RECIBO_')) cobrosOrdenes = r2(cobrosOrdenes + v.total);
+    if (v.tipo_comprobante === 'RECIBO_ANTICIPO') anticipos = r2(anticipos + v.total);
+    else if (String(v.tipo_comprobante ?? '').startsWith('RECIBO_')) cobrosOrdenes = r2(cobrosOrdenes + v.total);
   }
   return {
     caja,
@@ -237,6 +239,7 @@ export function resumirCaja(caja: Caja, ventas: VentaResumen[]): ResumenArqueo {
     efectivo_esperado: r2(caja.monto_inicial + totales.EFECTIVO),
     total_electronico: r2(totales.QR + totales.TARJETA + totales.TRANSFERENCIA),
     cobros_ordenes: cobrosOrdenes,
+    anticipos_cotizaciones: anticipos,
   };
 }
 
@@ -522,7 +525,7 @@ export async function anularVenta(
 export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVenta | null> {
   const { data, error } = await db
     .from('venta')
-    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), orden:orden_trabajo_id(codigo_orden), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
+    .select('*, cliente:cliente_id(*), usuario:usuario_id(nombre), orden:orden_trabajo_id(codigo_orden), cotizacion:cotizacion_id(numero_cotizacion), detalle_venta(*, producto:producto_id(nombre, unidad_medida))')
     .eq('id', ventaId)
     .maybeSingle();
   if (error) throw errorBD(error, 'No se pudo leer la venta');
@@ -540,11 +543,13 @@ export async function obtenerNotaVenta(db: Db, ventaId: number): Promise<NotaVen
     cajero: v.usuario?.nombre ?? `Usuario #${v.usuario_id}`,
     cliente: { nombre: nombreCliente(v.cliente), documento: v.cliente?.documento_identidad ?? null },
     items: String(v.tipo_comprobante ?? '').startsWith('RECIBO_')
-      ? // Recibo de abono / saldo de una orden de trabajo (sin productos)
+      ? // Recibo de abono / saldo de una orden o de anticipo de una cotización (sin productos)
         [{
           descripcion:
-            (v.tipo_comprobante === 'RECIBO_SALDO' ? 'Cobro del saldo de la nota de servicio - orden ' : 'Abono a cuenta de la orden de trabajo ') +
-            (v.orden?.codigo_orden ?? `#${v.orden_trabajo_id}`) +
+            (v.tipo_comprobante === 'RECIBO_ANTICIPO'
+              ? 'Anticipo de la cotización ' + (v.cotizacion?.numero_cotizacion ?? `#${v.cotizacion_id}`)
+              : (v.tipo_comprobante === 'RECIBO_SALDO' ? 'Cobro del saldo de la nota de servicio - orden ' : 'Abono a cuenta de la orden de trabajo ') +
+                (v.orden?.codigo_orden ?? `#${v.orden_trabajo_id}`)) +
             (v.referencia_pago ? ` (Ref. ${v.referencia_pago})` : ''),
           unidad: 'SERV',
           cantidad: 1,
@@ -593,6 +598,7 @@ const ETIQUETA_COMPROBANTE: Record<string, string> = {
   RECIBO: 'Recibo',
   RECIBO_ABONO: 'Recibo de abono',
   RECIBO_SALDO: 'Recibo de saldo',
+  RECIBO_ANTICIPO: 'Recibo de anticipo',
 };
 
 const bsPdf = (n: number) =>

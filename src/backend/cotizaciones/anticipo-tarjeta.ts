@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { bsACentavosUsd, type PasarelaPago } from '@/backend/pagos/pasarela-pago'
 import { ahoraBolivia } from '@/lib/fechas'
+import type { RespuestaAprobacion } from '@/backend/cotizaciones/anticipo-caja'
 
 // ===========================================================================
 // CU08, subflujo "Anticipo con tarjeta" (mismo patrón que CU09 y CU13):
@@ -92,7 +93,7 @@ export async function confirmarAnticipoTarjeta(
   db: SupabaseClient,
   pasarela: PasarelaAnticipo,
   params: { sessionId: string; usuarioId: number; ip?: string | null },
-): Promise<void> {
+): Promise<RespuestaAprobacion> {
   const pago = await pasarela.verificarPago(params.sessionId)
   if (!pago.pagado) throw new Error(MSG_PAGO_NO_CONFIRMADO)
 
@@ -108,7 +109,8 @@ export async function confirmarAnticipoTarjeta(
     throw new Error(`El monto cobrado no coincide con el anticipo. Revise el pago ${pago.sessionId} en Stripe.`)
   }
 
-  const { error } = await db.rpc('fn_aprobar_cotizacion_tarjeta', {
+  // Si el usuario tiene caja abierta, la función deja también el recibo RECIBO_ANTICIPO
+  const { data, error } = await db.rpc('fn_aprobar_cotizacion_tarjeta', {
     p_usuario_id: params.usuarioId,
     p_cotizacion_id: cotizacionId,
     p_session_id: pago.sessionId,
@@ -120,4 +122,5 @@ export async function confirmarAnticipoTarjeta(
     const motivo = faltaMigracionAnticipo(error) ? MSG_FALTA_MIGRACION : error.message
     throw new Error(`${motivo}. El pago ${pago.sessionId} se cobró pero no se registró: revíselo en Stripe.`)
   }
+  return (data ?? {}) as RespuestaAprobacion
 }

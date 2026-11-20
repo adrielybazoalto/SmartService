@@ -55,6 +55,14 @@ const ICONOS: Record<string, ReactElement> = {
       <path d="m9 15 2 2 4-4" />
     </>
   ),
+   REPORTES: (
+    <>
+      <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+    </>
+  ),
   MANTENIMIENTO_TICKETS: (
     <>
       <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />

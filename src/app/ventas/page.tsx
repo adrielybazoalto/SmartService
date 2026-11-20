@@ -294,7 +294,11 @@ export default function VentasPage() {
                               <span>·</span>
                               {v.tipo_comprobante?.startsWith('RECIBO') ? (
                                 <span className="rounded-md bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
-                                  {v.tipo_comprobante === 'RECIBO_SALDO' ? 'Saldo OT' : 'Abono OT'}
+                                  {v.tipo_comprobante === 'RECIBO_ANTICIPO'
+                                    ? 'Anticipo COT'
+                                    : v.tipo_comprobante === 'RECIBO_SALDO'
+                                      ? 'Saldo OT'
+                                      : 'Abono OT'}
                                 </span>
                               ) : (
                                 <span>{v.items} ítem(s)</span>
@@ -316,6 +320,9 @@ export default function VentasPage() {
                               </button>
                               {anulada ? (
                                 <span className="rounded-md bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">ANULADA</span>
+                              ) : v.tipo_comprobante === 'RECIBO_ANTICIPO' ? (
+                                // El anticipo ya aprobó la cotización: no se anula (tg_proteger_recibo)
+                                null
                               ) : (
                                 <button
                                   onClick={() => setPorAnular(v)}

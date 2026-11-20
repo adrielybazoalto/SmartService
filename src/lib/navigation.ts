@@ -219,6 +219,15 @@ export const PAQUETES: PaqueteNav[] = [
         cu: 'CU19',
         descripcion: 'Mantenimientos preventivos vencidos o próximos a vencer, por cliente y sistema.',
       },
+       {
+        id: 'reportes',
+        etiqueta: 'Reportes Gerenciales (CU20)',
+        ruta: '/reportes',
+        clave: 'REPORTES',
+        cu: 'CU20',
+        descripcion: 'Reportes de gestión, ventas y rendimiento técnico.',
+      },
+      
     ],
   },
 ]

@@ -202,6 +202,8 @@ export interface ResumenArqueo {
   total_electronico: number;
   /** Abonos y saldos de órdenes de trabajo (recibos RECIBO_ABONO / RECIBO_SALDO) incluidos en los totales */
   cobros_ordenes: number;
+  /** Anticipos de cotizaciones (recibos RECIBO_ANTICIPO, CU08) incluidos en los totales */
+  anticipos_cotizaciones: number;
 }
 
 /** Resultado de procesarAperturaOArqueo() */

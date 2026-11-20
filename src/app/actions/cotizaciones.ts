@@ -23,6 +23,12 @@ import {
 } from '@/backend/cotizaciones/service'
 import type { GuardarCotizacionInput } from '@/backend/cotizaciones/schema'
 import { PasarelaPago, obtenerUrlBase } from '@/backend/pagos/pasarela-pago'
+import {
+  consultarCajaAbierta,
+  mensajeAprobacion,
+  type RespuestaAprobacion,
+  type TurnoCajaAnticipo,
+} from '@/backend/cotizaciones/anticipo-caja'
 
 const CLAVE_MODULO = 'COTIZACIONES'
 const MSG_SIN_PERMISO = 'No autorizado: tu rol no tiene el permiso de este módulo.'
@@ -100,7 +106,8 @@ export async function aprobarCotizacionAccion(
 
     // database.types.ts aún no declara las funciones SQL (se regenera en la Fase 10)
     const supabase = getSupabaseServiceClient() as unknown as SupabaseClient
-    const { error } = await supabase.rpc('fn_aprobar_cotizacion', {
+    // fn_aprobar_cotizacion también genera el recibo RECIBO_ANTICIPO en la caja abierta
+    const { data, error } = await supabase.rpc('fn_aprobar_cotizacion', {
       p_usuario_id: usuario.id,
       p_cotizacion_id: id,
       p_anticipo: anticipo.monto,
@@ -109,12 +116,20 @@ export async function aprobarCotizacionAccion(
       p_ip: await obtenerIpOrigen(),
     })
     if (error) throw new Error(faltaMigracionAnticipo(error) ? MSG_FALTA_MIGRACION : error.message)
-    return { success: true, message: 'Cotización aprobada.' }
+    return { success: true, message: mensajeAprobacion(data as RespuestaAprobacion) }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo aprobar la cotización.'
     console.error('Error al aprobar cotización:', message)
     return { success: false, message }
   }
+}
+
+// ¿El usuario tiene turno de caja abierto? El anticipo (salvo tarjeta) se registra en esa caja.
+export async function cajaAbiertaAnticipoAccion(): Promise<TurnoCajaAnticipo> {
+  const usuario = await getCurrentUser()
+  if (!usuario) return { abierta: false, cajaId: null }
+  const db = getSupabaseServiceClient() as unknown as SupabaseClient
+  return consultarCajaAbierta(db, usuario.id)
 }
 
 // Anticipo con tarjeta: crea el cobro en Stripe y devuelve su enlace
@@ -141,12 +156,12 @@ export async function confirmarAnticipoTarjetaAction(sessionId: string) {
     if (!(await puedeProcesarCotizacionesAccion())) throw new Error(MSG_SIN_PERMISO)
 
     const db = getSupabaseServiceClient() as unknown as SupabaseClient
-    await confirmarAnticipoTarjeta(db, new PasarelaPago(), {
+    const r = await confirmarAnticipoTarjeta(db, new PasarelaPago(), {
       sessionId: String(sessionId),
       usuarioId: usuario.id,
       ip: await obtenerIpOrigen(),
     })
-    return { success: true, message: 'Pago con tarjeta confirmado: cotización aprobada.' }
+    return { success: true, message: `Pago con tarjeta confirmado. ${mensajeAprobacion(r)}` }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo confirmar el pago con tarjeta.'
     console.error('Error al confirmar anticipo con tarjeta:', message)
