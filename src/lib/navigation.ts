@@ -14,7 +14,7 @@
  * P3: PERSONAL TÉCNICO Y LOGÍSTICA DE CAMPO → habilitado
  *     (CU10 personal técnico, CU11 asignar técnicos, CU12 órdenes, CU13 notas).
  * P4: POST-VENTA, ALERTAS Y REPORTES GERENCIALES → habilitado
- *     (CU18 tickets de soporte; CU19–CU20 aún sin pantallas).
+ *     (CU18 tickets de soporte, CU19 alertas preventivas; CU20 aún sin pantalla).
  *
  * La visibilidad de cada ítem además depende del permiso activo del rol en
  * la BD (ROL_FUNCION ⋈ FUNCION, acción LEER, ver lib/permisos.ts).
@@ -210,6 +210,14 @@ export const PAQUETES: PaqueteNav[] = [
         clave: 'MANTENIMIENTO_TICKETS',
         cu: 'CU18',
         descripcion: 'Tickets de soporte y mantenimiento de sistemas instalados, con dictado por voz.',
+      },
+      {
+        id: 'alertas',
+        etiqueta: 'Alertas Preventivas (CU19)',
+        ruta: '/alertas',
+        clave: 'ALERTAS_PREVENTIVAS',
+        cu: 'CU19',
+        descripcion: 'Mantenimientos preventivos vencidos o próximos a vencer, por cliente y sistema.',
       },
     ],
   },

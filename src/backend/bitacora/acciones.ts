@@ -86,6 +86,8 @@ export const ACCIONES_BITACORA = [
   // RF31 Hoja de vida (trigger al pagar la nota)
   'GENERAR_HOJA_VIDA',
   'ACTUALIZAR_HOJA_VIDA',
+  // CU19 Alertas preventivas
+  'MARCAR_ALERTA_LEIDA',
 ] as const
 
 export type AccionBitacora = (typeof ACCIONES_BITACORA)[number]

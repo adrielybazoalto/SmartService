@@ -6,7 +6,7 @@ import { jwtVerify } from 'jose'
 // src/lib/session.ts (no importamos ese módulo aquí: es server-only).
 const COOKIE_NAME = 'sesion'
 
-const RUTAS_PUBLICAS = ['/login', '/recuperar']
+const RUTAS_PUBLICAS = ['/login', '/recuperar', '/api/cron/alertas']
 
 function getSecret(): Uint8Array {
   const secret = process.env.AUTH_SECRET ?? ''
@@ -18,6 +18,10 @@ function getSecret(): Uint8Array {
  * Check OPTIMISTA de sesión: redirige a /login si no hay cookie JWT válida
  * y la ruta es privada. La validación real de la sesión vive en los
  * Server Actions / servicios (requireUser), no aquí.
+ *
+ * Excepción: /api/cron/alertas (CU19) no usa sesión; se protege con el
+ * CRON_SECRET verificado dentro del propio Route Handler y el cron de Vercel
+ * no envía cookies.
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
