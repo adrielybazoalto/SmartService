@@ -1,14 +1,14 @@
 // =====================================================================
-//  CU20 - CONTROL: ReporteController
+//  CU20 - SERVICIO: ServicioReportes
 //  Coordina el caso de uso: permiso -> validación -> consulta ->
 //  cálculos -> verificación de datos -> bitácora. No consulta la base
-//  directamente (lo hace ReporteRepositorio).
+//  directamente (lo hace DatosReportes).
 // =====================================================================
 
 import { ahoraBolivia } from "@/lib/fechas";
 import { verificarPermisoReporte } from "./autorizacion";
 import { ErrorNegocio, MENSAJES } from "./errores";
-import type { ReporteRepositorio } from "./repositorio";
+import type { DatosReportes } from "./repositorio";
 import {
   calcularBalance,
   calcularEficiencia,
@@ -16,8 +16,8 @@ import {
   clasificarRotacion,
   decidirAgrupacion,
   promedioCumplimiento,
-  validarFiltrosReporte,
-  verificarDatosReporte,
+  validarFiltros,
+  validarDatos,
 } from "./reglas";
 import {
   NOMBRE_REPORTE,
@@ -30,19 +30,19 @@ import {
 } from "./types";
 
 /** Agrega el % de cumplimiento a cada técnico. */
-function conCumplimiento(filas: Omit<RendimientoTecnico, "cumplimiento">[]): RendimientoTecnico[] {
+function agregarCumplimiento(filas: Omit<RendimientoTecnico, "cumplimiento">[]): RendimientoTecnico[] {
   return filas.map((f) => ({ ...f, cumplimiento: calcularEficiencia(f.horas_programadas, f.horas_reales) }));
 }
 
-export class ReporteController {
-  private readonly repositorio: ReporteRepositorio;
+export class ServicioReportes {
+  private readonly repositorio: DatosReportes;
 
-  constructor(repositorio: ReporteRepositorio) {
+  constructor(repositorio: DatosReportes) {
     this.repositorio = repositorio;
   }
 
   /** Paso 3: catálogos de técnicos activos y categorías de producto. */
-  async listarOpcionesFiltro(): Promise<OpcionesFiltro> {
+  async obtenerFiltros(): Promise<OpcionesFiltro> {
     await verificarPermisoReporte(await this.repositorio.obtenerUsuarioActual(), "LEER");
     const [tecnicos, categorias] = await Promise.all([
       this.repositorio.listarTecnicosActivos(),
@@ -54,16 +54,16 @@ export class ReporteController {
   /** Pasos 6 a 10: valida, calcula, verifica que haya datos y registra la consulta. */
   async generarReporte(datos: unknown, ip: string | null): Promise<ReporteGenerado> {
     const usuario = await verificarPermisoReporte(await this.repositorio.obtenerUsuarioActual(), "LEER");
-    const filtros = validarFiltrosReporte(datos);
-    const filtrosTexto = await this.verificarFiltrosOpcionales(filtros);
+    const filtros = validarFiltros(datos);
+    const filtrosTexto = await this.comprobarOpciones(filtros);
 
-    const reporte = await this.obtenerReporte(filtros);
-    verificarDatosReporte(reporte);
+    const reporte = await this.armarReporte(filtros);
+    validarDatos(reporte);
 
     await this.repositorio.registrarEvento(
       usuario.id,
       "GENERAR_REPORTE",
-      this.describir(filtros, filtrosTexto, "Consulta"),
+      this.textoBitacora(filtros, filtrosTexto, "Consulta"),
       ip,
     );
 
@@ -79,21 +79,21 @@ export class ReporteController {
   }
 
   /** Paso 13: el archivo se arma en el navegador; aquí se valida y se registra la exportación. */
-  async registrarExportacion(datos: unknown, formato: unknown, ip: string | null): Promise<void> {
+  async registrarDescarga(datos: unknown, formato: unknown, ip: string | null): Promise<void> {
     const usuario = await verificarPermisoReporte(await this.repositorio.obtenerUsuarioActual(), "PROCESAR");
     if (formato !== "PDF" && formato !== "EXCEL") throw new ErrorNegocio(MENSAJES.FORMATO_INVALIDO);
-    const filtros = validarFiltrosReporte(datos);
-    const filtrosTexto = await this.verificarFiltrosOpcionales(filtros);
+    const filtros = validarFiltros(datos);
+    const filtrosTexto = await this.comprobarOpciones(filtros);
     await this.repositorio.registrarEvento(
       usuario.id,
       "EXPORTAR_REPORTE",
-      this.describir(filtros, filtrosTexto, `Exportación ${formato as FormatoExportacion}`),
+      this.textoBitacora(filtros, filtrosTexto, `Exportación ${formato as FormatoExportacion}`),
       ip,
     );
   }
 
   /** Excepciones del paso 7: técnico activo y categoría existente. Devuelve su texto. */
-  private async verificarFiltrosOpcionales(filtros: FiltrosReporte): Promise<string[]> {
+  private async comprobarOpciones(filtros: FiltrosReporte): Promise<string[]> {
     const texto: string[] = [];
     if (filtros.tecnicoId !== null) {
       const tecnicos = await this.repositorio.listarTecnicosActivos();
@@ -111,13 +111,13 @@ export class ReporteController {
   }
 
   /** Paso 8: obtiene la información del reporte elegido (subflujos S1..S7). */
-  private async obtenerReporte(f: FiltrosReporte): Promise<Reporte> {
+  private async armarReporte(f: FiltrosReporte): Promise<Reporte> {
     const desde = f.desde ?? "";
     const hasta = f.hasta ?? "";
     switch (f.tipo) {
       case "RESUMEN_GENERAL": {
         const r = await this.repositorio.obtenerResumenGeneral(desde, hasta);
-        const rendimiento = conCumplimiento(r.rendimiento);
+        const rendimiento = agregarCumplimiento(r.rendimiento);
         return {
           tipo: f.tipo,
           datos: {
@@ -161,13 +161,13 @@ export class ReporteController {
       case "RENDIMIENTO_TECNICO":
         return {
           tipo: f.tipo,
-          datos: conCumplimiento(await this.repositorio.listarRendimientoTecnicos(desde, hasta, f.tecnicoId)),
+          datos: agregarCumplimiento(await this.repositorio.listarRendimientoTecnicos(desde, hasta, f.tecnicoId)),
         };
     }
   }
 
   /** Texto para la bitácora: tipo, período, filtros y acción (postcondición del CU20). */
-  private describir(f: FiltrosReporte, filtrosTexto: string[], accion: string): string {
+  private textoBitacora(f: FiltrosReporte, filtrosTexto: string[], accion: string): string {
     const periodo = f.desde && f.hasta ? `${f.desde} a ${f.hasta}` : "estado actual";
     return [`${accion} de reporte: ${NOMBRE_REPORTE[f.tipo]}`, `Período: ${periodo}`, ...filtrosTexto].join(" | ");
   }

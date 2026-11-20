@@ -1,7 +1,7 @@
 // ============================================================
 // Pruebas del BACKEND del CU20 (Reportes de Gestión).
 //
-// Ejecuta el TypeScript REAL (reglas, ReporteController, repositorio y
+// Ejecuta el TypeScript REAL (reglas, ServicioReportes, datos y
 // Server Actions) con Node.js y un cliente Supabase FALSO. Sin red ni BD.
 // Las funciones SQL fn_reporte_* se prueban aparte en Supabase/Postgres.
 //
@@ -83,43 +83,43 @@ const inicioMes = `${hoy.slice(0, 7)}-01`
 // ---------------- Pruebas ----------------
 await prueba('Sin sesión: mensaje de sesión expirada', async () => {
   globalThis.__cu16 = { usuario: null, accionesPermitidas: [], db: crearDb() }
-  const r = await A.generarReporteAction({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
   igual(r, { ok: false, error: 'Su sesión ha expirado. Inicie sesión nuevamente.' })
 })
 
 await prueba('Rol sin permiso REPORTES: no genera', async () => {
   sesion({ acciones: [] })
-  const r = await A.generarReporteAction({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
   igual(r, { ok: false, error: 'No tiene permiso para generar reportes.' })
 })
 
 await prueba('Opciones de filtro: solo técnicos activos y categorías', async () => {
   sesion()
-  const r = await A.listarOpcionesFiltroAction()
+  const r = await A.cargarFiltros()
   igual(r, { ok: true, data: { tecnicos: [{ id: 7, nombre: 'Ana Técnica' }], categorias: [{ id: 2, nombre: 'Cámaras' }] } })
 })
 
 await prueba('Validación: fecha hasta posterior a hoy', async () => {
   sesion()
-  const r = await A.generarReporteAction({ tipo: 'INGRESOS', desde: inicioMes, hasta: '2999-01-01' })
+  const r = await A.generarReporte({ tipo: 'INGRESOS', desde: inicioMes, hasta: '2999-01-01' })
   igual(r, { ok: false, error: 'La fecha hasta no puede ser posterior a hoy.' })
 })
 
 await prueba('Técnico inactivo: excepción del paso 7', async () => {
   sesion()
-  const r = await A.generarReporteAction({ tipo: 'RENDIMIENTO_TECNICO', desde: inicioMes, hasta: hoy, tecnicoId: 8 })
+  const r = await A.generarReporte({ tipo: 'RENDIMIENTO_TECNICO', desde: inicioMes, hasta: hoy, tecnicoId: 8 })
   igual(r, { ok: false, error: 'El técnico seleccionado no existe o está inactivo.' })
 })
 
 await prueba('Categoría inexistente: excepción del paso 7', async () => {
   sesion()
-  const r = await A.generarReporteAction({ tipo: 'INVENTARIO_CRITICO', categoriaId: 99 })
+  const r = await A.generarReporte({ tipo: 'INVENTARIO_CRITICO', categoriaId: 99 })
   igual(r, { ok: false, error: 'La categoría seleccionada no existe.' })
 })
 
 await prueba('Sin datos en el período: mensaje y SIN bitácora', async () => {
   const db = sesion({ db: crearDb({ fn_reporte_ingresos: { total: 0, cantidad: 0, por_metodo: [], por_origen: [], serie: [] } }) })
-  const r = await A.generarReporteAction({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
   igual(r, { ok: false, error: 'No se encontraron datos para el período seleccionado.' })
   igual(db.llamadas.bitacora.length, 0)
 })
@@ -131,7 +131,7 @@ await prueba('Ingresos: llama fn_reporte_ingresos y registra la consulta', async
     por_origen: [{ origen: 'COBRO_ORDEN', monto: 920, cantidad: 6 }],
     serie: [{ periodo: inicioMes, monto: 1830, cantidad: 9 }],
   } }) })
-  const r = await A.generarReporteAction({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'INGRESOS', desde: inicioMes, hasta: hoy })
   if (!r.ok) throw new Error(r.error)
   igual(r.data.datos.total, 1830)
   igual(r.data.agrupacion, 'DIA')
@@ -147,7 +147,7 @@ await prueba('Resumen general: balance = ingresos - compras y cumplimiento prome
     rendimiento: [{ tecnico_id: 7, tecnico: 'Ana', ordenes_finalizadas: 2, ordenes_a_tiempo: 1, horas_programadas: 6, horas_reales: 6.05 }],
     serie: [{ periodo: inicioMes, ingresos: 1830, compras: 500 }],
   } }) })
-  const r = await A.generarReporteAction({ tipo: 'RESUMEN_GENERAL', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'RESUMEN_GENERAL', desde: inicioMes, hasta: hoy })
   if (!r.ok) throw new Error(r.error)
   igual(r.data.datos.balance, 1330)
   igual(r.data.datos.cumplimiento_promedio, 99.2)
@@ -158,7 +158,7 @@ await prueba('Rendimiento: % cumplimiento = programadas ÷ reales × 100', async
   sesion({ db: crearDb({ fn_reporte_rendimiento: [
     { tecnico_id: 7, tecnico: 'Ana Técnica', ordenes_finalizadas: 2, ordenes_a_tiempo: 2, horas_programadas: 8, horas_reales: 10 },
   ] }) })
-  const r = await A.generarReporteAction({ tipo: 'RENDIMIENTO_TECNICO', desde: inicioMes, hasta: hoy, tecnicoId: 7 })
+  const r = await A.generarReporte({ tipo: 'RENDIMIENTO_TECNICO', desde: inicioMes, hasta: hoy, tecnicoId: 7 })
   if (!r.ok) throw new Error(r.error)
   igual(r.data.datos[0].cumplimiento, 80)
   igual(r.data.filtrosTexto, ['Técnico: Ana Técnica'])
@@ -168,7 +168,7 @@ await prueba('Inventario crítico: sin período y con categoría', async () => {
   const db = sesion({ db: crearDb({ fn_reporte_inventario_critico: [
     { producto_id: 1, codigo: 'CAM1', producto: 'Cámara', categoria: 'Cámaras', unidad: 'UND', stock_actual: 1, stock_minimo: 5, faltante: 4 },
   ] }) })
-  const r = await A.generarReporteAction({ tipo: 'INVENTARIO_CRITICO', categoriaId: 2 })
+  const r = await A.generarReporte({ tipo: 'INVENTARIO_CRITICO', categoriaId: 2 })
   if (!r.ok) throw new Error(r.error)
   igual(r.data.agrupacion, null)
   igual(db.llamadas.rpc[0].params, { p_categoria_id: 2 })
@@ -176,19 +176,19 @@ await prueba('Inventario crítico: sin período y con categoría', async () => {
 
 await prueba('Exportar: exige PROCESAR', async () => {
   sesion({ acciones: ['REPORTES:LEER'] })
-  const r = await A.registrarExportacionAction({ tipo: 'INVENTARIO_CRITICO' }, 'PDF')
+  const r = await A.registrarDescarga({ tipo: 'INVENTARIO_CRITICO' }, 'PDF')
   igual(r, { ok: false, error: 'No tiene permiso para exportar reportes.' })
 })
 
 await prueba('Exportar: formato inválido', async () => {
   sesion()
-  const r = await A.registrarExportacionAction({ tipo: 'INVENTARIO_CRITICO' }, 'WORD')
+  const r = await A.registrarDescarga({ tipo: 'INVENTARIO_CRITICO' }, 'WORD')
   igual(r, { ok: false, error: 'Seleccione el formato de exportación: PDF o Excel.' })
 })
 
 await prueba('Exportar: registra EXPORTAR_REPORTE en la bitácora', async () => {
   const db = sesion()
-  const r = await A.registrarExportacionAction({ tipo: 'SERVICIOS', desde: inicioMes, hasta: hoy }, 'EXCEL')
+  const r = await A.registrarDescarga({ tipo: 'SERVICIOS', desde: inicioMes, hasta: hoy }, 'EXCEL')
   igual(r, { ok: true, data: null })
   igual(db.llamadas.bitacora[0].accion, 'EXPORTAR_REPORTE')
   if (!db.llamadas.bitacora[0].descripcion.includes('Exportación EXCEL')) throw new Error('descripción sin formato')
@@ -218,7 +218,7 @@ await prueba('Rotación: llama fn_reporte_rotacion con categoría y clasifica ca
     filaRotacion(1, 'Cámara A', 5, 5, 500, inicioMes), filaRotacion(2, 'Cable B', 3, 40, 400, inicioMes),
     filaRotacion(3, 'Cámara C', 0, 4, 800),
   ] }) })
-  const r = await A.generarReporteAction({ tipo: 'ROTACION_INVENTARIO', desde: inicioMes, hasta: hoy, categoriaId: 2 })
+  const r = await A.generarReporte({ tipo: 'ROTACION_INVENTARIO', desde: inicioMes, hasta: hoy, categoriaId: 2 })
   if (!r.ok) throw new Error(r.error)
   igual(db.llamadas.rpc[0], { nombre: 'fn_reporte_rotacion', params: { p_desde: inicioMes, p_hasta: hoy, p_categoria_id: 2 } })
   igual(r.data.datos.map((p) => p.rotacion), ['ALTA', 'BAJA', 'SIN_MOVIMIENTO'])
@@ -228,7 +228,7 @@ await prueba('Rotación: llama fn_reporte_rotacion con categoría y clasifica ca
 
 await prueba('Rotación: indicadores de valor inmovilizado y tabla de sin movimiento', async () => {
   sesion({ db: crearDb({ fn_reporte_rotacion: [filaRotacion(1, 'Cámara A', 5, 5, 500), filaRotacion(3, 'Cámara C', 0, 4, 1500)] }) })
-  const r = await A.generarReporteAction({ tipo: 'ROTACION_INVENTARIO', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'ROTACION_INVENTARIO', desde: inicioMes, hasta: hoy })
   if (!r.ok) throw new Error(r.error)
   const c = C.armarContenido(r.data)
   const ind = Object.fromEntries(c.indicadores.map((i) => [i.etiqueta, i.valor]))
@@ -239,7 +239,7 @@ await prueba('Rotación: indicadores de valor inmovilizado y tabla de sin movimi
 
 await prueba('Rotación: sin productos activos da su propio mensaje', async () => {
   sesion({ db: crearDb({ fn_reporte_rotacion: [] }) })
-  const r = await A.generarReporteAction({ tipo: 'ROTACION_INVENTARIO', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'ROTACION_INVENTARIO', desde: inicioMes, hasta: hoy })
   igual(r, { ok: false, error: 'No hay productos activos para los filtros seleccionados.' })
 })
 
@@ -248,7 +248,7 @@ await prueba('Proveedores: margen % por proveedor y producto, y nota de margen e
     proveedores: [{ proveedor_id: 1, proveedor: 'Prov Uno', compras: 1, monto_comprado: 920, productos_comprados: 1, productos_vendidos: 1, ingreso: 598, costo: 463.65, margen: 134.35 }],
     productos: [{ producto_id: 1, producto: 'Cámara A', unidad: 'UND', proveedor_id: 1, proveedor: 'Prov Uno', cantidad: 5, ingreso: 598, costo_unitario: 92.73, origen_costo: 'COMPRAS_PERIODO', costo: 463.65, margen: 134.35 }],
   } }) })
-  const r = await A.generarReporteAction({ tipo: 'PROVEEDORES', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'PROVEEDORES', desde: inicioMes, hasta: hoy })
   if (!r.ok) throw new Error(r.error)
   igual(db.llamadas.rpc[0], { nombre: 'fn_reporte_proveedores', params: { p_desde: inicioMes, p_hasta: hoy } })
   igual([r.data.datos.proveedores[0].margen_pct, r.data.datos.productos[0].margen_pct], [22.5, 22.5])
@@ -259,13 +259,13 @@ await prueba('Proveedores: margen % por proveedor y producto, y nota de margen e
 
 await prueba('Proveedores: período sin compras ni ventas = sin datos', async () => {
   sesion({ db: crearDb({ fn_reporte_proveedores: { proveedores: [], productos: [] } }) })
-  const r = await A.generarReporteAction({ tipo: 'PROVEEDORES', desde: inicioMes, hasta: hoy })
+  const r = await A.generarReporte({ tipo: 'PROVEEDORES', desde: inicioMes, hasta: hoy })
   igual(r, { ok: false, error: 'No se encontraron datos para el período seleccionado.' })
 })
 
 await prueba('Proveedores: no usa filtro de categoría ni de técnico', async () => {
   const db = sesion({ db: crearDb({ fn_reporte_proveedores: { proveedores: [{ proveedor_id: 1, proveedor: 'P', compras: 1, monto_comprado: 1, productos_comprados: 1, productos_vendidos: 0, ingreso: 0, costo: 0, margen: 0 }], productos: [] } }) })
-  const r = await A.generarReporteAction({ tipo: 'PROVEEDORES', desde: inicioMes, hasta: hoy, categoriaId: 99, tecnicoId: 8 })
+  const r = await A.generarReporte({ tipo: 'PROVEEDORES', desde: inicioMes, hasta: hoy, categoriaId: 99, tecnicoId: 8 })
   if (!r.ok) throw new Error(r.error)
   igual(r.data.filtrosTexto, [])
   igual(db.llamadas.rpc.length, 1)

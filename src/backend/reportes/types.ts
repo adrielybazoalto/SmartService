@@ -234,4 +234,4 @@ export type ReporteGenerado = Reporte & {
   fechaEmision: string;
 };
 
-export type ResultadoAccion<T> = { ok: true; data: T } | { ok: false; error: string };
+export type Respuesta<T> = { ok: true; data: T } | { ok: false; error: string };

@@ -1,13 +1,13 @@
 // =====================================================================
-//  CU20 - Fábrica: arma el control con su repositorio (solo servidor)
+//  CU20 - Fábrica: arma el servicio con sus datos (solo servidor)
 // =====================================================================
 
-import { ReporteController } from "./control-reportes";
+import { ServicioReportes } from "./servicio-reportes";
 import { obtenerClienteSupabase } from "./integracion";
-import { ReporteRepositorio } from "./repositorio";
+import { DatosReportes } from "./repositorio";
 
 export const RUTA_REPORTES = "/reportes";
 
-export function crearReporteController(): ReporteController {
-  return new ReporteController(new ReporteRepositorio(obtenerClienteSupabase()));
+export function crearReportes(): ServicioReportes {
+  return new ServicioReportes(new DatosReportes(obtenerClienteSupabase()));
 }

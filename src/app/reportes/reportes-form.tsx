@@ -2,12 +2,12 @@
 
 // =====================================================================
 //  CU20 - ReportesForm (frontera con el Administrador)
-//  seleccionarTipo · seleccionarAtajo · generarReporte · exportarPDF · exportarExcel
+//  seleccionarTipo · seleccionarAtajo · solicitarReporte · exportarPDF · exportarExcel
 // =====================================================================
 
 import { useState } from 'react'
 import { AlertCircle, Loader2 } from 'lucide-react'
-import { generarReporteAction, registrarExportacionAction } from '@/app/actions/reportes'
+import { generarReporte, registrarDescarga } from '@/app/actions/reportes'
 import {
   ATAJOS,
   NOMBRE_ATAJO,
@@ -77,14 +77,14 @@ export function ReportesForm({
   }
 
   /** Pasos 6 a 9: pide el reporte al servidor y lo muestra. */
-  async function generarReporte() {
+  async function solicitarReporte() {
     setAviso(null)
     if (!tipo) {
       setAviso({ tipo: 'error', texto: MENSAJES.FALTA_TIPO })
       return
     }
     setCargando(true)
-    const r = await generarReporteAction({
+    const r = await generarReporte({
       tipo,
       desde: pidePeriodo ? desde : null,
       hasta: pidePeriodo ? hasta : null,
@@ -109,7 +109,7 @@ export function ReportesForm({
     setExportando(formato)
     setAviso(null)
     try {
-      const r = await registrarExportacionAction(reporte.filtros, formato)
+      const r = await registrarDescarga(reporte.filtros, formato)
       if (!r.ok) {
         setAviso({ tipo: 'error', texto: r.error })
         return
@@ -234,7 +234,7 @@ export function ReportesForm({
         )}
 
         <div>
-          <button type="button" className="btn-primario" onClick={generarReporte} disabled={cargando}>
+          <button type="button" className="btn-primario" onClick={solicitarReporte} disabled={cargando}>
             {cargando && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
             Generar reporte
           </button>

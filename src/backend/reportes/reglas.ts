@@ -103,7 +103,7 @@ function idOpcional(valor: unknown): number | null {
  * Paso 7: valida los parámetros de consulta en el orden de la tabla de
  * Excepciones del CU20. Devuelve los filtros limpios.
  */
-export function validarFiltrosReporte(datos: unknown, hoy: string = hoyBolivia()): FiltrosReporte {
+export function validarFiltros(datos: unknown, hoy: string = hoyBolivia()): FiltrosReporte {
   const d = (datos ?? {}) as Record<string, unknown>;
 
   const tipo = String(d.tipo ?? "") as TipoReporte;
@@ -165,7 +165,7 @@ export function promedioCumplimiento(valores: (number | null)[]): number | null 
 }
 
 /** Excepción del paso 8: no hay registros que mostrar. */
-export function verificarDatosReporte(reporte: Reporte): void {
+export function validarDatos(reporte: Reporte): void {
   let vacio: boolean;
   switch (reporte.tipo) {
     case "RESUMEN_GENERAL": {

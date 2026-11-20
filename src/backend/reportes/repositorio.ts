@@ -93,7 +93,7 @@ export interface IngresosBase {
   serie: IngresoPorPeriodo[];
 }
 
-export class ReporteRepositorio {
+export class DatosReportes {
   private readonly db: SupabaseClient;
 
   constructor(db: SupabaseClient) {
