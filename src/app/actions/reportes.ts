@@ -1,14 +1,16 @@
 'use server'
 
+// =====================================================================
 //  CU20 - Server Actions (frontera entre ReportesForm y ReporteController)
+// =====================================================================
 
 import { crearReporteController } from '@/backend/reportes/fabrica'
 import { mensajeDeError } from '@/backend/reportes/errores'
 import { obtenerIpCliente } from '@/backend/reportes/integracion'
 import type { OpcionesFiltro, ReporteGenerado, ResultadoAccion } from '@/backend/reportes/types'
 
-/** ReporteController.listarOpciones(técnicos activos y categorías). */
-export async function listarOpciones(): Promise<ResultadoAccion<OpcionesFiltro>> {
+/** ReporteController.listarOpcionesFiltro (técnicos activos y categorías). */
+export async function listarOpcionesFiltroAction(): Promise<ResultadoAccion<OpcionesFiltro>> {
   try {
     return { ok: true, data: await crearReporteController().listarOpcionesFiltro() }
   } catch (error) {
@@ -27,7 +29,7 @@ export async function generarReporteAction(filtros: unknown): Promise<ResultadoA
 }
 
 /** ReporteController.registrarExportacion (formato PDF o EXCEL). */
-export async function registrarExportacion(
+export async function registrarExportacionAction(
   filtros: unknown,
   formato: unknown,
 ): Promise<ResultadoAccion<null>> {

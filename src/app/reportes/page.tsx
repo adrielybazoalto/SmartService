@@ -1,4 +1,4 @@
-import { listarOpciones } from '@/app/actions/reportes'
+import { listarOpcionesFiltroAction } from '@/app/actions/reportes'
 import { tieneAccionModulo } from '@/lib/permisos'
 import { ReportesForm } from './reportes-form'
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
  */
 export default async function ReportesPage() {
   const [opciones, puedeExportar] = await Promise.all([
-    listarOpciones(),
+    listarOpcionesFiltroAction(),
     tieneAccionModulo('REPORTES', 'PROCESAR'),
   ])
 

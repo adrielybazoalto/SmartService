@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { AlertCircle, Loader2 } from 'lucide-react'
-import { generarReporteAction, registrarExportacion } from '@/app/actions/reportes'
+import { generarReporteAction, registrarExportacionAction } from '@/app/actions/reportes'
 import {
   ATAJOS,
   NOMBRE_ATAJO,
@@ -109,7 +109,7 @@ export function ReportesForm({
     setExportando(formato)
     setAviso(null)
     try {
-      const r = await registrarExportacion(reporte.filtros, formato)
+      const r = await registrarExportacionAction(reporte.filtros, formato)
       if (!r.ok) {
         setAviso({ tipo: 'error', texto: r.error })
         return
