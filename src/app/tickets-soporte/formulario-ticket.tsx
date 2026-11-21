@@ -36,7 +36,7 @@ function EtiquetaVoz({ visible }: { visible: boolean }) {
   return <span className="ml-2 rounded-full bg-lime-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-lime-900">por voz</span>
 }
 
-/** Lo que la página puede pedirle al formulario: el micrófono está en la cabecera. */
+/** Dictado interno del formulario (no expone botón propio: la voz la aporta el asistente global). */
 export interface FormularioTicketHandle {
   dictar: (texto: string) => void
 }
@@ -191,7 +191,7 @@ export function FormularioTicket({
             Nuevo Ticket
           </h2>
           <p className="text-sm text-slate-500">
-            Complete el formulario o díctelo con el micrófono de arriba; el ticket solo se guarda al confirmar.
+            Complete el formulario; el ticket solo se guarda al confirmar.
           </p>
         </div>
         {procesandoVoz && <p className="text-xs text-slate-500" aria-live="polite">Buscando el sistema dictado…</p>}

@@ -68,13 +68,17 @@ export function IUAlertasPreventivas({
   alertasIniciales,
   permisos,
   errorInicial,
+  filtroInicial,
 }: {
   alertasIniciales: AlertaPreventiva[]
   permisos: PermisosAlertas
   errorInicial: string | null
+  /** Filtro solicitado por voz (?filtro=pendientes|todas). */
+  filtroInicial?: string
 }) {
+  const filtroValido = filtroInicial === 'todas' ? 'todas' : 'pendientes'
   const [alertas, setAlertas] = useState(alertasIniciales)
-  const [filtro, setFiltro] = useState<'pendientes' | 'todas'>('pendientes')
+  const [filtro, setFiltro] = useState<'pendientes' | 'todas'>(filtroValido)
   const [ocupada, setOcupada] = useState<number | null>(null)
   const [aviso, setAviso] = useState<Aviso>(
     errorInicial ? { tipo: 'error', texto: errorInicial } : null,

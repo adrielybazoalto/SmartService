@@ -8,6 +8,7 @@ import { logoutAction } from '@/app/actions/auth'
 import { NavegacionPaquetes } from '@/components/sidebar-nav'
 import { BadgeRol } from '@/components/badge-rol'
 import { PaqueteSeleccionadoProvider } from '@/components/paquete-seleccionado'
+import { AsistenteVozGlobal } from '@/components/voz/asistente-voz-global'
 
 /**
  * Marco de la aplicación (Client Component) responsable del comportamiento
@@ -27,11 +28,14 @@ export function SidebarShell({
   nombre,
   rolNombre,
   permisos,
+  esAdministrador = false,
   children,
 }: {
   nombre: string
   rolNombre?: string | null
   permisos: string[]
+  /** Resuelto en servidor; true solo para el rol ADMINISTRADOR. */
+  esAdministrador?: boolean
   children: ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -149,6 +153,10 @@ export function SidebarShell({
 
         {/* ── Columna de contenido ─────────────────────────────────── */}
         <div className="flex min-w-0 flex-1 flex-col">
+          {/* Asistente global: solo se monta para ADMINISTRADOR. Queda fuera
+              del <main> para no alterar el layout de ningún módulo. */}
+          {esAdministrador && <AsistenteVozGlobal esAdministrador={esAdministrador} />}
+
           {/* Barra superior móvil con botón hamburguesa (oculta en md+) */}
           <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
             <button

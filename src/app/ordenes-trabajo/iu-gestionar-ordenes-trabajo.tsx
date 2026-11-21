@@ -68,9 +68,17 @@ interface Props {
   usuarioId: number
   /** Calculados en el servidor con los permisos de ROL_FUNCION. */
   permisos: { gestionar: boolean; liquidar: boolean; crearOrden: boolean }
+  /** Filtro de estado solicitado por voz (?estado=PROGRAMADA, etc.). */
+  estadoInicial?: string
 }
 
-export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, permisos }: Props) {
+export function IU_GestionarOrdenesTrabajo({
+  ordenes,
+  esTecnico,
+  usuarioId,
+  permisos,
+  estadoInicial,
+}: Props) {
   const router = useRouter()
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
@@ -86,9 +94,12 @@ export function IU_GestionarOrdenesTrabajo({ ordenes, esTecnico, usuarioId, perm
   const [cantidadMaterial, setCantidadMaterial] = useState('')
   const [obsMaterial, setObsMaterial] = useState('')
   const [detalle, setDetalle] = useState<DetalleOrden | null>(null)
-  const [filtroEstado, setFiltroEstado] = useState('')
+  const estadoValido =
+    estadoInicial && (ESTADO_ORDEN as readonly string[]).includes(estadoInicial) ? estadoInicial : ''
+  const [filtroEstado, setFiltroEstado] = useState(estadoValido)
   const [creandoCorrectiva, setCreandoCorrectiva] = useState(false)
   const [ordenVentana, setOrdenVentana] = useState<{ id: number; codigo_orden: string } | null>(null)
+
   const ordenesVisibles = filtroEstado ? ordenes.filter((o) => o.estado === filtroEstado) : ordenes
 
   async function iniciarOrden(id: number) {

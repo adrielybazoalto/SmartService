@@ -14,7 +14,13 @@ export const dynamic = 'force-dynamic'
  * El layout ya validó el acceso (LEER). Aquí se cargan los catálogos de
  * técnicos activos y categorías (paso 3) y se resuelve si puede exportar.
  */
-export default async function ReportesPage() {
+export default async function ReportesPage({
+  searchParams,
+}: {
+  // Filtros enviados por el asistente de navegación por voz (CU20).
+  searchParams: Promise<{ tipo?: string; atajo?: string }>
+}) {
+  const filtrosVoz = await searchParams
   const [opciones, puedeExportar] = await Promise.all([
     cargarFiltros(),
     tieneAccionModulo('REPORTES', 'PROCESAR'),
@@ -23,10 +29,12 @@ export default async function ReportesPage() {
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <ReportesForm
+        key={`${filtrosVoz.tipo ?? ''}|${filtrosVoz.atajo ?? ''}`}
         tecnicos={opciones.ok ? opciones.data.tecnicos : []}
         categorias={opciones.ok ? opciones.data.categorias : []}
         puedeExportar={puedeExportar}
         errorInicial={opciones.ok ? null : opciones.error}
+        filtrosVoz={filtrosVoz}
       />
     </main>
   )

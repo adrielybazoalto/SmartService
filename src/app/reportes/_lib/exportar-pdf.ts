@@ -78,8 +78,10 @@ export async function exportarPDF(r: ReporteGenerado): Promise<void> {
     doc.text(ind.etiqueta.toUpperCase(), x + 3, y + 5);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    if (ind.signo && ind.valor !== null) doc.setTextColor(...(ind.valor < 0 ? ([185, 28, 28] as const) : ([21, 128, 61] as const)));
-    else doc.setTextColor(15, 23, 42);
+    if (ind.signo && ind.valor !== null) {
+      if (ind.valor < 0) doc.setTextColor(185, 28, 28);
+      else doc.setTextColor(21, 128, 61);
+    } else doc.setTextColor(15, 23, 42);
     doc.text(formatearValor(ind.valor, ind.tipo), x + 3, y + 11);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);

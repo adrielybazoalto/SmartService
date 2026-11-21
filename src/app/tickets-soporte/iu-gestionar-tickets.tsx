@@ -1,13 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { cambiarEstadoTicketAccion, derivarTicketAccion } from '@/app/actions/tickets'
 import { ModalVentana } from '@/app/ordenes-trabajo/modal-ventana'
-import { VoiceButton } from '@/components/voz/voice-button'
-import { MSG_NO_ENTENDIDO } from '@/lib/voz/mensajes'
 import { formatearFechaHora } from '@/lib/fechas'
 import {
   ESTADOS_DERIVABLES,
@@ -20,9 +17,8 @@ import {
   type EstadoTicket,
   type UrgenciaTicket,
 } from '@/backend/tickets/constantes'
-import { esComandoFiltro, parseFilterCommand } from '@/backend/tickets/comandos-voz'
 import type { SistemaOpcion, TicketListado } from '@/backend/tickets/types'
-import { FormularioTicket, type FormularioTicketHandle } from './formulario-ticket'
+import { FormularioTicket } from './formulario-ticket'
 
 export interface PermisosTickets {
   crear: boolean
@@ -70,25 +66,41 @@ function BadgeEstado({ estado }: { estado: EstadoTicket }) {
   )
 }
 
-/** IU_GestionarTickets (CU18): listado con filtros (también por voz), estados y derivación a OT. */
+/** IU_GestionarTickets (CU18): listado con filtros, estados y derivación a OT.
+ *  La voz la aporta únicamente el asistente global, que envía filtros/acciones
+ *  como query params; esta vista no monta un micrófono local propio.
+ */
 export function IU_GestionarTickets({
   tickets,
   sistemas,
   errorCarga,
   permisos,
+  filtrosVoz,
 }: {
   tickets: TicketListado[]
   sistemas: SistemaOpcion[]
   errorCarga: string | null
   permisos: PermisosTickets
+  /** Query params enviados por el asistente de navegación por voz. */
+  filtrosVoz?: { estado?: string; urgencia?: string; accion?: string }
 }) {
-  const [filtroEstado, setFiltroEstado] = useState<EstadoTicket | ''>('')
-  const [filtroUrgencia, setFiltroUrgencia] = useState<UrgenciaTicket | ''>('')
-  const [formularioAbierto, setFormularioAbierto] = useState(false)
+  const estadoInicial =
+    filtrosVoz?.estado && (ESTADOS_TICKET as readonly string[]).includes(filtrosVoz.estado)
+      ? (filtrosVoz.estado as EstadoTicket)
+      : ''
+  const urgenciaInicial =
+    filtrosVoz?.urgencia && (URGENCIAS_TICKET as readonly string[]).includes(filtrosVoz.urgencia)
+      ? (filtrosVoz.urgencia as UrgenciaTicket)
+      : ''
+
+  const [filtroEstado, setFiltroEstado] = useState<EstadoTicket | ''>(estadoInicial)
+  const [filtroUrgencia, setFiltroUrgencia] = useState<UrgenciaTicket | ''>(urgenciaInicial)
+  const [formularioAbierto, setFormularioAbierto] = useState(
+    filtrosVoz?.accion === 'crear' && permisos.crear && sistemas.length > 0,
+  )
   const [derivando, setDerivando] = useState<TicketListado | null>(null)
   const [ocupado, setOcupado] = useState<number | null>(null)
   const [mensaje, setMensaje] = useState<Mensaje>(null)
-  const formulario = useRef<FormularioTicketHandle>(null)
 
   useEffect(() => {
     if (!mensaje) return
@@ -103,42 +115,6 @@ export function IU_GestionarTickets({
       ),
     [tickets, filtroEstado, filtroUrgencia],
   )
-
-  function filtrarPorVoz(texto: string) {
-    const cmd = parseFilterCommand(texto)
-    if (cmd.limpiar) {
-      setFiltroEstado('')
-      setFiltroUrgencia('')
-      setMensaje({ tipo: 'exito', texto: 'Filtros quitados: se muestran todos los tickets.' })
-      return
-    }
-    if (cmd.camposDetectados.length === 0) {
-      setMensaje({ tipo: 'error', texto: MSG_NO_ENTENDIDO })
-      return
-    }
-    setFiltroEstado(cmd.estado ?? '')
-    setFiltroUrgencia(cmd.urgencia ?? '')
-    const partes = [
-      cmd.estado && `estado ${ETIQUETA_ESTADO[cmd.estado]}`,
-      cmd.urgencia && `urgencia ${ETIQUETA_URGENCIA[cmd.urgencia]}`,
-    ].filter(Boolean)
-    setMensaje({ tipo: 'exito', texto: `Filtro por voz: ${partes.join(' y ')}.` })
-  }
-
-  /** Micrófono de la cabecera: «mostrar…/filtrar…» filtra el listado; lo demás dicta un ticket nuevo. */
-  function alDictar(texto: string) {
-    if (!permisos.crear || esComandoFiltro(texto)) {
-      filtrarPorVoz(texto)
-      return
-    }
-    if (sistemas.length === 0) {
-      setMensaje({ tipo: 'error', texto: 'No hay sistemas instalados activos: no se puede registrar un ticket.' })
-      return
-    }
-    // Abre el formulario (si estaba cerrado) antes de pasarle lo dictado
-    if (!formularioAbierto) flushSync(() => setFormularioAbierto(true))
-    formulario.current?.dictar(texto)
-  }
 
   async function cambiarEstado(ticket: TicketListado, estado: EstadoTicket) {
     if (estado === 'CANCELADO' && !window.confirm(`¿Cancelar el ticket ${ticket.codigo}?`)) return
@@ -199,7 +175,7 @@ export function IU_GestionarTickets({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="tarjeta flex items-start justify-between gap-4 p-5 sm:p-6">
+      <header className="tarjeta p-5 sm:p-6">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
@@ -209,22 +185,8 @@ export function IU_GestionarTickets({
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Tickets de Soporte y Mantenimientos</h1>
           <p className="text-sm text-slate-500">
             Registro de incidencias sobre los sistemas instalados, seguimiento de su estado y derivación a órdenes de trabajo.
-            {permisos.crear
-              ? ' Con el micrófono puede dictar un ticket nuevo o filtrar el listado («mostrar tickets abiertos»).'
-              : ' Con el micrófono puede filtrar el listado («mostrar tickets abiertos»).'}
           </p>
         </div>
-        <VoiceButton
-          redondo
-          etiqueta={permisos.crear ? 'Dictar ticket o filtrar por voz' : 'Filtrar por voz'}
-          onResult={alDictar}
-          ayuda={
-            permisos.crear
-              ? 'Ej.: «Correctivo, cliente Hotel Las Palmeras, las cámaras no graban, urgencia alta» o «mostrar tickets abiertos»'
-              : 'Ej.: «mostrar tickets abiertos de urgencia crítica»'
-          }
-          className="shrink-0"
-        />
       </header>
 
       {mensaje && (
@@ -246,7 +208,6 @@ export function IU_GestionarTickets({
 
       {formularioAbierto ? (
         <FormularioTicket
-          ref={formulario}
           sistemas={sistemas}
           onCancelar={() => setFormularioAbierto(false)}
           onCreado={(texto) => {

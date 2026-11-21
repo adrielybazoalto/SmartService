@@ -29,11 +29,17 @@ export async function SidebarLayout({ children }: { children: ReactNode }) {
 
   const permisos = await getPermisosDeRol(usuario.rol_id)
 
+  // El asistente de navegación por voz es exclusivo del Administrador.
+  // El rol se lee de la BD (usuario.rol.nombre), nunca del cliente.
+  const esAdministrador =
+    (usuario.rol?.nombre ?? '').trim().toUpperCase() === 'ADMINISTRADOR'
+
   return (
     <SidebarShell
       nombre={usuario.nombre}
       rolNombre={usuario.rol?.nombre}
       permisos={permisos}
+      esAdministrador={esAdministrador}
     >
       {children}
     </SidebarShell>

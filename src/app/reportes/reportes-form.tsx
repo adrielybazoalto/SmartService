@@ -41,15 +41,26 @@ export function ReportesForm({
   categorias,
   puedeExportar,
   errorInicial,
+  filtrosVoz,
 }: {
   tecnicos: OpcionFiltro[]
   categorias: OpcionFiltro[]
   puedeExportar: boolean
   errorInicial: string | null
+  /** Filtros preseleccionados por el asistente de navegación por voz. */
+  filtrosVoz?: { tipo?: string; atajo?: string }
 }) {
-  const inicial = calcularRangoAtajo('ESTE_MES')
-  const [tipo, setTipo] = useState<TipoReporte | ''>('')
-  const [atajo, setAtajo] = useState<Atajo | null>('ESTE_MES')
+  const tipoInicial =
+    filtrosVoz?.tipo && (TIPOS_REPORTE as readonly string[]).includes(filtrosVoz.tipo)
+      ? (filtrosVoz.tipo as TipoReporte)
+      : ''
+  const atajoInicial =
+    filtrosVoz?.atajo && (ATAJOS as readonly string[]).includes(filtrosVoz.atajo)
+      ? (filtrosVoz.atajo as Atajo)
+      : null
+  const inicial = calcularRangoAtajo(atajoInicial ?? 'ESTE_MES')
+  const [tipo, setTipo] = useState<TipoReporte | ''>(tipoInicial)
+  const [atajo, setAtajo] = useState<Atajo | null>(atajoInicial ?? 'ESTE_MES')
   const [desde, setDesde] = useState(inicial.desde)
   const [hasta, setHasta] = useState(inicial.hasta)
   const [tecnicoId, setTecnicoId] = useState('')

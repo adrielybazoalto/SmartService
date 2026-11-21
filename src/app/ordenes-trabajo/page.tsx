@@ -7,7 +7,13 @@ export const metadata = {
   title: 'Órdenes de Trabajo — SmartService',
 }
 
-export default async function OrdenesTrabajoPage() {
+export default async function OrdenesTrabajoPage({
+  searchParams,
+}: {
+  // Filtro enviado por el asistente de navegación por voz (CU12).
+  searchParams: Promise<{ estado?: string }>
+}) {
+  const { estado } = await searchParams
   const user = await getCurrentUser()
   const esTecnico = user?.rol?.nombre?.toUpperCase().includes('TECNICO') || false
 
@@ -40,10 +46,12 @@ export default async function OrdenesTrabajoPage() {
       </header>
 
       <IU_GestionarOrdenesTrabajo
+        key={estado ?? ''}
         ordenes={ordenes}
         esTecnico={esTecnico}
         usuarioId={user?.id || 0}
         permisos={{ gestionar, liquidar, crearOrden }}
+        estadoInicial={estado}
       />
     </main>
   )
