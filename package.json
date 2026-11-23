@@ -21,7 +21,8 @@
     "test:cu18": "node pruebas/tickets/cu18-voz.prueba.mjs && node pruebas/tickets/cu18-backend.prueba.mjs",
     "test:cu19": "node pruebas/alertas/cu19-backend.prueba.mjs && node pruebas/alertas/cu19-rpc.prueba.mjs",
     "test:cu20": "node pruebas/reportes/cu20-backend.prueba.mjs",
-    "test:voz-nav": "node pruebas/voz/navegacion-global.prueba.mjs"
+    "test:voz-nav": "node pruebas/voz/navegacion-global.prueba.mjs",
+    "test:voz-form": "node pruebas/voz/extractor-formularios.prueba.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.1",

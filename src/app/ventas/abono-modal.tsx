@@ -9,14 +9,18 @@
 //  Stripe confirma el pago (ver page.tsx, ?abono=exito&session_id=...).
 // =====================================================================
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { iniciarAbonoTarjetaAction, listarOrdenesAbonoAction, registrarAbonoAction } from '@/app/actions/abonos';
+import { useMemo, useState, type FormEvent } from 'react';
+import { iniciarAbonoTarjetaAction, registrarAbonoAction } from '@/app/actions/abonos';
 import type { OrdenParaAbono, ReciboAbono } from '@/backend/ventas/abonos';
 import { PanelQr } from '@/components/pagos/panel-qr';
 import { PanelTransferencia } from '@/components/pagos/panel-transferencia';
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider';
+import { sinTildes } from '@/lib/voz/normalizar';
 import { abrirNotaVentaPdf } from './ventas-form';
 
 type Props = {
+  ordenes: OrdenParaAbono[];
+  cargandoOrdenes: boolean;
   onClose: () => void;
   onCompletado: () => void;
   notificar: (tipo: 'ok' | 'error', texto: string) => void;
@@ -44,9 +48,7 @@ const nuevoIntento = () =>
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-export default function AbonoModal({ onClose, onCompletado, notificar }: Props) {
-  const [ordenes, setOrdenes] = useState<OrdenParaAbono[]>([]);
-  const [cargando, setCargando] = useState(true);
+export default function AbonoModal({ ordenes, cargandoOrdenes, onClose, onCompletado, notificar }: Props) {
   const [busqueda, setBusqueda] = useState('');
   const [ordenId, setOrdenId] = useState<number | null>(null);
   const [montoTxt, setMontoTxt] = useState('');
@@ -58,13 +60,29 @@ export default function AbonoModal({ onClose, onCompletado, notificar }: Props) 
   const [recibo, setRecibo] = useState<ReciboAbono | null>(null);
   const [intento] = useState(nuevoIntento);
 
-  useEffect(() => {
-    listarOrdenesAbonoAction().then((r) => {
-      if (r.ok) setOrdenes(r.data);
-      else setError(r.error);
-      setCargando(false);
-    });
-  }, []);
+  useVozFormulario({
+    esquemaId: 'registrar-abono',
+    aplicar: (valores) => {
+      const ordenDictada = valores.ordenId;
+      if (typeof ordenDictada === 'string' || typeof ordenDictada === 'number') {
+        const texto = String(ordenDictada);
+        const ordenEncontrada = ordenes.find(
+          (o) => String(o.orden_id) === texto || sinTildes(o.codigo_orden) === sinTildes(texto),
+        );
+        if (ordenEncontrada) setOrdenId(ordenEncontrada.orden_id);
+      }
+      const montoDictado = valores.montoTxt;
+      if (typeof montoDictado === 'string' || typeof montoDictado === 'number') setMontoTxt(String(montoDictado));
+      const metodoDictado = valores.metodo;
+      if (typeof metodoDictado === 'string') {
+        const encontrado = (Object.keys(ETIQUETA) as Metodo[]).find(
+          (m) => sinTildes(m) === sinTildes(metodoDictado) || sinTildes(ETIQUETA[m]) === sinTildes(metodoDictado),
+        );
+        if (encontrado) elegirMetodo(encontrado);
+      }
+      if (typeof valores.referencia === 'string') setReferencia(valores.referencia);
+    },
+  });
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -199,7 +217,7 @@ export default function AbonoModal({ onClose, onCompletado, notificar }: Props) 
                 onChange={(e) => setBusqueda(e.target.value)}
               />
               <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-gray-100">
-                {cargando ? (
+                {cargandoOrdenes ? (
                   <p className="p-4 text-center text-sm text-slate-500">Cargando órdenes…</p>
                 ) : filtradas.length === 0 ? (
                   <p className="p-4 text-center text-sm text-slate-500">No hay órdenes pendientes de liquidar.</p>

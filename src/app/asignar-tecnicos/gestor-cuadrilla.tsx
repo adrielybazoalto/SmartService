@@ -1,10 +1,27 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { OrdenConTecnicos } from '@/backend/asignaciones'
+import type { OrdenConTecnicos, TecnicoDisponible } from '@/backend/asignaciones'
 import { asignarCuadrillaAction, modificarCuadrillaAction } from '@/app/actions/asignaciones'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz, ValorCampoVoz } from '@/lib/voz/extractor-formularios'
+import { sinTildes } from '@/lib/voz/normalizar'
 import { formatearFechaHora } from '@/lib/fechas'
+
+function resolverTecnicoId(valor: ValorCampoVoz, tecnicos: TecnicoDisponible[]): number | null {
+  const texto = typeof valor === 'number' ? String(valor) : valor
+  if (typeof texto !== 'string') return null
+  const id = Number(texto)
+  if (Number.isInteger(id) && tecnicos.some((t) => t.id === id)) return id
+  const norm = sinTildes(texto)
+  if (!norm) return null
+  return (
+    tecnicos.find((t) => sinTildes(t.nombre) === norm)?.id ??
+    tecnicos.find((t) => sinTildes(t.nombre).includes(norm) && norm.length >= 3)?.id ??
+    null
+  )
+}
 
 export function GestorCuadrilla({ datos }: { datos: OrdenConTecnicos }) {
   const router = useRouter()
@@ -14,6 +31,48 @@ export function GestorCuadrilla({ datos }: { datos: OrdenConTecnicos }) {
   const [error, setError] = useState<string | null>(null)
   const [exito, setExito] = useState<string | null>(null)
   const [pendiente, startTransition] = useTransition()
+
+  const opcionesTecnicosVoz = useMemo<OpcionVoz[]>(
+    () =>
+      tecnicos.map((t) => ({
+        valor: String(t.id),
+        etiqueta: t.nombre,
+        sinonimos: [t.telefono ?? '', `tecnico ${t.id}`].filter(Boolean),
+      })),
+    [tecnicos],
+  )
+
+  // Voz CU11: el formulario ya está en pantalla en /asignar-tecnicos/[id].
+  useVozFormulario({
+    esquemaId: 'asignar-cuadrilla',
+    activo: datos.modificable && datos.ventanaDefinida,
+    aplicar: (valores) => {
+      const crudos = Array.isArray(valores.tecnicos)
+        ? valores.tecnicos
+        : valores.tecnicos !== undefined
+          ? [valores.tecnicos]
+          : []
+      const ids = [
+        ...new Set(
+          crudos
+            .map((valor) => resolverTecnicoId(valor, tecnicos))
+            .filter((id): id is number => id !== null),
+        ),
+      ]
+      const liderVoz =
+        valores.liderId !== undefined ? resolverTecnicoId(valores.liderId, tecnicos) : null
+
+      let seleccionFinal = ids.length > 0 ? ids : seleccion
+      if (liderVoz !== null) {
+        if (!seleccionFinal.includes(liderVoz)) seleccionFinal = [...seleccionFinal, liderVoz]
+        setLiderId(liderVoz)
+      } else if (liderId !== null && !seleccionFinal.includes(liderId)) {
+        setLiderId(null)
+      }
+      setSeleccion(seleccionFinal)
+    },
+    opcionesPorCampo: { tecnicos: opcionesTecnicosVoz, liderId: opcionesTecnicosVoz },
+  })
 
   const bloqueado = !datos.ventanaDefinida
   const hayDisponibles = tecnicos.some((t) => t.disponible)

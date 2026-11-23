@@ -12,6 +12,8 @@ import {
   ClienteEntity,
 } from "@/app/actions/clientes";
 import { PageHeaderBadge } from "@/components/page-header-badge";
+import { useVozFormulario } from "@/components/voz/voz-formulario-provider";
+import { sinTildes } from "@/lib/voz/normalizar";
 
 /**
  * IU_GestionarClientes (CU07).
@@ -127,6 +129,32 @@ export default function GestionarClientesPage() {
     setLblMensajeError(null);
     setPasoRegistro("cliente");
   };
+
+  // Voz: "Registrar Cliente" abre el paso 1 y rellena ambos pasos sin enviar.
+  useVozFormulario({
+    esquemaId: "crear-cliente",
+    abrir: () => seleccionarNuevoCliente(),
+    aplicar: (valores) => {
+      const tipoDictado = valores.tipoCliente;
+      if (typeof tipoDictado === "string") {
+        const tipo = sinTildes(tipoDictado);
+        if (tipo === "natural" || tipo === "juridico") {
+          setTipoCliente(tipo === "juridico" ? "JURIDICO" : "NATURAL");
+        }
+      }
+      if (typeof valores.documento === "string") setDocumento(valores.documento);
+      if (typeof valores.nombreRazonSocial === "string") setNombreRazonSocial(valores.nombreRazonSocial);
+      if (typeof valores.telefono === "string") setTelefono(valores.telefono);
+      if (typeof valores.correo === "string") setCorreo(valores.correo);
+      if (typeof valores.nombreEstablecimiento === "string") setNombreEstablecimiento(valores.nombreEstablecimiento);
+      if (typeof valores.tipoInmueble === "string") setTipoInmueble(valores.tipoInmueble);
+      if (typeof valores.direccion === "string") setDireccion(valores.direccion);
+      const latitud = valores.latitud;
+      if (typeof latitud === "string" || typeof latitud === "number") setLatitud(String(latitud));
+      const longitud = valores.longitud;
+      if (typeof longitud === "string" || typeof longitud === "number") setLongitud(String(longitud));
+    },
+  });
 
   /** Captura los inputs del cliente (paso 1). */
   const ingresarDatosCliente = (

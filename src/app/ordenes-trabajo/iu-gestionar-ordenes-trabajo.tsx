@@ -1,6 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz, ValorCampoVoz } from '@/lib/voz/extractor-formularios'
+import { sinTildes } from '@/lib/voz/normalizar'
 import {
   registrarInicioOrdenAccion,
   registrarFinOrdenAccion,
@@ -41,6 +44,25 @@ interface Producto {
   nombre: string
   unidad_medida: string
   stock_disponible: string
+}
+
+function textoVoz(valor: ValorCampoVoz | undefined): string | null {
+  if (typeof valor === 'string') return valor
+  if (typeof valor === 'number' && Number.isFinite(valor)) return String(valor)
+  return null
+}
+
+function resolverProductoId(valor: ValorCampoVoz | undefined, productos: Producto[]): number | null {
+  const texto = textoVoz(Array.isArray(valor) ? valor[0] : valor)
+  if (!texto) return null
+  const id = Number(texto)
+  if (Number.isInteger(id) && productos.some((p) => p.id === id)) return id
+  const norm = sinTildes(texto)
+  return (
+    productos.find((p) => sinTildes(p.nombre) === norm || sinTildes(p.codigo) === norm)?.id ??
+    productos.find((p) => sinTildes(p.nombre).includes(norm) && norm.length >= 3)?.id ??
+    null
+  )
 }
 
 type NotaResumen = { numero_nota: string; estado: string; monto_total: number }
@@ -99,6 +121,10 @@ export function IU_GestionarOrdenesTrabajo({
   const [filtroEstado, setFiltroEstado] = useState(estadoValido)
   const [creandoCorrectiva, setCreandoCorrectiva] = useState(false)
   const [ordenVentana, setOrdenVentana] = useState<{ id: number; codigo_orden: string } | null>(null)
+  const [ventanaVoz, setVentanaVoz] = useState<{
+    valores: Partial<DatosVentana>
+    version: number
+  }>({ valores: {}, version: 0 })
 
   const ordenesVisibles = filtroEstado ? ordenes.filter((o) => o.estado === filtroEstado) : ordenes
 
@@ -168,6 +194,76 @@ export function IU_GestionarOrdenesTrabajo({
       setMensaje({ tipo: 'error', texto: cotizado.error })
     }
   }
+
+  // El catálogo hace falta también antes de abrir el modal, para que el
+  // extractor reconozca el material dictado.
+  useEffect(() => {
+    let vivo = true
+    listarProductosParaConsumoAccion().then((r) => {
+      if (vivo && r.ok) setProductos(r.data)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  const opcionesProductosVoz = useMemo<OpcionVoz[]>(
+    () =>
+      productos.map((p) => ({
+        valor: String(p.id),
+        etiqueta: p.nombre,
+        sinonimos: [p.codigo],
+      })),
+    [productos],
+  )
+
+  // Voz CU12: «nueva orden correctiva» abre el modal en modo creación y rellena
+  // sus campos. El modal se remonta con cada dictado para reflejar los valores.
+  useVozFormulario({
+    esquemaId: 'crear-orden-correctiva',
+    activo: permisos.crearOrden,
+    abrir: () => {
+      setOrdenVentana(null)
+      setCreandoCorrectiva(true)
+    },
+    aplicar: (valores) => {
+      const valoresModal: Partial<DatosVentana> = {}
+      const tipoTrabajo = textoVoz(valores.tipoTrabajo)
+      const fecha = textoVoz(valores.fecha)
+      const horaInicio = textoVoz(valores.horaInicio)
+      const horaFin = textoVoz(valores.horaFin)
+      if (tipoTrabajo !== null) valoresModal.tipoTrabajo = tipoTrabajo
+      if (fecha !== null) valoresModal.fecha = fecha
+      if (horaInicio !== null) valoresModal.horaInicio = horaInicio
+      if (horaFin !== null) valoresModal.horaFin = horaFin
+      if (Object.keys(valoresModal).length === 0) return
+      setVentanaVoz((prev) => ({ valores: valoresModal, version: prev.version + 1 }))
+    },
+  })
+
+  // Voz CU12: el reporte de campo requiere una orden con fin real marcado.
+  const ordenParaReporte =
+    ordenes.find((o) => o.estado === 'EN_PROGRESO' && o.fecha_fin_real) ??
+    ordenes.find((o) => o.estado === 'EN_PROGRESO')
+
+  useVozFormulario({
+    esquemaId: 'reporte-campo',
+    activo: esTecnico && !!ordenParaReporte,
+    abrir: () => {
+      if (!ordenParaReporte) return
+      if (mostrarReporte && ordenSeleccionada?.id === ordenParaReporte.id) return
+      void abrirReporte(ordenParaReporte)
+    },
+    aplicar: (valores) => {
+      if (typeof valores.diagnostico === 'string') setDiagnostico(valores.diagnostico)
+      const productoId = resolverProductoId(valores.productoId, productos)
+      if (productoId !== null) setProductoSeleccionado(String(productoId))
+      const cantidad = textoVoz(valores.cantidadMaterial)
+      if (cantidad !== null) setCantidadMaterial(cantidad)
+      if (typeof valores.obsMaterial === 'string') setObsMaterial(valores.obsMaterial)
+    },
+    opcionesPorCampo: { productoId: opcionesProductosVoz },
+  })
 
   /** Material adicional (no cotizado). Si ya está en la lista, se suma a la cantidad usada. */
   function agregarMaterial() {
@@ -474,8 +570,10 @@ export function IU_GestionarOrdenesTrabajo({
 
       {(creandoCorrectiva || ordenVentana) && (
         <ModalVentana
+          key={`${creandoCorrectiva ? 'crear' : 'ventana'}-${ventanaVoz.version}`}
           titulo={ordenVentana ? `Ventana - ${ordenVentana.codigo_orden}` : 'Nueva orden correctiva'}
           conTipo={creandoCorrectiva}
+          valoresIniciales={creandoCorrectiva ? ventanaVoz.valores : undefined}
           onConfirmar={confirmarVentana}
           onCerrar={() => {
             setOrdenVentana(null)

@@ -5,9 +5,12 @@
 //  seleccionarTipo · seleccionarAtajo · solicitarReporte · exportarPDF · exportarExcel
 // =====================================================================
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { generarReporte, registrarDescarga } from '@/app/actions/reportes'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz, ValorCampoVoz } from '@/lib/voz/extractor-formularios'
+import { sinTildes } from '@/lib/voz/normalizar'
 import {
   ATAJOS,
   NOMBRE_ATAJO,
@@ -32,6 +35,23 @@ const AYUDA: Record<TipoReporte, string> = {
   INVENTARIO_CRITICO: 'Productos activos con stock mínimo definido y stock igual o menor a ese mínimo. Es el estado actual: no pide fechas.',
   RENDIMIENTO_TECNICO: 'Horas programadas contra horas reales por técnico y su porcentaje de cumplimiento.',
   PROVEEDORES: 'Compras a cada proveedor y margen bruto estimado de los productos que provee.',
+}
+
+function resolverOpcionId(
+  valor: ValorCampoVoz | undefined,
+  opciones: OpcionFiltro[],
+): number | null {
+  const texto = Array.isArray(valor) ? valor[0] : valor
+  if (texto === undefined || typeof texto === 'boolean') return null
+  const id = Number(texto)
+  if (Number.isInteger(id) && opciones.some((o) => o.id === id)) return id
+  const norm = sinTildes(String(texto))
+  if (!norm) return null
+  return (
+    opciones.find((o) => sinTildes(o.nombre) === norm)?.id ??
+    opciones.find((o) => sinTildes(o.nombre).includes(norm) && norm.length >= 3)?.id ??
+    null
+  )
 }
 
 type Aviso = { tipo: 'exito' | 'error'; texto: string } | null
@@ -86,6 +106,46 @@ export function ReportesForm({
     setDesde(rango.desde)
     setHasta(rango.hasta)
   }
+
+  const opcionesTecnicosVoz = useMemo<OpcionVoz[]>(
+    () => tecnicos.map((t) => ({ valor: String(t.id), etiqueta: t.nombre })),
+    [tecnicos],
+  )
+  const opcionesCategoriasVoz = useMemo<OpcionVoz[]>(
+    () => categorias.map((c) => ({ valor: String(c.id), etiqueta: c.nombre })),
+    [categorias],
+  )
+
+  // Voz CU20: el formulario está siempre en pantalla; sólo se rellenan filtros.
+  useVozFormulario({
+    esquemaId: 'generar-reporte',
+    aplicar: (valores) => {
+      if (typeof valores.tipo === 'string' && (TIPOS_REPORTE as readonly string[]).includes(valores.tipo)) {
+        setTipo(valores.tipo as TipoReporte)
+      }
+      const tecnicoId = resolverOpcionId(valores.tecnicoId, tecnicos)
+      if (tecnicoId !== null) setTecnicoId(String(tecnicoId))
+      const categoriaId = resolverOpcionId(valores.categoriaId, categorias)
+      if (categoriaId !== null) setCategoriaId(String(categoriaId))
+      if (typeof valores.atajo === 'string' && (ATAJOS as readonly string[]).includes(valores.atajo)) {
+        seleccionarAtajo(valores.atajo as Atajo)
+      }
+      // Las fechas explícitas ganan sobre el atajo y dejan el período personalizado.
+      if (typeof valores.desde === 'string') {
+        setDesde(valores.desde)
+        setAtajo(null)
+      }
+      if (typeof valores.hasta === 'string') {
+        setHasta(valores.hasta)
+        setAtajo(null)
+      }
+      setAviso(null)
+    },
+    opcionesPorCampo: {
+      tecnicoId: opcionesTecnicosVoz,
+      categoriaId: opcionesCategoriasVoz,
+    },
+  })
 
   /** Pasos 6 a 9: pide el reporte al servidor y lo muestra. */
   async function solicitarReporte() {

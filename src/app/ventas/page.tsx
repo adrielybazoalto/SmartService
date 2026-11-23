@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { anularVenta, listarTurnosCerrados, obtenerDatosVentas } from '@/app/actions/ventas';
-import { confirmarAbonoTarjetaAction } from '@/app/actions/abonos';
+import { confirmarAbonoTarjetaAction, listarOrdenesAbonoAction } from '@/app/actions/abonos';
 import type { Caja, DatosVentas, VentaResumen } from '@/backend/ventas';
+import type { OrdenParaAbono } from '@/backend/ventas/abonos';
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider';
 import VentasForm, { abrirNotaVentaPdf } from './ventas-form';
 import ArqueoModal from './arqueo-modal';
 import AbonoModal from './abono-modal';
@@ -42,8 +44,24 @@ export default function VentasPage() {
   const [verTurnos, setVerTurnos] = useState(false);
   const [porAnular, setPorAnular] = useState<VentaResumen | null>(null);
   const [anulando, setAnulando] = useState(false);
+  // Órdenes cargadas aquí para que el catálogo de voz exista incluso con el modal cerrado.
+  const [ordenesAbono, setOrdenesAbono] = useState<OrdenParaAbono[]>([]);
+  const [cargandoOrdenesAbono, setCargandoOrdenesAbono] = useState(true);
 
   const notificar = useCallback((tipo: 'ok' | 'error', texto: string) => setToast({ tipo, texto }), []);
+
+  useEffect(() => {
+    let activo = true;
+    listarOrdenesAbonoAction().then((r) => {
+      if (!activo) return;
+      if (r.ok) setOrdenesAbono(r.data);
+      else notificar('error', r.error);
+      setCargandoOrdenesAbono(false);
+    });
+    return () => {
+      activo = false;
+    };
+  }, [notificar]);
 
   useEffect(() => {
     if (!toast) return;
@@ -71,6 +89,37 @@ export default function VentasPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  const opcionesOrdenesVoz = useMemo(
+    () =>
+      ordenesAbono.map((o) => ({
+        valor: String(o.orden_id),
+        etiqueta: o.codigo_orden,
+        sinonimos: [o.codigo_orden, o.cliente_nombre ?? '', o.numero_cotizacion ?? ''].filter(Boolean),
+      })),
+    [ordenesAbono],
+  );
+
+  // Voz: abre el modal de caja en el modo que corresponda; ArqueoModal aplica montos.
+  useVozFormulario({
+    esquemaId: 'arqueo-caja',
+    abrir: () => {
+      if (modal !== null) return;
+      setModal(caja ? 'cierre' : 'apertura');
+    },
+    aplicar: () => {},
+  });
+
+  // Voz: abre el modal de abono; AbonoModal aplica orden, monto, método y referencia.
+  useVozFormulario({
+    esquemaId: 'registrar-abono',
+    abrir: () => {
+      if (modal !== null) return;
+      setModal('abono');
+    },
+    aplicar: () => {},
+    opcionesPorCampo: { ordenId: opcionesOrdenesVoz },
+  });
 
   // Abono con tarjeta: Stripe vuelve a /ventas?abono=exito&session_id=...
   // El recibo se registra aquí, una sola vez (la BD es idempotente por sesión).
@@ -407,7 +456,13 @@ export default function VentasPage() {
 
       {/* Subflujo: abono a orden de trabajo */}
       {modal === 'abono' && (
-        <AbonoModal onClose={() => setModal(null)} notificar={notificar} onCompletado={cargar} />
+        <AbonoModal
+          ordenes={ordenesAbono}
+          cargandoOrdenes={cargandoOrdenesAbono}
+          onClose={() => setModal(null)}
+          notificar={notificar}
+          onCompletado={cargar}
+        />
       )}
 
       {/* Modal de apertura / arqueo y cierre */}

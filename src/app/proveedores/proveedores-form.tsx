@@ -27,6 +27,9 @@ import type {
   Proveedor,
   ProveedorDTO,
 } from '@/backend/proveedores/types';
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider';
+import type { OpcionVoz } from '@/lib/voz/extractor-formularios';
+import { sinTildes } from '@/lib/voz/normalizar';
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -92,6 +95,23 @@ export default function ProveedoresForm({
   const [guardando, setGuardando] = useState(false);
   const [verificando, setVerificando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+
+  // El dictado sólo rellena el formulario de alta; nunca envía.
+  useVozFormulario({
+    esquemaId: 'crear-proveedor',
+    activo: esNuevo,
+    aplicar: (valores) => {
+      setValores((prev) => ({
+        ...prev,
+        razon_social: typeof valores.razon_social === 'string' ? valores.razon_social : prev.razon_social,
+        nit: typeof valores.nit === 'string' ? valores.nit.replace(/\s/g, '') : prev.nit,
+        contacto: typeof valores.contacto === 'string' ? valores.contacto : prev.contacto,
+        telefono: typeof valores.telefono === 'string' ? valores.telefono : prev.telefono,
+        correo: typeof valores.correo === 'string' ? valores.correo : prev.correo,
+        direccion: typeof valores.direccion === 'string' ? valores.direccion : prev.direccion,
+      }));
+    },
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !guardando && onClose();
@@ -209,11 +229,13 @@ export default function ProveedoresForm({
 export function CatalogoProveedor({
   proveedor,
   productos,
+  opcionesProductoVoz,
   notificar,
   onTotal,
 }: {
   proveedor: Proveedor;
   productos: ProductoInventario[];
+  opcionesProductoVoz: OpcionVoz[];
   notificar: Notificar;
   onTotal: (total: number) => void;
 }) {
@@ -233,6 +255,27 @@ export function CatalogoProveedor({
   const [edicion, setEdicion] = useState({ codigo: '', precio: '' });
   const [guardando, setGuardando] = useState(false);
   const [quitando, setQuitando] = useState<number | null>(null);
+
+  const editable = proveedor.estado;
+
+  // Alta por voz: el bus ya abrió el catálogo del proveedor; aquí sólo se rellena.
+  useVozFormulario({
+    esquemaId: 'agregar-producto-proveedor',
+    opcionesPorCampo: { productoId: opcionesProductoVoz },
+    aplicar: (valores) => {
+      if (!proveedor.estado) return;
+      if (typeof valores.productoId === 'string' || typeof valores.productoId === 'number') {
+        const buscado = sinTildes(String(valores.productoId).trim());
+        const encontrado = productos.find(
+          (p) => sinTildes(String(p.id)) === buscado || sinTildes(p.nombre) === buscado
+        );
+        if (encontrado) setProductoId(String(encontrado.id));
+      }
+      if (typeof valores.codigo === 'string') setCodigo(valores.codigo);
+      if (typeof valores.precio === 'number') setPrecio(String(valores.precio));
+      else if (typeof valores.precio === 'string') setPrecio(valores.precio);
+    },
+  });
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -307,8 +350,6 @@ export function CatalogoProveedor({
     actualizarLista(items.filter((i) => i.producto_id !== item.producto_id));
     notificar('ok', res.mensaje);
   };
-
-  const editable = proveedor.estado;
 
   return (
     <div className="space-y-5">

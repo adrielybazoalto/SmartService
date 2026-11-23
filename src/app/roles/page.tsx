@@ -13,6 +13,7 @@ import {
 import { IconoModulo } from "@/components/icono-modulo";
 import { ACCIONES_PROTEGIDAS_ADMIN, MODULOS_PROTEGIDOS_ADMIN } from "@/lib/navigation";
 import { PageHeaderBadge } from "@/components/page-header-badge";
+import { useVozFormulario } from "@/components/voz/voz-formulario-provider";
 
 const celda = (moduloId: number, accionId: number) => `${moduloId}:${accionId}`;
 
@@ -37,6 +38,16 @@ export default function RolesPage() {
   const [creandoRol, setCreandoRol] = useState(false);
   const [nombreRol, setNombreRol] = useState("");
   const [descripcionRol, setDescripcionRol] = useState("");
+
+  // Voz: abre el panel de creación y rellena sus campos sin enviar el formulario.
+  useVozFormulario({
+    esquemaId: "crear-rol",
+    abrir: () => setCreandoRol(true),
+    aplicar: (valores) => {
+      if (typeof valores.nombreRol === "string") setNombreRol(valores.nombreRol);
+      if (typeof valores.descripcionRol === "string") setDescripcionRol(valores.descripcionRol);
+    },
+  });
 
   /** Aplica la configuración leída de la BD (solo desde callbacks asíncronos). */
   const aplicarConfiguracion = useCallback(

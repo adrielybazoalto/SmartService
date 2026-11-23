@@ -1,11 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { LoaderCircle, Mic, MicOff, X } from 'lucide-react'
 import { useVoiceRecognition } from '@/lib/voz/use-voice-recognition'
 import { MSG_NAVEGADOR_SIN_VOZ, mensajeErrorVoz } from '@/lib/voz/mensajes'
 import { interpretarComandoVoz } from '@/lib/voz/intenciones-navegacion'
+import { ESQUEMAS_FORMULARIOS } from '@/lib/voz/esquemas-formularios'
+import { extraerDatosFormulario, seleccionarEsquema } from '@/lib/voz/extractor-formularios'
+import {
+  PARAMETRO_VOZ,
+  codificarSolicitudVoz,
+  useBusVozFormulario,
+} from '@/components/voz/voz-formulario-provider'
 
 type TipoAviso = 'exito' | 'error' | 'info'
 interface Aviso {
@@ -13,33 +20,83 @@ interface Aviso {
   texto: string
 }
 
+/** Añade el parámetro `voz` a una ruta que ya puede tener otros query params. */
+function conParametroVoz(destino: string, codificado: string): string {
+  const [ruta, query = ''] = destino.split('?')
+  const parametros = new URLSearchParams(query)
+  parametros.set(PARAMETRO_VOZ, codificado)
+  return `${ruta}?${parametros.toString()}`
+}
+
+function mismaRuta(ruta: string, prefijo: string): boolean {
+  return ruta === prefijo || ruta.startsWith(`${prefijo}/`)
+}
+
 /**
- * Asistente de Navegación por Voz GLOBAL (solo ADMINISTRADOR).
+ * Asistente de voz GLOBAL (solo ADMINISTRADOR), con flujo conversacional en 2 pasos:
  *
- * Se monta una sola vez en el layout autenticado (SidebarShell), por lo que
- * está disponible en cualquier pantalla de P1..P4. El rol se resuelve en el
- * servidor (`getCurrentUser`) y se pasa como prop; la comprobación se repite
- * aquí como defensa en profundidad: para cualquier otro rol no se renderiza
- * nada y, por tanto, nunca se activa el micrófono.
+ * 1. Navegación a cualquier módulo de P1..P4.
+ * 2. Dictado de una acción de creación/registro: se abre el modal o la subruta
+ *    correspondiente y se rellenan los campos, sin enviar el formulario.
  *
- * Posición: esquina superior derecha del área de contenido, igual en todas las
- * rutas autenticadas (incluido CU18, que ya no tiene micrófono local propio).
+ * Se monta una sola vez en el layout autenticado (SidebarShell). El rol se
+ * resuelve en el servidor y se comprueba también aquí como defensa en profundidad.
  */
 export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boolean }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const bus = useBusVozFormulario()
   const [aviso, setAviso] = useState<Aviso | null>(null)
 
   const alTerminar = useCallback(
     (texto: string) => {
-      const resultado = interpretarComandoVoz(texto)
-      if (resultado.tipo === 'navegacion') {
-        setAviso({ tipo: 'exito', texto: `Entendido: ${resultado.resumen}. Abriendo…` })
-        router.push(resultado.destino)
+      const navegacion = interpretarComandoVoz(texto)
+      const rutaDestino = navegacion.tipo === 'navegacion' ? navegacion.ruta : pathname
+      const esquema = seleccionarEsquema(
+        texto,
+        ESQUEMAS_FORMULARIOS,
+        pathname,
+        rutaDestino,
+      )
+
+      if (esquema) {
+        const esquemaCompleto = bus.obtenerEsquema(esquema.id) ?? esquema
+        const resultado = extraerDatosFormulario(texto, esquemaCompleto)
+        const solicitud = {
+          id: `voz-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          esquemaId: esquema.id,
+          valores: resultado.valores,
+          texto,
+          origen: 'dictado' as const,
+        }
+
+        // Se publica antes de navegar: el bus conserva la solicitud pendiente y
+        // el formulario de destino la recibe en cuanto se monta.
+        bus.publicarSolicitud(solicitud)
+        bus.notificarResultado(resultado)
+        setAviso({
+          tipo: 'exito',
+          texto: 'Formulario preparado. Revise los datos y confirme manualmente con Guardar.',
+        })
+
+        const yaEstaEnElFormulario = mismaRuta(pathname, esquema.ruta)
+        if (yaEstaEnElFormulario && navegacion.tipo !== 'navegacion') return
+
+        const destino =
+          navegacion.tipo === 'navegacion' ? navegacion.destino : esquema.ruta
+        router.push(conParametroVoz(destino, codificarSolicitudVoz(solicitud)))
+        return
+      }
+
+      bus.limpiarResultado()
+      if (navegacion.tipo === 'navegacion') {
+        setAviso({ tipo: 'exito', texto: `Entendido: ${resultadoResumen(navegacion.resumen)} Abriendo…` })
+        router.push(navegacion.destino)
       } else {
-        setAviso({ tipo: 'error', texto: resultado.mensaje })
+        setAviso({ tipo: 'error', texto: navegacion.mensaje })
       }
     },
-    [router],
+    [bus, pathname, router],
   )
 
   const voz = useVoiceRecognition({
@@ -52,17 +109,17 @@ export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boole
   // El aviso se retira solo, pero nunca mientras se está escuchando.
   useEffect(() => {
     if (!aviso || voz.isListening) return
-    const temporizador = setTimeout(() => setAviso(null), 7000)
+    const temporizador = setTimeout(() => setAviso(null), 11000)
     return () => clearTimeout(temporizador)
   }, [aviso, voz.isListening])
 
-  // Al empezar, limpiamos avisos y transcripción anteriores.
   function iniciar() {
     if (!voz.isSupported) {
       setAviso({ tipo: 'error', texto: MSG_NAVEGADOR_SIN_VOZ })
       return
     }
     setAviso(null)
+    bus.limpiarResultado()
     voz.start()
   }
 
@@ -74,18 +131,18 @@ export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boole
 
   const textoVivo = [voz.transcript, voz.interimTranscript].filter(Boolean).join(' ').trim()
   const mensajeError = voz.error ? mensajeErrorVoz(voz.error) : null
-  const mostrarGlobo = escuchando || Boolean(textoVivo) || Boolean(aviso) || Boolean(mensajeError)
+  const mostrarGlobo = escuchando || Boolean(textoVivo) || Boolean(aviso) || Boolean(mensajeError) || Boolean(bus.resultado)
   const ariaLabel = escuchando
     ? 'Detener dictado del asistente de voz'
     : procesando
       ? 'Asistente de voz procesando la instrucción'
-      : 'Iniciar asistente de navegación por voz'
+      : 'Iniciar asistente de navegación y rellenado por voz'
 
   return (
     <div className={`fixed z-50 flex flex-col items-end ${posicion}`}>
       {mostrarGlobo && (
         <div
-          className="absolute bottom-full right-0 mb-3 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-lime-200 bg-white p-3 text-left shadow-xl shadow-slate-900/10"
+          className="absolute right-0 top-full mt-3 max-h-[70vh] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-lime-200 bg-white p-3 text-left shadow-xl shadow-slate-900/10"
           aria-live="polite"
         >
           <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -96,6 +153,7 @@ export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boole
               type="button"
               onClick={() => {
                 setAviso(null)
+                bus.limpiarResultado()
                 voz.reset()
               }}
               aria-label="Cerrar aviso del asistente de voz"
@@ -107,7 +165,7 @@ export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boole
 
           {escuchando && (
             <p className="text-sm font-medium text-slate-700">
-              Escuchando… diga, por ejemplo: «llévame a tickets de soporte».
+              Escuchando… puede decir «ir a clientes» o «registrar cliente Empresa Sur, nit 123».
             </p>
           )}
 
@@ -116,6 +174,34 @@ export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boole
               <span className="sr-only">Transcripción: </span>
               {textoVivo}
             </p>
+          )}
+
+          {bus.resultado && (
+            <div className="mt-2 rounded-xl border border-lime-100 bg-lime-50/70 p-2.5">
+              <p className="text-sm font-semibold text-lime-900">
+                Formulario abierto: {bus.resultado.formulario}
+              </p>
+              {bus.resultado.camposRellenados.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
+                  {bus.resultado.camposRellenados.map((campo) => (
+                    <li key={campo.nombre}>
+                      <span className="font-medium">{campo.etiqueta}:</span>{' '}
+                      <span className="break-words">{campo.texto}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {bus.resultado.faltantes.length > 0 ? (
+                <p className="mt-1.5 text-xs font-medium text-amber-700">
+                  Faltan por completar manualmente:{' '}
+                  {bus.resultado.faltantes.map((f) => f.etiqueta).join(', ')}.
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs font-medium text-emerald-700">
+                  Campos obligatorios completos. Confirme manualmente con Guardar.
+                </p>
+              )}
+            </div>
           )}
 
           {aviso && (
@@ -172,4 +258,8 @@ export function AsistenteVozGlobal({ esAdministrador }: { esAdministrador: boole
       </button>
     </div>
   )
+}
+
+function resultadoResumen(resumen: string): string {
+  return resumen.charAt(0).toLowerCase() + resumen.slice(1)
 }

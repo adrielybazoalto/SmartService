@@ -9,6 +9,8 @@ import {
 } from '@/app/actions/cotizaciones'
 import { PanelQr } from '@/components/pagos/panel-qr'
 import { PanelTransferencia } from '@/components/pagos/panel-transferencia'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import { sinTildes } from '@/lib/voz/normalizar'
 
 type Metodo = 'EFECTIVO' | 'QR' | 'TRANSFERENCIA' | 'TARJETA'
 
@@ -70,6 +72,24 @@ export function ModalAnticipo({
     setMontoTexto(valor)
     setConfirmado(false)
   }
+
+  useVozFormulario({
+    esquemaId: 'anticipo-cotizacion',
+    aplicar: (valores) => {
+      const montoDictado = valores.montoTexto
+      if (typeof montoDictado === 'string') cambiarMonto(montoDictado)
+      else if (typeof montoDictado === 'number') cambiarMonto(String(montoDictado))
+
+      const metodoDictado = valores.metodo
+      if (typeof metodoDictado === 'string') {
+        const encontrado = METODOS.find(
+          (m) => sinTildes(m.valor) === sinTildes(metodoDictado) || sinTildes(m.etiqueta) === sinTildes(metodoDictado),
+        )
+        if (encontrado) cambiarMetodo(encontrado.valor)
+      }
+      if (typeof valores.referencia === 'string') setReferencia(valores.referencia)
+    },
+  })
 
   async function aprobar(anticipo: { monto: number; metodo: Metodo | null; referencia: string | null }) {
     setEnviando(true)

@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo, useTransition, useCallback } from 'react'
+import { useState, useEffect, useMemo, useTransition, useCallback, useRef } from 'react'
 import { PageHeaderBadge } from '@/components/page-header-badge'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz, ValorCampoVoz } from '@/lib/voz/extractor-formularios'
+import { sinTildes } from '@/lib/voz/normalizar'
 import {
   listarTecnicos,
   obtenerResumenPersonalTecnico,
@@ -35,6 +38,50 @@ const OPCIONES_DIAS = [
   'Fines de Semana',
 ] as const
 
+/** El esquema de voz usa claves enum; el select y la BD usan las etiquetas. */
+const TIPOS_BLOQUEO: Record<string, string> = {
+  VACACIONES: 'Vacaciones',
+  BAJA_MEDICA: 'Baja Médica',
+  PERMISO_PARTICULAR: 'Permiso Particular',
+  FERIADO: 'Feriado',
+  CAPACITACION: 'Capacitación',
+}
+
+function claveSinTildes(texto: string): string {
+  return sinTildes(texto).replace(/[^a-z0-9]/g, '')
+}
+
+function resolverTecnicoId(
+  valor: ValorCampoVoz | undefined,
+  lista: { id: number; nombre: string; correo: string }[],
+): number | null {
+  const texto = Array.isArray(valor) ? valor[0] : valor
+  if (texto === undefined || typeof texto === 'boolean') return null
+  const id = Number(texto)
+  if (Number.isInteger(id) && lista.some((t) => t.id === id)) return id
+  const norm = claveSinTildes(String(texto))
+  if (!norm) return null
+  return (
+    lista.find((t) => claveSinTildes(t.nombre) === norm)?.id ??
+    lista.find((t) => claveSinTildes(t.nombre).includes(norm) && norm.length >= 3)?.id ??
+    null
+  )
+}
+
+/** El extractor da YYYY-MM-DD; el input datetime-local necesita también la hora. */
+function normalizarFechaHora(valor: string, hora: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? `${valor}T${hora}` : valor
+}
+
+function resolverTipoBloqueo(valor: ValorCampoVoz | undefined): string | null {
+  if (typeof valor !== 'string') return null
+  const norm = claveSinTildes(valor)
+  for (const [clave, etiqueta] of Object.entries(TIPOS_BLOQUEO)) {
+    if (norm === claveSinTildes(clave) || norm === claveSinTildes(etiqueta)) return etiqueta
+  }
+  return null
+}
+
 export default function GestionJornadasPage() {
   const [tecnicos, setTecnicos] = useState<{ id: number; nombre: string; correo: string }[]>([])
   const [resumenGlobal, setResumenGlobal] = useState<TecnicoResumen[]>([])
@@ -67,6 +114,8 @@ export default function GestionJornadasPage() {
   const [isPendingJornada, startTransitionJornada] = useTransition()
   const [isPendingBloqueo, startTransitionBloqueo] = useTransition()
   const [bloqueoEliminandoId, setBloqueoEliminandoId] = useState<number | null>(null)
+  // Evita que la carga de la jornada guardada sobrescriba los valores dictados.
+  const omitirResetJornadaRef = useRef(false)
 
   // Carga sincronizada desde la base de datos
   const recargarDatos = useCallback(async () => {
@@ -110,15 +159,19 @@ export default function GestionJornadasPage() {
       return
     }
 
-    const techInfo = resumenGlobal.find((t) => t.id === selectedTecnico)
-    if (techInfo?.jornadaData) {
-      setDiaSemana(techInfo.jornadaData.dia_semana)
-      setHoraInicio(techInfo.jornadaData.hora_inicio)
-      setHoraFin(techInfo.jornadaData.hora_fin)
+    if (omitirResetJornadaRef.current) {
+      omitirResetJornadaRef.current = false
     } else {
-      setDiaSemana('Lunes a Viernes')
-      setHoraInicio('08:00')
-      setHoraFin('18:00')
+      const techInfo = resumenGlobal.find((t) => t.id === selectedTecnico)
+      if (techInfo?.jornadaData) {
+        setDiaSemana(techInfo.jornadaData.dia_semana)
+        setHoraInicio(techInfo.jornadaData.hora_inicio)
+        setHoraFin(techInfo.jornadaData.hora_fin)
+      } else {
+        setDiaSemana('Lunes a Viernes')
+        setHoraInicio('08:00')
+        setHoraFin('18:00')
+      }
     }
 
     cargarBloqueosTecnico(selectedTecnico)
@@ -130,6 +183,59 @@ export default function GestionJornadasPage() {
     setPestanaActiva('configurar')
     cargarBloqueosTecnico(techId)
   }
+
+  // Opciones reales del catálogo para que el asistente reconozca al técnico dictado.
+  const opcionesTecnicosVoz = useMemo<OpcionVoz[]>(
+    () =>
+      tecnicos.map((t) => ({
+        valor: String(t.id),
+        etiqueta: t.nombre,
+        sinonimos: [t.correo, `tecnico ${t.id}`],
+      })),
+    [tecnicos],
+  )
+
+  // Voz CU10: la jornada vive en la pestaña «Configurar y Bloquear».
+  useVozFormulario({
+    esquemaId: 'configurar-jornada',
+    abrir: () => setPestanaActiva('configurar'),
+    aplicar: (valores) => {
+      const tecnicoId = resolverTecnicoId(valores.tecnicoId, tecnicos)
+      if (tecnicoId !== null) {
+        if (tecnicoId !== selectedTecnico) omitirResetJornadaRef.current = true
+        setSelectedTecnico(tecnicoId)
+        cargarBloqueosTecnico(tecnicoId)
+      }
+      const hayDatosJornada =
+        typeof valores.diaSemana === 'string' ||
+        typeof valores.horaInicio === 'string' ||
+        typeof valores.horaFin === 'string'
+      if (hayDatosJornada && selectedTecnico === null) omitirResetJornadaRef.current = true
+      if (typeof valores.diaSemana === 'string') setDiaSemana(valores.diaSemana)
+      if (typeof valores.horaInicio === 'string') setHoraInicio(valores.horaInicio)
+      if (typeof valores.horaFin === 'string') setHoraFin(valores.horaFin)
+    },
+    opcionesPorCampo: { tecnicoId: opcionesTecnicosVoz },
+  })
+
+  // Voz CU10: el bloqueo comparte la misma pestaña; nunca se registra automáticamente.
+  useVozFormulario({
+    esquemaId: 'registrar-bloqueo',
+    abrir: () => setPestanaActiva('configurar'),
+    aplicar: (valores) => {
+      const tecnicoId = resolverTecnicoId(valores.tecnicoId, tecnicos)
+      if (tecnicoId !== null) {
+        setSelectedTecnico(tecnicoId)
+        cargarBloqueosTecnico(tecnicoId)
+      }
+      const tipo = resolverTipoBloqueo(valores.tipoBloqueo)
+      if (tipo) setTipoBloqueo(tipo)
+      if (typeof valores.fechaInicio === 'string') setFechaInicio(normalizarFechaHora(valores.fechaInicio, '08:00'))
+      if (typeof valores.fechaFin === 'string') setFechaFin(normalizarFechaHora(valores.fechaFin, '18:00'))
+      if (typeof valores.motivo === 'string') setMotivo(valores.motivo)
+    },
+    opcionesPorCampo: { tecnicoId: opcionesTecnicosVoz },
+  })
 
   // Filtrado de la lista en memoria
   const tecnicosFiltrados = useMemo(() => {

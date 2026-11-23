@@ -13,6 +13,8 @@ import {
   listarProveedoresAction,
 } from '@/app/actions/proveedores';
 import type { ProductoInventario, Proveedor } from '@/backend/proveedores/types';
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider';
+import type { OpcionVoz } from '@/lib/voz/extractor-formularios';
 import ProveedoresForm, { CatalogoProveedor, ComparadorPrecios, type Notificar } from './proveedores-form';
 
 const iniciales = (s: string) =>
@@ -77,6 +79,37 @@ export default function ProveedoresPage() {
   }, [cargar]);
 
   // Búsqueda instantánea por razón social, NIT o contacto
+  // Opciones reales del inventario para el bus de voz (registro persistente).
+  const opcionesProductoVoz = useMemo<OpcionVoz[]>(
+    () => productos.map((p) => ({ valor: String(p.id), etiqueta: p.nombre })),
+    [productos]
+  );
+
+  useVozFormulario({
+    esquemaId: 'crear-proveedor',
+    abrir: () => setFormulario({ abierto: true, proveedor: null }),
+    aplicar: () => {},
+  });
+
+  useVozFormulario({
+    esquemaId: 'agregar-producto-proveedor',
+    abrir: () => {
+      // El formulario de alta vive en el catálogo del proveedor activo; si no
+      // hay uno seleccionado, mostramos el primero activo y su pestaña catálogo.
+      if (!proveedores.some((p) => p.id === seleccionadoId && p.estado)) {
+        const primeroActivo = proveedores.find((p) => p.estado);
+        if (primeroActivo) {
+          setSeleccionadoId(primeroActivo.id);
+          setPestana('catalogo');
+        }
+      } else {
+        setPestana('catalogo');
+      }
+    },
+    aplicar: () => {},
+    opcionesPorCampo: { productoId: opcionesProductoVoz },
+  });
+
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return proveedores
@@ -304,6 +337,7 @@ export default function ProveedoresPage() {
                       key={seleccionado.id}
                       proveedor={seleccionado}
                       productos={productos}
+                      opcionesProductoVoz={opcionesProductoVoz}
                       notificar={notificar}
                       onTotal={(total) => {
                         reemplazar({ ...seleccionado, total_productos: total });

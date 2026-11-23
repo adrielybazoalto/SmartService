@@ -8,6 +8,7 @@ import {
   crearServicioAction,
 } from '@/app/actions/servicios'
 import { PageHeaderBadge } from '@/components/page-header-badge'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
 import { FiltrosServicios } from './filtros-servicios'
 
 const CLASE_INPUT =
@@ -37,6 +38,16 @@ export function GestorServicios({
   const [formulario, setFormulario] = useState<{ servicio: Servicio | null } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendiente, startTransition] = useTransition()
+
+  // Voz: abre el modal en modo "Nuevo"; el componente hijo aplica los valores.
+  useVozFormulario({
+    esquemaId: 'crear-servicio',
+    abrir: () => {
+      if (formulario !== null) return
+      setFormulario({ servicio: null })
+    },
+    aplicar: () => {},
+  })
 
   function handleEstado(s: Servicio) {
     const verbo = s.activo ? 'desactivar' : 'reactivar'
@@ -195,6 +206,17 @@ function FormularioServicio({
   const [descripcion, setDescripcion] = useState(servicio?.descripcion ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pendiente, startTransition] = useTransition()
+
+  useVozFormulario({
+    esquemaId: 'crear-servicio',
+    activo: servicio === null,
+    aplicar: (valores) => {
+      if (typeof valores.nombre === 'string') setNombre(valores.nombre)
+      const tarifaDictada = valores.tarifa
+      if (typeof tarifaDictada === 'string' || typeof tarifaDictada === 'number') setTarifa(String(tarifaDictada))
+      if (typeof valores.descripcion === 'string') setDescripcion(valores.descripcion)
+    },
+  })
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()

@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { cambiarEstadoTicketAccion, derivarTicketAccion } from '@/app/actions/tickets'
-import { ModalVentana } from '@/app/ordenes-trabajo/modal-ventana'
+import { ModalVentana, type DatosVentana } from '@/app/ordenes-trabajo/modal-ventana'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz, ValorCampoVoz } from '@/lib/voz/extractor-formularios'
+import { sinTildes } from '@/lib/voz/normalizar'
+import { etiquetaSistema } from '@/backend/tickets/busqueda'
 import { formatearFechaHora } from '@/lib/fechas'
 import {
   ESTADOS_DERIVABLES,
@@ -12,13 +16,14 @@ import {
   ETIQUETA_ESTADO,
   ETIQUETA_TIPO,
   ETIQUETA_URGENCIA,
+  TIPOS_TICKET,
   TRANSICIONES_TICKET,
   URGENCIAS_TICKET,
   type EstadoTicket,
   type UrgenciaTicket,
 } from '@/backend/tickets/constantes'
 import type { SistemaOpcion, TicketListado } from '@/backend/tickets/types'
-import { FormularioTicket } from './formulario-ticket'
+import { FormularioTicket, type ValoresTicketVoz } from './formulario-ticket'
 
 export interface PermisosTickets {
   crear: boolean
@@ -40,6 +45,23 @@ const COLOR_ESTADO: Record<EstadoTicket, string> = {
   EN_PROCESO: 'bg-amber-100 text-amber-800',
   RESUELTO: 'bg-emerald-100 text-emerald-800',
   CANCELADO: 'bg-slate-200 text-slate-700',
+}
+
+function resolverSistemaVoz(
+  valor: ValorCampoVoz | undefined,
+  sistemas: SistemaOpcion[],
+): number | null {
+  const texto = Array.isArray(valor) ? valor[0] : valor
+  if (texto === undefined || typeof texto === 'boolean') return null
+  const id = Number(texto)
+  if (Number.isInteger(id) && sistemas.some((s) => s.id === id)) return id
+  const norm = sinTildes(String(texto))
+  if (!norm) return null
+  return (
+    sistemas.find((s) => sinTildes(etiquetaSistema(s)) === norm)?.id ??
+    sistemas.find((s) => sinTildes(etiquetaSistema(s)).includes(norm) && norm.length >= 3)?.id ??
+    null
+  )
 }
 
 const ETIQUETA_ACCION: Record<EstadoTicket, string> = {
@@ -101,6 +123,14 @@ export function IU_GestionarTickets({
   const [derivando, setDerivando] = useState<TicketListado | null>(null)
   const [ocupado, setOcupado] = useState<number | null>(null)
   const [mensaje, setMensaje] = useState<Mensaje>(null)
+  const [ticketVoz, setTicketVoz] = useState<{ valores: ValoresTicketVoz; version: number }>({
+    valores: {},
+    version: 0,
+  })
+  const [ventanaDerivarVoz, setVentanaDerivarVoz] = useState<{
+    valores: Partial<DatosVentana>
+    version: number
+  }>({ valores: {}, version: 0 })
 
   useEffect(() => {
     if (!mensaje) return
@@ -115,6 +145,70 @@ export function IU_GestionarTickets({
       ),
     [tickets, filtroEstado, filtroUrgencia],
   )
+
+  const opcionesSistemasVoz = useMemo<OpcionVoz[]>(
+    () =>
+      sistemas.map((s) => ({
+        valor: String(s.id),
+        etiqueta: etiquetaSistema(s),
+        sinonimos: [
+          s.cliente.nombre,
+          s.cliente.razon_social ?? '',
+          s.establecimiento.nombre,
+          s.nombre_sistema,
+          s.numero_serie ?? '',
+        ].filter(Boolean),
+      })),
+    [sistemas],
+  )
+
+  // Voz CU18: abre el formulario de creación y rellena sus campos; nunca registra.
+  useVozFormulario({
+    esquemaId: 'crear-ticket',
+    abrir: () => {
+      if (permisos.crear && sistemas.length > 0) setFormularioAbierto(true)
+    },
+    aplicar: (valores) => {
+      const sistemaId =
+        resolverSistemaVoz(valores.sistemaId, sistemas) ?? resolverSistemaVoz(valores.clienteTexto, sistemas)
+      const siguientes: ValoresTicketVoz = {}
+      if (sistemaId !== null) siguientes.sistemaId = sistemaId
+      if (typeof valores.tipo === 'string' && (TIPOS_TICKET as readonly string[]).includes(valores.tipo)) {
+        siguientes.tipo = valores.tipo as ValoresTicketVoz['tipo']
+      }
+      if (
+        typeof valores.urgencia === 'string' &&
+        (URGENCIAS_TICKET as readonly string[]).includes(valores.urgencia)
+      ) {
+        siguientes.urgencia = valores.urgencia as ValoresTicketVoz['urgencia']
+      }
+      if (typeof valores.descripcion === 'string') siguientes.descripcion = valores.descripcion
+      if (Object.keys(siguientes).length === 0) return
+      setTicketVoz((prev) => ({ valores: siguientes, version: prev.version + 1 }))
+    },
+    opcionesPorCampo: { sistemaId: opcionesSistemasVoz, clienteTexto: opcionesSistemasVoz },
+  })
+
+  const ticketParaDerivar = tickets.find(
+    (t) => permisos.derivar && !t.orden && ESTADOS_DERIVABLES.includes(t.estado),
+  )
+
+  // Voz CU18: derivar a OT abre el modal sobre el primer ticket derivable.
+  useVozFormulario({
+    esquemaId: 'derivar-ticket-ot',
+    activo: !!ticketParaDerivar,
+    abrir: () => {
+      if (ticketParaDerivar) setDerivando(ticketParaDerivar)
+    },
+    aplicar: (valores) => {
+      const valoresModal: Partial<DatosVentana> = {}
+      if (typeof valores.fecha === 'string') valoresModal.fecha = valores.fecha
+      if (typeof valores.horaInicio === 'string') valoresModal.horaInicio = valores.horaInicio
+      if (typeof valores.horaFin === 'string') valoresModal.horaFin = valores.horaFin
+      if (Object.keys(valoresModal).length === 0) return
+      setVentanaDerivarVoz((prev) => ({ valores: valoresModal, version: prev.version + 1 }))
+    },
+  })
 
   async function cambiarEstado(ticket: TicketListado, estado: EstadoTicket) {
     if (estado === 'CANCELADO' && !window.confirm(`¿Cancelar el ticket ${ticket.codigo}?`)) return
@@ -208,7 +302,9 @@ export function IU_GestionarTickets({
 
       {formularioAbierto ? (
         <FormularioTicket
+          key={`ticket-${ticketVoz.version}`}
           sistemas={sistemas}
+          valoresIniciales={ticketVoz.valores}
           onCancelar={() => setFormularioAbierto(false)}
           onCreado={(texto) => {
             setFormularioAbierto(false)
@@ -349,7 +445,9 @@ export function IU_GestionarTickets({
 
       {derivando && (
         <ModalVentana
+          key={`derivar-${ventanaDerivarVoz.version}`}
           titulo={`Derivar ${derivando.codigo} a Orden de Trabajo`}
+          valoresIniciales={ventanaDerivarVoz.valores}
           onCerrar={() => setDerivando(null)}
           onConfirmar={async (d) => {
             const r = await derivarTicketAccion({

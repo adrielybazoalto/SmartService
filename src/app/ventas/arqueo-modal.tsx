@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { abrirCaja, cerrarCaja, obtenerResumenArqueo } from '@/app/actions/ventas';
 import type { Caja, ResumenArqueo } from '@/backend/ventas';
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider';
 type Props = {
   modo: 'apertura' | 'cierre';
   onClose: () => void;
@@ -30,6 +31,15 @@ export default function ArqueoModal({ modo, onClose, onCompletado, notificar }: 
   const [usarConteo, setUsarConteo] = useState(false);
   const [conteo, setConteo] = useState<Record<string, string>>({});
   const [cerrada, setCerrada] = useState<Caja | null>(null);
+
+  useVozFormulario({
+    esquemaId: 'arqueo-caja',
+    aplicar: (valores) => {
+      const montoDictado = valores.monto;
+      if (typeof montoDictado === 'string' || typeof montoDictado === 'number') setMonto(String(montoDictado));
+      if (typeof valores.observacion === 'string') setObservacion(valores.observacion);
+    },
+  });
 
   // Cerrar con Escape
   useEffect(() => {

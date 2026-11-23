@@ -10,6 +10,7 @@ import {
   permisosCotizacionesAccion,
 } from '@/app/actions/cotizaciones'
 import { convertirCotizacionAOrdenAccion } from '@/app/actions/ordenes-trabajo'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
 import { textoAnticipo } from './anticipo'
 import { ModalAnticipo, type CotizacionParaAprobar } from './modal-anticipo'
 
@@ -96,6 +97,40 @@ export default function CotizacionesPage() {
       sinAnticipo: Number(cot.anticipo_monto ?? 0) <= 0,
     })
   }
+
+  // Voz: el anticipo abre el modal sobre la primera cotización pendiente;
+  // ModalAnticipo aplica los valores. Nunca aprueba ni envía.
+  useVozFormulario({
+    esquemaId: 'anticipo-cotizacion',
+    abrir: () => {
+      if (cotizacionParaAprobar) return
+      const cot = cotizaciones.find((c) => c.estado === 'PENDIENTE')
+      if (!cot) return
+      setCotizacionParaAprobar({
+        id: cot.id,
+        nro: cot.numero_cotizacion,
+        cliente: cot.cliente?.nombre || `Cliente #${cot.cliente_id}`,
+        total: Number(cot.total),
+      })
+    },
+    aplicar: () => {},
+  })
+
+  // Voz: programar la orden abre el modal sobre la primera cotización aprobada
+  // y rellena fecha/horario en este mismo componente.
+  useVozFormulario({
+    esquemaId: 'convertir-ot',
+    abrir: () => {
+      if (cotizacionParaConvertir) return
+      const cot = cotizaciones.find((c) => c.estado === 'APROBADA')
+      if (cot) handleAbrirModalConvertir(cot)
+    },
+    aplicar: (valores) => {
+      if (typeof valores.fechaProgramada === 'string') setFechaProgramada(valores.fechaProgramada)
+      if (typeof valores.horaInicio === 'string') setHoraInicio(valores.horaInicio)
+      if (typeof valores.horaFin === 'string') setHoraFin(valores.horaFin)
+    },
+  })
 
   const handleConfirmarConvertir = async (e: React.FormEvent) => {
     e.preventDefault()

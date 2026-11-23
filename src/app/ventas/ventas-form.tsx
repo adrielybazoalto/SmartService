@@ -12,6 +12,8 @@ import type {
 // Paneles de cobro compartidos con el CU13 (QR del negocio y transferencia)
 import { PanelQr } from '@/components/pagos/panel-qr';
 import { PanelTransferencia } from '@/components/pagos/panel-transferencia';
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider';
+import { sinTildes } from '@/lib/voz/normalizar';
 
 /**
  * Paso 8: obtiene la nota de venta (PDF en base64) y la abre en otra pestaña.
@@ -182,6 +184,64 @@ export default function VentasForm({
       : clientes;
     return base.slice(0, 50);
   }, [busquedaCliente, clientes]);
+
+  // Voz: catálogo real de clientes y campos de la venta (sin confirmar venta).
+  const opcionesClientesVoz = useMemo(
+    () =>
+      clientes.map((c) => ({
+        valor: String(c.id),
+        etiqueta: c.razon_social,
+        sinonimos: [c.razon_social, c.nombre ?? '', c.documento_identidad ?? ''].filter(Boolean),
+      })),
+    [clientes],
+  );
+
+  useVozFormulario({
+    esquemaId: 'registrar-venta',
+    aplicar: (valores) => {
+      const clienteDictado = valores.clienteId;
+      if (typeof clienteDictado === 'string' || typeof clienteDictado === 'number') {
+        const texto = String(clienteDictado);
+        const cliente = clientes.find(
+          (c) =>
+            String(c.id) === texto ||
+            sinTildes(c.razon_social) === sinTildes(texto) ||
+            (c.documento_identidad !== null && sinTildes(c.documento_identidad) === sinTildes(texto)),
+        );
+        if (cliente) {
+          setClienteId(cliente.id);
+          setBusquedaCliente('');
+        }
+      }
+      const comprobanteDictado = valores.tipoComprobante;
+      if (typeof comprobanteDictado === 'string') {
+        const encontrado = COMPROBANTES.find(
+          (c) => sinTildes(c.valor) === sinTildes(comprobanteDictado) || sinTildes(c.etiqueta) === sinTildes(comprobanteDictado),
+        );
+        if (encontrado) setTipoComprobante(encontrado.valor);
+      }
+      const pagoDictado = valores.tipoPago;
+      if (typeof pagoDictado === 'string') {
+        const encontrado = PAGOS.find(
+          (p) => sinTildes(p.valor) === sinTildes(pagoDictado) || sinTildes(p.etiqueta) === sinTildes(pagoDictado),
+        );
+        if (encontrado) {
+          setTipoPago(encontrado.valor);
+          setPagoQrConfirmado(false);
+          setTransferenciaConfirmada(false);
+        }
+      }
+      const descuentoDictado = valores.descuento;
+      if (typeof descuentoDictado === 'string' || typeof descuentoDictado === 'number') setDescuento(String(descuentoDictado));
+      const efectivoDictado = valores.efectivoRecibido;
+      if (typeof efectivoDictado === 'string' || typeof efectivoDictado === 'number') setEfectivoRecibido(String(efectivoDictado));
+      if (typeof valores.referenciaTransferencia === 'string') {
+        setReferenciaTransferencia(valores.referenciaTransferencia);
+        setTransferenciaConfirmada(false);
+      }
+    },
+    opcionesPorCampo: { clienteId: opcionesClientesVoz },
+  });
 
   // ---- Totales (vista previa; el cálculo oficial lo hace la BD) -------------
   const subtotal = useMemo(() => r2(lineas.reduce((acc, l) => acc + r2(l.precio * l.cantidad), 0)), [lineas]);

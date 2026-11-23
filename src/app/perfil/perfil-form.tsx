@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import Link from 'next/link'
 import {
   actualizarPerfilAction,
@@ -8,6 +8,7 @@ import {
   type CambiarContrasenaState,
   type PerfilActionState,
 } from '@/app/actions/perfil'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
 
 const perfilInicial: PerfilActionState = { ok: false }
 const contrasenaInicial: CambiarContrasenaState = { ok: false }
@@ -45,6 +46,17 @@ export function PerfilForm({
     cambiarContrasenaAction,
     contrasenaInicial,
   )
+
+  // Voz: sólo los datos personales editables; el formulario de contraseña queda intacto.
+  const [nombreValue, setNombreValue] = useState(nombre)
+  const [telefonoValue, setTelefonoValue] = useState(telefono ?? '')
+  useVozFormulario({
+    esquemaId: 'editar-perfil',
+    aplicar: (valores) => {
+      if (typeof valores.nombre === 'string') setNombreValue(valores.nombre)
+      if (typeof valores.telefono === 'string') setTelefonoValue(valores.telefono)
+    },
+  })
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,7 +126,8 @@ export function PerfilForm({
             required
             minLength={2}
             maxLength={150}
-            defaultValue={nombre}
+            value={nombreValue}
+            onChange={(e) => setNombreValue(e.target.value)}
             className={inputClase}
           />
         </div>
@@ -128,7 +141,8 @@ export function PerfilForm({
             name="telefono"
             type="tel"
             maxLength={20}
-            defaultValue={telefono ?? ''}
+            value={telefonoValue}
+            onChange={(e) => setTelefonoValue(e.target.value)}
             className={inputClase}
           />
         </div>

@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CategoriaDTO, ProductoInventarioDTO } from '@/backend/inventario/types'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz } from '@/lib/voz/extractor-formularios'
 import type { CapacidadesInventario } from './acceso'
 import { EstadoProducto, FotoProducto } from './componentes'
 import { DetalleProducto } from './detalle-producto'
@@ -68,6 +70,49 @@ export function CatalogoProductos({
     const t = setTimeout(() => setExito(null), 6000)
     return () => clearTimeout(t)
   }, [exito])
+
+  const opcionesCategoriaVoz = useMemo<OpcionVoz[]>(
+    () => categorias.map((c) => ({ valor: String(c.id), etiqueta: c.nombre })),
+    [categorias]
+  )
+
+  // El bus abre el modal correspondiente; cada formulario hijo aplica los valores.
+  useVozFormulario({
+    esquemaId: 'crear-producto',
+    abrir: () => {
+      if (capacidades.crear && categorias.length > 0) setDialogo({ tipo: 'nuevo' })
+    },
+    aplicar: () => {},
+    opcionesPorCampo: { categoria_id: opcionesCategoriaVoz },
+  })
+
+  useVozFormulario({
+    esquemaId: 'crear-categoria',
+    abrir: () => {
+      if (capacidades.crear) setDialogo({ tipo: 'categoria' })
+    },
+    aplicar: () => {},
+  })
+
+  useVozFormulario({
+    esquemaId: 'inventario-inicial',
+    abrir: () => {
+      if (!capacidades.procesar) return
+      const producto = lista.find((p) => p.activo && p.stockDisponible === 0)
+      if (producto) setDialogo({ tipo: 'inicial', producto })
+    },
+    aplicar: () => {},
+  })
+
+  useVozFormulario({
+    esquemaId: 'ajuste-inventario',
+    abrir: () => {
+      if (!capacidades.procesar) return
+      const producto = lista.find((p) => p.activo)
+      if (producto) setDialogo({ tipo: 'ajuste', producto })
+    },
+    aplicar: () => {},
+  })
 
   const puedeGestionar = capacidades.actualizar || capacidades.eliminar || capacidades.procesar
 

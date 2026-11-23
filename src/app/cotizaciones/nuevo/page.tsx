@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { obtenerClientesAccion, obtenerEstablecimientosPorClienteAccion, obtenerProductosConImagen, obtenerServiciosTecnicosAccion, crearCotizacionCompletaAccion } from '@/app/actions/cotizaciones'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import { sinTildes } from '@/lib/voz/normalizar'
 
 export default function NuevaCotizacionPage() {
   const router = useRouter()
@@ -20,6 +22,8 @@ export default function NuevaCotizacionPage() {
   const [carritoProductos, setCarritoProductos] = useState<any[]>([])
   const [carritoServicios, setCarritoServicios] = useState<any[]>([])
   const [cargando, setCargando] = useState(false)
+  // Establecimiento dictado que todavía no está cargado (llega con un cliente nuevo).
+  const establecimientoVozRef = useRef<string | null>(null)
 
   useEffect(() => {
     async function cargarInicial() {
@@ -41,11 +45,14 @@ export default function NuevaCotizacionPage() {
       if (clienteId) {
         const ests = await obtenerEstablecimientosPorClienteAccion(Number(clienteId))
         setEstablecimientos(ests || [])
+        const preferido = establecimientoVozRef.current
         if (ests && ests.length > 0) {
-          setEstablecimientoId(String(ests[0].id))
+          const elegido = ests.find((e) => String(e.id) === preferido)
+          setEstablecimientoId(String(elegido?.id ?? ests[0].id))
         } else {
           setEstablecimientoId('')
         }
+        establecimientoVozRef.current = null
       }
     }
     cargarEstablecimientos()
@@ -96,6 +103,84 @@ export default function NuevaCotizacionPage() {
         .filter(item => item.horas_estimadas > 0)
     )
   }
+
+  // Voz: catálogos reales y rellenado de la propuesta (sin guardar/empezar emisión).
+  const opcionesClientesVoz = useMemo(
+    () =>
+      clientes.map((c) => ({
+        valor: String(c.id),
+        etiqueta: String(c.nombre ?? ''),
+        sinonimos: [String(c.nombre ?? ''), String(c.documento_identidad ?? '')].filter(Boolean),
+      })),
+    [clientes],
+  )
+  const opcionesEstablecimientosVoz = useMemo(
+    () =>
+      establecimientos.map((e) => ({
+        valor: String(e.id),
+        etiqueta: String(e.nombre_establecimiento ?? ''),
+        sinonimos: [String(e.nombre_establecimiento ?? '')].filter(Boolean),
+      })),
+    [establecimientos],
+  )
+
+  useVozFormulario({
+    esquemaId: 'crear-cotizacion',
+    aplicar: (valores) => {
+      const clienteDictado = valores.clienteId
+      if (typeof clienteDictado === 'string' || typeof clienteDictado === 'number') {
+        const texto = String(clienteDictado)
+        const cliente = clientes.find(
+          (c) => String(c.id) === texto || sinTildes(String(c.nombre ?? '')) === sinTildes(texto),
+        )
+        if (cliente) setClienteId(String(cliente.id))
+      }
+      const establecimientoDictado = valores.establecimientoId
+      if (typeof establecimientoDictado === 'string' || typeof establecimientoDictado === 'number') {
+        const texto = String(establecimientoDictado)
+        const est = establecimientos.find(
+          (e) => String(e.id) === texto || sinTildes(String(e.nombre_establecimiento ?? '')) === sinTildes(texto),
+        )
+        if (est) {
+          setEstablecimientoId(String(est.id))
+        } else {
+          establecimientoVozRef.current = texto
+          setEstablecimientoId(texto)
+        }
+      }
+      const cantidadDictada = valores.cantidad
+      if (typeof cantidadDictada === 'string' || typeof cantidadDictada === 'number') {
+        const numero = Number(cantidadDictada)
+        if (Number.isFinite(numero) && numero > 0) {
+          const cantidad = Math.floor(numero)
+          if (carritoProductos.length > 0) {
+            const id = carritoProductos[0].id
+            setCarritoProductos((prev) => prev.map((item) => (item.id === id ? { ...item, cantidad } : item)))
+          } else if (productos.length > 0) {
+            const prod = productos[0]
+            const precioVenta = prod.precio_compra_actual * (1 + prod.margen_ganancia / 100)
+            setCarritoProductos([{ ...prod, cantidad, precio_unitario: precioVenta }])
+          }
+        }
+      }
+      const horasDictadas = valores.horasEstimadas
+      if (typeof horasDictadas === 'string' || typeof horasDictadas === 'number') {
+        const numero = Number(horasDictadas)
+        if (Number.isFinite(numero) && numero > 0) {
+          if (carritoServicios.length > 0) {
+            const id = carritoServicios[0].id
+            const horas = Math.floor(numero)
+            setCarritoServicios((prev) => prev.map((item) => (item.id === id ? { ...item, horas_estimadas: horas } : item)))
+          } else if (servicios.length > 0) {
+            const serv = servicios[0]
+            const tarifa = Number(serv.tarifa_por_hora || 70.00)
+            setCarritoServicios([{ ...serv, horas_estimadas: Math.floor(numero), precio_hora: tarifa }])
+          }
+        }
+      }
+    },
+    opcionesPorCampo: { clienteId: opcionesClientesVoz, establecimientoId: opcionesEstablecimientosVoz },
+  })
 
   // Cálculos totales
   const totalProductos = carritoProductos.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0)

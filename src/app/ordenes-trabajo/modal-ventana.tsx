@@ -13,19 +13,22 @@ export interface DatosVentana {
 export function ModalVentana({
   titulo,
   conTipo = false,
+  valoresIniciales,
   onConfirmar,
   onCerrar,
 }: {
   titulo: string
   /** La orden correctiva, además, pide el tipo de trabajo. */
   conTipo?: boolean
+  /** Valores precargados por el asistente de voz (el modal se remonta con cada dictado). */
+  valoresIniciales?: Partial<DatosVentana>
   onConfirmar: (datos: DatosVentana) => Promise<string | null>
   onCerrar: () => void
 }) {
-  const [fecha, setFecha] = useState('')
-  const [horaInicio, setHoraInicio] = useState('')
-  const [horaFin, setHoraFin] = useState('')
-  const [tipoTrabajo, setTipoTrabajo] = useState('')
+  const [fecha, setFecha] = useState(valoresIniciales?.fecha ?? '')
+  const [horaInicio, setHoraInicio] = useState(valoresIniciales?.horaInicio ?? '')
+  const [horaFin, setHoraFin] = useState(valoresIniciales?.horaFin ?? '')
+  const [tipoTrabajo, setTipoTrabajo] = useState(valoresIniciales?.tipoTrabajo ?? '')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

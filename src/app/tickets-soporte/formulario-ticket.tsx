@@ -41,25 +41,41 @@ export interface FormularioTicketHandle {
   dictar: (texto: string) => void
 }
 
+/** Valores que llegan desde el bus universal de voz (el asistente global). */
+export interface ValoresTicketVoz {
+  sistemaId?: number
+  tipo?: TipoTicket | ''
+  urgencia?: UrgenciaTicket | ''
+  descripcion?: string
+}
+
 /** Nuevo Ticket (CU18, pasos 2 a 4) con dictado por voz. Nunca guarda solo: confirma el usuario. */
 export function FormularioTicket({
   sistemas,
+  valoresIniciales,
   onCancelar,
   onCreado,
   ref,
 }: {
   sistemas: SistemaOpcion[]
+  valoresIniciales?: ValoresTicketVoz
   onCancelar: () => void
   onCreado: (mensaje: string) => void
   ref?: Ref<FormularioTicketHandle>
 }) {
-  const [sistemaId, setSistemaId] = useState<number | null>(null)
-  const [tipo, setTipo] = useState<TipoTicket | ''>('')
-  const [urgencia, setUrgencia] = useState<UrgenciaTicket | ''>('')
-  const [descripcion, setDescripcion] = useState('')
+  const porVozInicial = new Set<Campo>()
+  if (valoresIniciales?.sistemaId) porVozInicial.add('sistema')
+  if (valoresIniciales?.tipo) porVozInicial.add('tipo')
+  if (valoresIniciales?.urgencia) porVozInicial.add('urgencia')
+  if (valoresIniciales?.descripcion) porVozInicial.add('descripcion')
+
+  const [sistemaId, setSistemaId] = useState<number | null>(valoresIniciales?.sistemaId ?? null)
+  const [tipo, setTipo] = useState<TipoTicket | ''>(valoresIniciales?.tipo ?? '')
+  const [urgencia, setUrgencia] = useState<UrgenciaTicket | ''>(valoresIniciales?.urgencia ?? '')
+  const [descripcion, setDescripcion] = useState(valoresIniciales?.descripcion ?? '')
   const [errores, setErrores] = useState<Errores>({})
-  const [origen, setOrigen] = useState<OrigenTicket>('MANUAL')
-  const [porVoz, setPorVoz] = useState<ReadonlySet<Campo>>(new Set())
+  const [origen, setOrigen] = useState<OrigenTicket>(porVozInicial.size > 0 ? 'VOZ' : 'MANUAL')
+  const [porVoz, setPorVoz] = useState<ReadonlySet<Campo>>(porVozInicial)
   const [coincidencias, setCoincidencias] = useState<SistemaOpcion[]>([])
   const [aviso, setAviso] = useState<Aviso>(null)
   const [procesandoVoz, setProcesandoVoz] = useState(false)

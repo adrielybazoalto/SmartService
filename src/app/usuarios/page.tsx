@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   listarUsuarios,
   obtenerRolesActivos,
@@ -11,6 +11,8 @@ import {
   RolEntity,
 } from "@/app/actions/usuarios";
 import { PageHeaderBadge } from "@/components/page-header-badge";
+import { useVozFormulario } from "@/components/voz/voz-formulario-provider";
+import { sinTildes } from "@/lib/voz/normalizar";
 
 export default function AdministrarUsuariosPage() {
   // Atributos Boundary (IU_AdministrarUsuarios)
@@ -38,6 +40,31 @@ export default function AdministrarUsuariosPage() {
   // lblMensajeError y notificaciones
   const [lblMensajeError, setLblMensajeError] = useState<string | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+
+  // Voz: catálogo real de roles y rellenado del modal de creación (sin submit).
+  const opcionesRolesVoz = useMemo(
+    () => roles.map((r) => ({ valor: String(r.id), etiqueta: r.nombre, sinonimos: [r.nombre] })),
+    [roles],
+  );
+  useVozFormulario({
+    esquemaId: "crear-usuario",
+    abrir: () => {
+      setModoEdicion(false);
+      setUsuarioEditandoId(null);
+      setModalAbierto(true);
+    },
+    aplicar: (valores) => {
+      if (typeof valores.txtNombre === "string") setTxtNombre(valores.txtNombre);
+      if (typeof valores.txtCorreo === "string") setTxtCorreo(valores.txtCorreo);
+      if (typeof valores.txtPassword === "string") setTxtPassword(valores.txtPassword);
+      if (typeof valores.txtTelefono === "string") setTxtTelefono(valores.txtTelefono);
+      if (typeof valores.cboRol === "string") {
+        const rol = roles.find((r) => sinTildes(r.nombre) === sinTildes(valores.cboRol as string));
+        if (rol) setCboRol(rol.id);
+      }
+    },
+    opcionesPorCampo: { cboRol: opcionesRolesVoz },
+  });
 
   // Métodos Boundary
   const mostrarMensajeExito = (msg: string) => {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from 'react'
 import {
   listarProductosCompraAction,
   registrarCompraAction,
@@ -11,6 +11,9 @@ import {
 } from '@/app/actions/compras'
 import type { RegistrarCompraInput } from '@/backend/compras/schema'
 import { MAX_LINEAS_COMPRA, type ProductoCompraDTO, type ProveedorCompraDTO } from '@/backend/compras/types'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import type { OpcionVoz } from '@/lib/voz/extractor-formularios'
+import { sinTildes } from '@/lib/voz/normalizar'
 import { AccionesFormulario, Campo, ErrorFormulario, Modal, Spinner } from '../../inventario/componentes'
 import { formatoBs, formatoCantidad } from '../../inventario/formato'
 import { EtiquetaDocumento } from '../componentes'
@@ -87,6 +90,19 @@ export function FormularioCompra({
   const [generandoNumero, setGenerandoNumero] = useState(false)
   const [numeroEditadoManualmente, setNumeroEditadoManualmente] = useState(false)
   const [mostrarCatalogo, setMostrarCatalogo] = useState(false)
+
+  /** Datos de línea dictados antes de que el catálogo del proveedor termine de cargar. */
+  const lineaVozPendiente = useRef<{ cantidad?: string; costoUnitario?: string } | null>(null)
+
+  const opcionesProveedorVoz = useMemo<OpcionVoz[]>(
+    () =>
+      proveedores.map((p) => ({
+        valor: String(p.id),
+        etiqueta: p.razonSocial,
+        sinonimos: [p.nit ?? '', p.contacto ?? ''].filter(Boolean),
+      })),
+    [proveedores]
+  )
 
   useEffect(() => {
     function manejarClickFuera(e: MouseEvent) {
@@ -186,28 +202,14 @@ export function FormularioCompra({
 
   // ------------------------------------------------------------ proveedor
 
-  async function cambiarProveedor(proveedorId: string) {
-    let nuevoNroDoc = v.nroDocumento
-    if (v.tipoDocumento && (!numeroEditadoManualmente || !v.nroDocumento.trim())) {
-      const sug = await sugerirNumero(v.tipoDocumento as 'FACTURA' | 'NOTA', proveedorId)
-      if (sug) nuevoNroDoc = sug
-    }
-
-    // Si cambia de proveedor, se reinician las líneas para evitar compras cruzadas de productos
-    const siguiente = { ...v, proveedorId, lineas: [], nroDocumento: nuevoNroDoc }
-    setV(siguiente)
-    setBusqueda('')
-    setMostrarCatalogo(false)
-    limpiarError('proveedor_id', 'items')
-    void verificarDocumento(siguiente)
-
+  /** Carga el catálogo del proveedor sin tocar cabecera ni líneas ya dictadas. */
+  async function cargarProductosDelProveedor(proveedorId: string) {
     if (!proveedorId) {
       setProductos([])
       setErrorProductos(null)
       return
     }
 
-    // Recarga únicamente los productos asociados al catálogo de este proveedor (CU14)
     const n = ++peticionProductos.current
     setCargandoProductos(true)
     try {
@@ -216,6 +218,25 @@ export function FormularioCompra({
       if (r.ok) {
         setProductos(r.data)
         setErrorProductos(null)
+        const pendiente = lineaVozPendiente.current
+        if (pendiente && r.data.length > 0) {
+          const producto = r.data[0]
+          setV((anterior) =>
+            anterior.lineas.length > 0
+              ? anterior
+              : {
+                  ...anterior,
+                  lineas: [
+                    {
+                      productoId: producto.id,
+                      cantidad: pendiente.cantidad ?? '',
+                      costoUnitario: pendiente.costoUnitario ?? costoSugerido(producto),
+                    },
+                  ],
+                }
+          )
+          lineaVozPendiente.current = null
+        }
       } else {
         setErrorProductos(r.mensaje)
         setProductos([])
@@ -229,6 +250,90 @@ export function FormularioCompra({
       if (n === peticionProductos.current) setCargandoProductos(false)
     }
   }
+
+  async function cambiarProveedor(proveedorId: string) {
+    let nuevoNroDoc = v.nroDocumento
+    if (v.tipoDocumento && (!numeroEditadoManualmente || !v.nroDocumento.trim())) {
+      const sug = await sugerirNumero(v.tipoDocumento as 'FACTURA' | 'NOTA', proveedorId)
+      if (sug) nuevoNroDoc = sug
+    }
+
+    // Si cambia de proveedor manualmente, se reinician las líneas para evitar compras cruzadas
+    lineaVozPendiente.current = null
+    const siguiente = { ...v, proveedorId, lineas: [], nroDocumento: nuevoNroDoc }
+    setV(siguiente)
+    setBusqueda('')
+    setMostrarCatalogo(false)
+    limpiarError('proveedor_id', 'items')
+    void verificarDocumento(siguiente)
+    void cargarProductosDelProveedor(proveedorId)
+  }
+
+  // El dictado sólo rellena estado: la compra sigue requiriendo "Revisar y registrar".
+  useVozFormulario({
+    esquemaId: 'registrar-compra',
+    aplicar: (valores) => {
+      const cambios: Partial<ValoresCompra> = {}
+
+      if (typeof valores.proveedorId === 'string' || typeof valores.proveedorId === 'number') {
+        const texto = String(valores.proveedorId).trim()
+        const proveedorDictado = proveedores.find(
+          (p) =>
+            String(p.id) === texto ||
+            sinTildes(String(p.razonSocial)) === sinTildes(texto) ||
+            (Boolean(p.nit) && sinTildes(String(p.nit)) === sinTildes(texto))
+        )
+        if (proveedorDictado) {
+          cambios.proveedorId = String(proveedorDictado.id)
+          void cargarProductosDelProveedor(cambios.proveedorId)
+        }
+      }
+
+      if (typeof valores.tipoDocumento === 'string') {
+        const texto = sinTildes(valores.tipoDocumento)
+        const tipo = (['FACTURA', 'NOTA'] as const).find(
+          (t) => sinTildes(t) === texto || sinTildes(t === 'FACTURA' ? 'factura' : 'nota') === texto
+        )
+        if (tipo) cambios.tipoDocumento = tipo
+      }
+
+      if (typeof valores.nroDocumento === 'string') {
+        cambios.nroDocumento = valores.nroDocumento
+        setNumeroEditadoManualmente(true)
+      }
+      if (typeof valores.fechaCompra === 'string') cambios.fechaCompra = valores.fechaCompra
+      if (typeof valores.observacion === 'string') cambios.observacion = valores.observacion
+
+      let cantidad: string | undefined
+      if (typeof valores.cantidad === 'string' || typeof valores.cantidad === 'number') cantidad = String(valores.cantidad)
+      let costoUnitario: string | undefined
+      if (typeof valores.costoUnitario === 'string' || typeof valores.costoUnitario === 'number') {
+        costoUnitario = String(valores.costoUnitario)
+      }
+
+      const siguiente: ValoresCompra = { ...v, ...cambios }
+      if (cantidad !== undefined || costoUnitario !== undefined) {
+        if (siguiente.lineas.length > 0) {
+          siguiente.lineas = siguiente.lineas.map((linea, indice) =>
+            indice === 0
+              ? { ...linea, cantidad: cantidad ?? linea.cantidad, costoUnitario: costoUnitario ?? linea.costoUnitario }
+              : linea
+          )
+          lineaVozPendiente.current = null
+        } else {
+          // El catálogo del proveedor puede llegar después del dictado.
+          lineaVozPendiente.current = { cantidad, costoUnitario }
+        }
+      }
+
+      setV(siguiente)
+      if (Object.keys(cambios).length > 0) {
+        limpiarError('proveedor_id', 'tipo_documento', 'nro_documento', 'fecha_compra', 'observacion', 'items')
+        void verificarDocumento(siguiente)
+      }
+    },
+    opcionesPorCampo: { proveedorId: opcionesProveedorVoz },
+  })
 
   // --------------------------------------------------------------- líneas
 

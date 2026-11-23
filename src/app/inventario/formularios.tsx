@@ -25,6 +25,8 @@ import type {
   ResultadoInventario,
   ResultadoMovimientoDTO,
 } from '@/backend/inventario/types'
+import { useVozFormulario } from '@/components/voz/voz-formulario-provider'
+import { sinTildes } from '@/lib/voz/normalizar'
 import { AccionesFormulario, Campo, ErrorFormulario, Modal } from './componentes'
 import { formatoBs, formatoCantidad, formatoNumero, precioVentaReferencial } from './formato'
 
@@ -164,6 +166,46 @@ export function FormularioProducto({
   const { pendiente, errores, errorServidor, enviar } = useEnvio<ProductoInventarioDTO>((m, data) => onExito(m, data))
   const cambiar = (campo: keyof ValoresProducto) => (e: { target: { value: string } }) =>
     setV((anterior) => ({ ...anterior, [campo]: e.target.value }))
+
+  useVozFormulario({
+    esquemaId: 'crear-producto',
+    aplicar: (valores) => {
+      // El mismo componente sirve para alta y edición: el dictado sólo toca el alta.
+      if (edicion) return
+      const comoTexto = (valor: unknown): string | undefined =>
+        typeof valor === 'string' || typeof valor === 'number' ? String(valor) : undefined
+
+      setV((anterior) => {
+        const siguiente = { ...anterior }
+        const asignar = (campo: keyof ValoresProducto, valor: unknown) => {
+          const texto = comoTexto(valor)
+          if (texto !== undefined) siguiente[campo] = texto
+        }
+        asignar('codigo', valores.codigo)
+        asignar('nombre', valores.nombre)
+        asignar('descripcion_tecnica', valores.descripcion_tecnica)
+        asignar('precio_compra_actual', valores.precio_compra_actual)
+        asignar('margen_ganancia', valores.margen_ganancia)
+        asignar('stock_minimo', valores.stock_minimo)
+
+        const unidad = comoTexto(valores.unidad_medida)
+        if (unidad !== undefined) {
+          const permitidas = ['unidad', 'metro', 'rollo', 'caja', 'par']
+          const encontrada = permitidas.find((u) => sinTildes(u) === sinTildes(unidad))
+          if (encontrada) siguiente.unidad_medida = encontrada
+        }
+
+        const categoria = comoTexto(valores.categoria_id)
+        if (categoria !== undefined) {
+          const encontrada = categorias.find(
+            (c) => String(c.id) === categoria || sinTildes(c.nombre) === sinTildes(categoria)
+          )
+          if (encontrada) siguiente.categoria_id = String(encontrada.id)
+        }
+        return siguiente
+      })
+    },
+  })
 
   const precio = Number(v.precio_compra_actual)
   const margen = Number(v.margen_ganancia)
@@ -337,6 +379,14 @@ export function FormularioCategoria({ onCerrar, onExito }: { onCerrar: () => voi
   const [descripcion, setDescripcion] = useState('')
   const { pendiente, errores, errorServidor, enviar } = useEnvio<CategoriaDTO>((m) => onExito(m))
 
+  useVozFormulario({
+    esquemaId: 'crear-categoria',
+    aplicar: (valores) => {
+      if (typeof valores.nombre === 'string') setNombre(valores.nombre)
+      if (typeof valores.descripcion === 'string') setDescripcion(valores.descripcion)
+    },
+  })
+
   function alEnviar(e: FormEvent) {
     e.preventDefault()
     const entrada = { nombre, descripcion: descripcion || null }
@@ -375,6 +425,16 @@ export function FormularioInventarioInicial({
   const { pendiente, errores, errorServidor, enviar } = useEnvio((m: string, d: ResultadoMovimientoDTO) =>
     onExito(`${m} Stock de «${producto.nombre}»: ${formatoCantidad(d.stockResultante)} ${producto.unidadMedida}.`),
   )
+
+  useVozFormulario({
+    esquemaId: 'inventario-inicial',
+    aplicar: (valores) => {
+      if (typeof valores.cantidad === 'string' || typeof valores.cantidad === 'number') {
+        setCantidad(String(valores.cantidad))
+      }
+      if (typeof valores.observacion === 'string') setObservacion(valores.observacion)
+    },
+  })
 
   function alEnviar(e: FormEvent) {
     e.preventDefault()
@@ -418,6 +478,16 @@ export function FormularioAjuste({
     (m: string, d: ResultadoMovimientoDTO) =>
       onExito(`${m} «${producto.nombre}»: ${formatoCantidad(d.stockAnterior)} → ${formatoCantidad(d.stockResultante)} (${d.motivo === 'AJUSTE_POSITIVO' ? 'ajuste positivo' : 'ajuste negativo'}).`),
   )
+
+  useVozFormulario({
+    esquemaId: 'ajuste-inventario',
+    aplicar: (valores) => {
+      if (typeof valores.stockContado === 'string' || typeof valores.stockContado === 'number') {
+        setStockContado(String(valores.stockContado))
+      }
+      if (typeof valores.justificacion === 'string') setJustificacion(valores.justificacion)
+    },
+  })
 
   const contado = Number(stockContado)
   const valido = stockContado.trim() !== '' && Number.isFinite(contado) && contado >= 0

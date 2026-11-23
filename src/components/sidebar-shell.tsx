@@ -9,6 +9,7 @@ import { NavegacionPaquetes } from '@/components/sidebar-nav'
 import { BadgeRol } from '@/components/badge-rol'
 import { PaqueteSeleccionadoProvider } from '@/components/paquete-seleccionado'
 import { AsistenteVozGlobal } from '@/components/voz/asistente-voz-global'
+import { VozFormularioProvider } from '@/components/voz/voz-formulario-provider'
 
 /**
  * Marco de la aplicación (Client Component) responsable del comportamiento
@@ -58,6 +59,7 @@ export function SidebarShell({
 
   return (
     <PaqueteSeleccionadoProvider>
+      <VozFormularioProvider>
       <div className="flex min-h-screen bg-[#F4F5F7] text-slate-900">
         {/* Fondo oscurecido al abrir el panel en móvil */}
         <div
@@ -190,6 +192,7 @@ export function SidebarShell({
           <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>
+      </VozFormularioProvider>
     </PaqueteSeleccionadoProvider>
   )
 }

@@ -20,10 +20,42 @@ import {
 } from "@/app/actions/liquidacion";
 import { PanelQr } from "@/components/pagos/panel-qr";
 import { PanelTransferencia } from "@/components/pagos/panel-transferencia";
-import type { DetalleLiquidacion, NotaServicio } from "@/backend/liquidacion/types";
+import { useVozFormulario } from "@/components/voz/voz-formulario-provider";
+import type { OpcionVoz, ValorCampoVoz } from "@/lib/voz/extractor-formularios";
+import { sinTildes } from "@/lib/voz/normalizar";
+import type { DetalleLiquidacion, NotaServicio, Servicio } from "@/backend/liquidacion/types";
 import { descargarNotaServicioPDF } from "../_lib/pdf";
 import { etiquetaMetodoPago, formatearBs, formatearFecha, formatearFechaHora } from "../_lib/formato";
 import { formatearFechaHora as formatearTimestamp } from "@/lib/fechas";
+
+type MetodoPagoLiquidacion = "EFECTIVO" | "QR" | "TRANSFERENCIA" | "TARJETA";
+const METODOS_PAGO_LIQUIDACION: readonly MetodoPagoLiquidacion[] = [
+  "EFECTIVO",
+  "QR",
+  "TRANSFERENCIA",
+  "TARJETA",
+];
+
+function resolverServicioVoz(
+  valor: ValorCampoVoz | undefined,
+  servicios: Servicio[],
+): Servicio | null {
+  const texto = Array.isArray(valor) ? valor[0] : valor;
+  if (texto === undefined || typeof texto === "boolean") return null;
+  const id = Number(texto);
+  if (Number.isInteger(id)) {
+    const encontrado = servicios.find((s) => s.id === id);
+    if (encontrado) return encontrado;
+  }
+  const norm = sinTildes(String(texto));
+  if (!norm) return null;
+  return (
+    servicios.find((s) => sinTildes(s.nombre) === norm) ??
+    servicios.find((s) => sinTildes(s.nombre).includes(norm) && norm.length >= 3) ??
+    null
+  );
+}
+
 export function LiquidacionForm({
   detalleInicial,
   notaInicial = null,
@@ -48,7 +80,7 @@ export function LiquidacionForm({
   const [aviso, setAviso] = useState<string | null>(null);
   const [cobrando, setCobrando] = useState(false);
   // Cobro del saldo: EFECTIVO / QR / TRANSFERENCIA (confirma el Encargado) o TARJETA (Stripe)
-  const [metodoPago, setMetodoPago] = useState<"EFECTIVO" | "QR" | "TRANSFERENCIA" | "TARJETA">("EFECTIVO");
+  const [metodoPago, setMetodoPago] = useState<MetodoPagoLiquidacion>("EFECTIVO");
   const [pagoConfirmado, setPagoConfirmado] = useState(false);
   const [referencia, setReferencia] = useState("");
   const confirmado = useRef(false);
@@ -148,6 +180,34 @@ export function LiquidacionForm({
       else setError(r.error);
     });
   }
+
+  const opcionesServiciosVoz = useMemo<OpcionVoz[]>(
+    () =>
+      detalle.servicios.map((s) => ({
+        valor: String(s.id),
+        etiqueta: s.nombre,
+      })),
+    [detalle.servicios],
+  );
+
+  // Voz CU13: el formulario de liquidación ya está en pantalla; sólo se rellena.
+  useVozFormulario({
+    esquemaId: "liquidar-orden",
+    aplicar: (valores) => {
+      const servicio = resolverServicioVoz(valores.servicioId, detalle.servicios);
+      if (servicio && !nota) cambiarServicio(String(servicio.id));
+      if (typeof valores.anticipoTexto === "number") setAnticipoTexto(String(valores.anticipoTexto));
+      else if (typeof valores.anticipoTexto === "string") setAnticipoTexto(valores.anticipoTexto);
+      if (
+        typeof valores.metodoPago === "string" &&
+        (METODOS_PAGO_LIQUIDACION as readonly string[]).includes(valores.metodoPago)
+      ) {
+        setMetodoPago(valores.metodoPago as MetodoPagoLiquidacion);
+      }
+      if (typeof valores.referencia === "string") setReferencia(valores.referencia);
+    },
+    opcionesPorCampo: { servicioId: opcionesServiciosVoz },
+  });
 
   function confirmarEmision() {
     setError(null);
@@ -422,7 +482,7 @@ export function LiquidacionForm({
                 El cobro se registra como recibo en su caja abierta y entra al arqueo del turno (CU09).
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {(["EFECTIVO", "QR", "TRANSFERENCIA", "TARJETA"] as const).map((m) => (
+                {METODOS_PAGO_LIQUIDACION.map((m) => (
                   <button
                     key={m}
                     type="button"
